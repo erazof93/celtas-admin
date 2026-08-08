@@ -49,6 +49,18 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* Paleta de marca también como variables CSS reales (no `inline`): las
+   gráficas SVG (Recharts) y demás no pueden usar utilidades de Tailwind,
+   así que consumen `var(--color-celtas-*)` — mismos valores que
+   tailwind.config.ts, nunca hex hardcodeado en componentes. */
+@theme {
+  --color-celtas-black: #0d0d0d;
+  --color-celtas-orange: #e8590c;
+  --color-celtas-red: #c1121f;
+  --color-celtas-gold: #ffb800;
+  --color-celtas-cream: #f5f1e8;
+}
+
 :root {
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);

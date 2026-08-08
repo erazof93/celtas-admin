@@ -156,27 +156,39 @@ celtas-admin/
 - [x] Estados de carga y error genéricos reutilizables (spinner, mensaje de error con retry)
 
 ### 3. Dashboard
-- [ ] Consume `GET /admin/dashboard/summary` y `GET /admin/dashboard/top-products`
-- [ ] Selector de rango de fechas (default: hoy, según ya calcula el backend)
-- [ ] Tarjetas de resumen: pedidos del día, ventas, desglose por estado
-- [ ] Gráfica de productos más vendidos (Recharts)
+- [x] Consume `GET /admin/dashboard/summary` y `GET /admin/dashboard/top-products`
+- [x] Selector de rango de fechas (default: hoy, según ya calcula el backend)
+- [x] Tarjetas de resumen: pedidos del día, ventas, desglose por estado
+- [x] Gráfica de productos más vendidos (Recharts)
 
 ### 4. Menú (categorías + productos)
-- [ ] CRUD de categorías
-- [ ] CRUD de productos, con subida de imagen (consume `POST /menu/items/:id/image`)
-- [ ] Toggle de disponibilidad rápido desde la lista (sin entrar a editar)
-- [ ] Manejo del 409 de nombre duplicado con mensaje claro en el formulario, no un error genérico
+- [x] CRUD de categorías
+- [x] CRUD de productos, con subida de imagen (consume `POST /menu/items/:id/image`)
+- [x] Toggle de disponibilidad rápido desde la lista (sin entrar a editar)
+- [x] Manejo del 409 de nombre duplicado con mensaje claro en el formulario, no un error genérico
 
 ### 5. Pedidos
-- [ ] Listado paginado, filtro por estado
-- [ ] Vista de detalle de un pedido (items, dirección, link de WhatsApp)
-- [ ] Cambio de estado con los botones/acciones válidas según la transición (no mostrar botones
+- [x] Listado paginado, filtro por estado
+- [x] Vista de detalle de un pedido (items, dirección, link de WhatsApp)
+- [x] Cambio de estado con los botones/acciones válidas según la transición (no mostrar botones
       de transiciones inválidas, ej. no ofrecer "entregado" si sigue en "pendiente")
 
+### 5.1 Infraestructura de tests
+- [x] Vitest + React Testing Library + jsdom instalados y configurados (script `pnpm run test`,
+      setup en `src/test/setup.ts`, config en `vitest.config.ts`)
+- [x] Test de regresión del merge de `onOrderUpdated` en Pedidos: el PATCH devuelve el pedido
+      sin `items` y el detalle debe conservarlos (`src/features/orders/merge.ts` +
+      `merge.test.ts`) — verificado que FALLA si se revierte el fix
+- [x] Convención de testing documentada en la skill `react-celtas` (dónde viven los tests y la
+      regla de no dejar sin test la lógica de datos que ya mordió con un bug real)
+
 ### 6. Cupones
-- [ ] Listado paginado, filtro por status
-- [ ] Formulario de generación manual (campaña), respetando el límite de 100% en `percentage`
-- [ ] Ver cupones de un usuario específico
+- [x] Listado paginado, filtro por status
+- [x] Formulario de generación manual (campaña), respetando el límite de 100% en `percentage`
+- [ ] Ver cupones de un usuario específico — **BLOQUEADO**: el backend no expone un endpoint
+      para esto desde el panel admin. `GET /coupons` no filtra por `userId` (solo `status`) y
+      `GET /coupons/me` es solo del usuario autenticado. Requiere cambio en el backend (ej.
+      filtro `userId` en `GET /coupons` o un endpoint admin dedicado).
 
 ### 7. Banners
 - [ ] CRUD con subida de imagen

@@ -113,3 +113,25 @@ Render pone a dormir el servicio free tier tras inactividad — la primera reque
 sin uso puede tardar 30-50 segundos en responder. Los estados de loading de React Query deben
 comunicar esto quando la espera se prolongue (ej. un mensaje "Esto puede tardar un poco la
 primera vez" tras ~5 segundos de loading), no solo un spinner indefinido que parezca colgado.
+
+## Testing (Vitest + React Testing Library)
+
+- **Stack**: Vitest + React Testing Library + jsdom + `@testing-library/jest-dom`. Correr con
+  `pnpm run test` (una vez) o `pnpm run test:watch` (modo watch). Config en `vitest.config.ts`,
+  setup compartido en `src/test/setup.ts` (matchers de jest-dom + cleanup automático).
+- **Dónde viven los tests:** colocalos junto al código que prueban —
+  `src/features/<feature>/<archivo>.test.ts(x)`. No hay carpeta `__tests__` separada.
+- **Sin globals:** los tests importan `describe/it/expect` explícitamente desde `vitest`
+  (no `globals: true`), para que el type-check (`tsc -b`) y ESLint los traten igual que el
+  resto del código.
+- **Regla de oro — lógica de datos que ya mordió una vez:** la lógica de transformación/merge
+  de respuestas de la API (no solo el renderizado visual) DEBE tener al menos un test cuando
+  maneja un caso donde ya se encontró un bug real. No se trata de cubrir todo al 100%, sino de
+  no dejar sin test la misma clase de error que ya crasheó en producción. Ejemplo: el merge de
+  `onOrderUpdated` en Pedidos (`src/features/orders/merge.ts` + `merge.test.ts`) — el PATCH
+  devuelve el pedido sin `items` y el detalle debe conservarlos.
+- **Patrón para lógica testeable:** extraer la transformación a una función pura
+  (`merge.ts`, `status.ts`, etc.) y que el componente solo la consuma — así el test cubre la
+  lógica real sin mockear el árbol de React Query/Radix.
+- **Verificación de que un test de regresión "prueba algo":** si el test cubre un fix, debe
+  fallar al revertir temporalmente el fix. El agente `@tester` lo verifica antes de dar LISTO.
