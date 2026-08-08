@@ -130,8 +130,34 @@ solo cuando pasa lo aplicable de este checklist.
 
 ## Banners
 
-- [ ] Selector de fechas valida `startDate < endDate` en el cliente
-- [ ] Reordenamiento drag-and-drop persiste correctamente contra `PATCH /banners/reorder`
+- [x] Selector de fechas valida `startDate < endDate` en el cliente — `isValidBannerDateRange` en
+      `banner-utils.ts` (espejo de `IsBannerDateRangeValid` del backend, `<` estricto) + `superRefine`
+      en `BannerForm.tsx`; 4 tests en `banner-utils.test.ts` (fechas opcionales, rango válido,
+      invertido e iguales)
+- [x] Reordenamiento drag-and-drop persiste correctamente contra `PATCH /banners/reorder` —
+      `BannersPage.tsx` con `@dnd-kit` (`SortableBannerRow`, `handleDragEnd` con `arrayMove` envía
+      `{ items: [{id, order}] }`); `useReorderBanners` en `hooks.ts` con actualización optimista
+      (`onMutate` guarda `previous` → `onError` restaura → `onSettled` invalida). **Verificado por
+      @tester con test temporal de rollback** (mock de `patch` rechazado): el cache vuelve al orden
+      anterior; el test FALLA si se rompe el `onError`
+- [x] Indicador de vigencia con los 4 estados (vigente/programado/vencido/inactivo) — `getBannerVigencia`
+      en `banner-utils.ts` espejo de `findActive` del backend (`startDate <= now`, `endDate >= now`);
+      7 tests incluyendo bordes exactos (`startDate == now` y `endDate == now` → `vigente`); badge en
+      la columna "Vigencia" de `BannersPage.tsx` con tokens celtas (`status.ts`)
+- [x] Subida de imagen reutiliza `ImageUpload.tsx` (mismos límites del backend: JPG/PNG/WEBP/GIF máx
+      5 MB) y el flujo es en 2 pasos: crear/actualizar → `POST /banners/:id/image`; si la imagen
+      falla, el banner queda creado, el error se muestra en el área de imagen y el form NO se cierra
+      (reintento en edición) — `BannerForm.tsx`
+- [x] Fix de auditoría: `useUpdateBanner` ya NO envía `id` en el body de `PATCH /banners/:id`
+      (`UpdateBannerDto` no lo declara y el ValidationPipe usa `forbidNonWhitelisted` → 400
+      "property id should not exist"); el `id` viaja solo en el path. **Verificado por @tester con
+      test empírico contra el DTO real** (body con id rechazado, sin id aceptado)
+- [x] Estados de UI: loading (`LoadingState`), error (`ErrorState` con retry → `refetch`), vacío
+      explícito ("No hay banners"); confirmación de borrado en dos clics
+- [x] Tipos del módulo (`types.ts`) coinciden campo a campo con `banner.entity.ts` y los DTOs del
+      backend; `ReorderBannerItem` ↔ `ReorderBannerItemDto`. Sin `any` ni castings forzados
+- [x] `pnpm run test` (28 tests), `pnpm run type-check`, `pnpm run lint` (0 errores) y
+      `pnpm run build` pasan
 
 ## Settings
 

@@ -28,8 +28,12 @@ export function useCreateBanner() {
 export function useUpdateBanner() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: { id: string } & UpdateBannerInput) =>
-      patch<Banner>(`/banners/${input.id}`, input),
+    // El `id` va en el path, NUNCA en el body: UpdateBannerDto no lo declara y
+    // el ValidationPipe del backend usa forbidNonWhitelisted (400 si viaja).
+    mutationFn: (input: { id: string } & UpdateBannerInput) => {
+      const { id, ...body } = input
+      return patch<Banner>(`/banners/${id}`, body)
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: BANNERS_KEY }),
   })
 }

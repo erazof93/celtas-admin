@@ -191,9 +191,9 @@ celtas-admin/
       filtro `userId` en `GET /coupons` o un endpoint admin dedicado).
 
 ### 7. Banners
-- [ ] CRUD con subida de imagen
-- [ ] Selector de fechas de vigencia (startDate/endDate)
-- [ ] Reordenamiento drag-and-drop (consume `PATCH /banners/reorder`)
+- [x] CRUD con subida de imagen
+- [x] Selector de fechas de vigencia (startDate/endDate)
+- [x] Reordenamiento drag-and-drop (consume `PATCH /banners/reorder`)
 
 ### 8. Configuración (Settings)
 - [ ] Editor del número de WhatsApp (`GET`/`PATCH /settings`)
