@@ -1,0 +1,24 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "autoupdate": true,
+
+  // Mismo modelo que el backend por defecto — cámbialo aquí si quieres probar otro.
+  "model": "openrouter/deepseek/deepseek-v4-flash:free",
+
+  "permission": {
+    "edit": "allow",
+    "bash": {
+      "*": "ask",
+      "pnpm *": "allow",
+      "pnpm dlx *": "allow",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "git log*": "allow",
+      "git add*": "allow",
+      "git commit*": "allow"
+    },
+    "skill": {
+      "*": "allow"
+    }
+  }
+}
