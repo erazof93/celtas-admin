@@ -137,23 +137,23 @@ celtas-admin/
 - [ ] `pnpm run dev` corre limpio, con el layout base (aunque esté vacío) visible en pantalla
 
 ### 1. Auth
-- [ ] `LoginPage`: formulario email/password con React Hook Form + Zod, consumiendo `POST /auth/login`
-- [ ] Store de Zustand: `accessToken` en memoria (nunca en localStorage), `refreshToken` en
+- [x] `LoginPage`: formulario email/password con React Hook Form + Zod, consumiendo `POST /auth/login`
+- [x] Store de Zustand: `accessToken` en memoria (nunca en localStorage), `refreshToken` en
       localStorage (trade-off aceptado para un panel interno, documentado en la skill), `user` actual
-- [ ] Interceptor de Axios usa el store para adjuntar el token y disparar el refresh en 401
-- [ ] `ProtectedRoute`: redirige a `/login` si no hay sesión; además verifica `role: admin` — si
-      un `cliente` intenta entrar (no debería poder, pero por si acaso), lo rechaza con un mensaje
-      claro, no lo deja pasar silenciosamente
-- [ ] Logout: limpia el store y el localStorage, redirige a `/login`
-- [ ] Persistencia de sesión al recargar la página (usa el refresh token guardado para pedir un
-      access token nuevo al cargar la app, antes de decidir si mostrar login o el panel)
+- [x] Interceptor de Axios usa el store para adjuntar el token y disparar el refresh en 401
+- [x] `ProtectedRoute`: redirige a `/login` si no hay sesión; además verifica `role: admin` — si
+  un `cliente` intenta entrar (no debería poder, pero por si acaso), lo rechaza con un mensaje
+  claro, no lo deja pasar silenciosamente
+- [x] Logout: limpia el store y el localStorage, redirige a `/login`
+- [x] Persistencia de sesión al recargar la página (usa el refresh token guardado para pedir un
+  access token nuevo al cargar la app, antes de decidir si mostrar login o el panel)
 
 ### 2. Layout base
-- [ ] `AdminLayout`: sidebar con navegación a todos los módulos (Dashboard, Menú, Pedidos,
-      Cupones, Banners, Configuración, Usuarios) + topbar con nombre del admin logueado y logout
-- [ ] Sidebar responsive (colapsable en pantallas chicas — el admin puede necesitar usarlo desde
+- [x] `AdminLayout`: sidebar con navegación a todos los módulos (Dashboard, Menú, Pedidos,
+      Cupones, Banners, Configuración, Usuarios) + topbar con el nombre del admin logueado y logout
+- [x] Sidebar responsive (colapsable en pantallas chicas — el admin puede necesitar usarlo desde
       un celular/tablet en el local)
-- [ ] Estados de carga y error genéricos reutilizables (spinner, mensaje de error con retry)
+- [x] Estados de carga y error genéricos reutilizables (spinner, mensaje de error con retry)
 
 ### 3. Dashboard
 - [ ] Consume `GET /admin/dashboard/summary` y `GET /admin/dashboard/top-products`

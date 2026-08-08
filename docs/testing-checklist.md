@@ -7,12 +7,14 @@ solo cuando pasa lo aplicable de este checklist.
 
 ## General (aplica a todo módulo)
 
-- [ ] `pnpm run type-check` sin errores
-- [ ] `pnpm run lint` limpio
-- [ ] `pnpm run build` sin errores
+- [x] `pnpm run type-check` sin errores
+- [x] `pnpm run lint` limpio
+- [x] `pnpm run build` sin errores
 - [ ] Las llamadas a la API usan los tipos de `src/types/api.d.ts`, sin `any` que oculte un mismatch
+      (N/A en módulo 2 — sin llamadas a la API; se verifica en módulos 3+)
 - [ ] Toda pantalla que llama a la API maneja: loading, error, y estado vacío explícitos
-- [ ] Ningún texto de UI en inglés (salvo nombres propios/técnicos donde no aplica traducir)
+      (N/A en módulo 2 — sin llamadas a la API; se verifica en módulos 3+)
+- [x] Ningún texto de UI en inglés (salvo nombres propios/técnicos donde no aplica traducir)
 
 ---
 
@@ -27,8 +29,8 @@ solo cuando pasa lo aplicable de este checklist.
 
 ## Layout
 
-- [ ] Sidebar funciona en desktop y colapsa/responde en pantallas chicas
-- [ ] Logout limpia sesión y redirige correctamente
+- [x] Sidebar funciona en desktop y colapsa/responde en pantallas chicas
+- [x] Logout limpia sesión y redirige correctamente
 
 ## Dashboard
 
