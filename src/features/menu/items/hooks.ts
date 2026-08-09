@@ -36,8 +36,12 @@ export function useCreateItem() {
 export function useUpdateItem() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: { id: string } & UpdateMenuItemInput) =>
-      patch<MenuItem>(`/menu/items/${input.id}`, input),
+    // El `id` va en el path, NUNCA en el body: UpdateMenuItemDto no lo declara
+    // y el ValidationPipe del backend usa forbidNonWhitelisted (400 si viaja).
+    mutationFn: (input: { id: string } & UpdateMenuItemInput) => {
+      const { id, ...body } = input
+      return patch<MenuItem>(`/menu/items/${id}`, body)
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ITEMS_KEY }),
   })
 }

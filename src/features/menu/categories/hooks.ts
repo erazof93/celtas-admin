@@ -32,8 +32,12 @@ export function useCreateCategory() {
 export function useUpdateCategory() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (input: { id: string } & UpdateCategoryInput) =>
-      patch<Category>(`/menu/categories/${input.id}`, input),
+    // El `id` va en el path, NUNCA en el body: UpdateCategoryDto no lo declara
+    // y el ValidationPipe del backend usa forbidNonWhitelisted (400 si viaja).
+    mutationFn: (input: { id: string } & UpdateCategoryInput) => {
+      const { id, ...body } = input
+      return patch<Category>(`/menu/categories/${id}`, body)
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: CATEGORIES_KEY })
       queryClient.invalidateQueries({ queryKey: ['menu', 'items'] })

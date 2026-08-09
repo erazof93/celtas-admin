@@ -72,6 +72,14 @@ solo cuando pasa lo aplicable de este checklist.
       (Swagger no documenta los responses: `content?: never`)
 - [x] Sin hex hardcodeado en componentes; tokens celtas vía `tailwind.config.ts` / `@theme` de `index.css`
 - [x] Componentes shadcn nuevos sin texto en inglés visible (sr-only "Close"→"Cerrar", botón "Cancelar")
+- [x] Fix de auditoría (bug de clase "id en el body"): `useUpdateItem` y `useUpdateCategory` ya NO
+      envían `id` en el body de `PATCH /menu/items/:id` y `PATCH /menu/categories/:id` — el `id`
+      viaja solo en el path (`UpdateMenuItemDto`/`UpdateCategoryDto` no lo declaran y el
+      ValidationPipe usa `forbidNonWhitelisted` → 400 "property id should not exist"). Tests de
+      regresión en `src/features/menu/items/hooks.test.tsx` y
+      `src/features/menu/categories/hooks.test.tsx` (mockean `patch` de `@/lib/api-client` y
+      verifican body sin `id`). **Verificado por @tester: cada test FALLA si se revierte el fix**
+      (2/2 por hook, con el mensaje exacto del bug)
 
 
 ## Orders
@@ -161,11 +169,62 @@ solo cuando pasa lo aplicable de este checklist.
 
 ## Settings
 
-- [ ] El admin logueado no puede quitarse su propio rol desde la UI (opción deshabilitada)
+- [x] El admin logueado no puede quitarse su propio rol desde la UI (opción deshabilitada) —
+      `RoleManagerCard` compara el UUID del input contra `useAuthStore.getState().user.id`
+      (`isSelf`) y deshabilita el `SelectItem` "cliente" + alerta visible; no depende solo del
+      400 del backend
+- [x] Confirmación antes de degradar/promover — el submit abre un `Dialog` de confirmación
+      (muestra UUID + rol nuevo) y la mutación solo corre al confirmar ("Sí, cambiar rol");
+      nunca hay mutación directa sin confirmar
+- [x] Editor de WhatsApp end-to-end — `GET /settings` devuelve un ARRAY de `{id, key, value,
+      description, createdAt, updatedAt}` (confirmado contra `settings.service.ts` y en vivo con
+      `GET /settings/public`); el form encuentra la key `whatsapp_business_number`, normaliza el
+      valor a dígitos (`normalizeWhatsappNumber`, formato internacional sin +) y hace
+      `PATCH /settings` con `{ key, value, description }` (exactamente `UpdateSettingDto`)
+- [x] Regla del id-solo-en-path aplicada desde el primer intento — `useUpdateUserRole` destructura
+      `{ id, ...body }` y el body de `PATCH /users/:id/role` es solo `{ role }` (`UpdateUserRoleDto`
+      no declara id). Test de regresión en `src/features/settings/hooks.test.tsx`. **Verificado por
+      @tester: FALLA 2/2 si se revierte el fix**
+- [x] Lógica pura testeada — `settings-utils.ts` (normalización + validación 10-15 dígitos como
+      guard de UX; el backend solo exige IsString+IsNotEmpty) con 8 tests
+- [x] Estados de UI — WhatsApp: loading (`LoadingState`), error (`ErrorState` con retry → refetch),
+      éxito ("Número guardado"); Roles: éxito ("Rol actualizado"), error de servidor, alerta de
+      auto-degradación
+- [x] `pnpm run test` (45 tests), `pnpm run type-check`, `pnpm run lint` (0 errores) y
+      `pnpm run build` pasan
 
 ## Users
 
-- [ ] Paginación funciona y coincide con el formato real del backend
+- [x] Paginación coincide con el formato real del backend — `GET /users` devuelve
+      `{ items, meta: { page, limit, total, totalPages } }` (confirmado contra `users.service.ts`
+      `findAll` y el docs-json real: solo `page`/`limit`, sin búsqueda server-side); `useUsers`
+      envía `{ page, limit }` y `Pagination` usa `data.meta.page`/`totalPages`
+- [x] Filtro de búsqueda en cliente documentado y testeado (`filterUsersByQuery`: nombre/email,
+      case-insensitive, substring; 4 tests) — filtra solo la página actual y el mensaje "Sin
+      resultados para X en esta página" lo deja explícito; no rompe la paginación
+- [x] Estados de UI en el listado: loading (`LoadingState`), error (`ErrorState` con retry →
+      `refetch`), vacío ("No hay usuarios") y sin resultados de búsqueda
+- [x] Detalle en modal: perfil (datos de `GET /users`, sin password), cupones del usuario
+      (`GET /coupons?userId=X` — filtro confirmado en `QueryCouponsDto` y en el docs-json real)
+      con loading/error/vacío ("Este usuario no tiene cupones") y paginación propia
+- [x] `useUpdateUserRole` envía el id SOLO en el path de `PATCH /users/:id/role` (body = solo
+      `{ role }`, `UpdateUserRoleDto`); test de regresión 2/2 en `hooks.test.tsx`
+- [x] Auto-degradación bloqueada en la UI: `RoleChangeDialog` deshabilita la opción "cliente"
+      cuando el userId es el del admin logueado (`isSelf`), no depende solo del 400 del backend
+- [x] Sin `any` en el módulo; sin URLs hardcodeadas (baseURL desde `VITE_API_BASE_URL` vía
+      `api-client`); sin `accessToken` en localStorage (solo en el store de Zustand, en memoria)
+- [x] Accesibilidad: `aria-label` en búsqueda y botón de detalle, `sr-only` en la columna de
+      acciones, `role="status"`/`role="alert"` en loading/error, `aria-current` en paginación
+- [x] `pnpm run type-check`, `pnpm run lint` (0 errores; warning pre-existente de
+      `BannerForm.tsx` no relacionado) y `pnpm run build` pasan
+- [x] **BUG (paginación de cupones en el detalle) — RESUELTO con refactor**: el reset de
+      `couponsPage` al cambiar de usuario se logra remontando el contenido del modal con
+      `key={user.id}` (`UserDetailContent` en `UserDetailDialog.tsx`), sin `useEffect` ni
+      `setState` en efecto (regla `react-hooks/set-state-in-effect`). El test de regresión
+      `UserDetailDialog.test.tsx` pasa (1/1) y **FALLA si se revierte el fix** (verificado por
+      @tester: sin `key={user.id}`, `useCoupons` se llama con `page=2` para el usuario B).
+      `pnpm run lint` pasa con 0 errores.
+
 
 ---
 

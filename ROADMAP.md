@@ -166,6 +166,9 @@ celtas-admin/
 - [x] CRUD de productos, con subida de imagen (consume `POST /menu/items/:id/image`)
 - [x] Toggle de disponibilidad rápido desde la lista (sin entrar a editar)
 - [x] Manejo del 409 de nombre duplicado con mensaje claro en el formulario, no un error genérico
+- [x] Fix de auditoría (bug de clase): `useUpdateItem` y `useUpdateCategory` ya NO envían `id` en el
+      body del PATCH (el `id` viaja solo en el path; el ValidationPipe del backend rechaza campos
+      extra con 400). Tests de regresión en `hooks.test.tsx` de items y categorías
 
 ### 5. Pedidos
 - [x] Listado paginado, filtro por estado
@@ -185,10 +188,9 @@ celtas-admin/
 ### 6. Cupones
 - [x] Listado paginado, filtro por status
 - [x] Formulario de generación manual (campaña), respetando el límite de 100% en `percentage`
-- [ ] Ver cupones de un usuario específico — **BLOQUEADO**: el backend no expone un endpoint
-      para esto desde el panel admin. `GET /coupons` no filtra por `userId` (solo `status`) y
-      `GET /coupons/me` es solo del usuario autenticado. Requiere cambio en el backend (ej.
-      filtro `userId` en `GET /coupons` o un endpoint admin dedicado).
+- [x] Ver cupones de un usuario específico — el backend agregó el filtro `userId` a `GET /coupons`
+      (confirmado contra `/docs-json` y regenerado con `pnpm run generate:types`). Se consume desde
+      el detalle de usuario (módulo 9) con `useCoupons(page, limit, status, userId)`.
 
 ### 7. Banners
 - [x] CRUD con subida de imagen
@@ -196,14 +198,22 @@ celtas-admin/
 - [x] Reordenamiento drag-and-drop (consume `PATCH /banners/reorder`)
 
 ### 8. Configuración (Settings)
-- [ ] Editor del número de WhatsApp (`GET`/`PATCH /settings`)
-- [ ] Gestión de roles de usuario (`PATCH /users/:id/role`) — con confirmación antes de degradar
+- [x] Editor del número de WhatsApp (`GET`/`PATCH /settings`)
+- [x] Gestión de roles de usuario (`PATCH /users/:id/role`) — con confirmación antes de degradar
       o promover a alguien, y el caso de "no puedes quitarte tu propio admin" reflejado en la UI
       (deshabilitar esa opción para el propio usuario logueado, no solo esperar el 400 del backend)
 
 ### 9. Usuarios (listado admin)
-- [ ] Listado paginado de `GET /users`
-- [ ] Ver perfil, direcciones y pedidos de un usuario específico
+- [x] Listado paginado de `GET /users` (filtro de búsqueda en cliente: el backend solo expone
+      `page`/`limit`, no búsqueda server-side)
+- [x] Ver perfil de un usuario específico (modal con datos de `GET /users`, sin password)
+- [x] Ver cupones de un usuario específico (`GET /coupons?userId=X`, filtro agregado por el backend)
+- [ ] Ver direcciones de un usuario — **BLOQUEADO**: el backend no expone un endpoint admin para
+      ver las direcciones de otro usuario (solo `GET /users/me/addresses`, del propio autenticado).
+      Requiere cambio en el backend (ej. `GET /users/:id/addresses` con rol admin).
+- [ ] Ver pedidos de un usuario — **BLOQUEADO**: `GET /orders` solo filtra por `status`, no por
+      `userId` (y `GET /orders/me` es solo del autenticado). Requiere cambio en el backend (ej.
+      filtro `userId` en `GET /orders` o un endpoint admin dedicado).
 
 ### 10. Deploy y Calidad
 - [ ] Pase de auditoría general (similar al módulo 10 del backend): tipos sin `any` sueltos,

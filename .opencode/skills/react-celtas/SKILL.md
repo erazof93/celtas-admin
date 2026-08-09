@@ -83,6 +83,36 @@ export function useCreateMenuItem() {
 }
 ```
 
+### Regla de oro — el `id` NUNCA viaja en el body de un PATCH/PUT
+
+Todo hook de mutación PATCH/PUT debe destructurar cualquier campo identificador fuera del body
+antes de enviarlo: el `id` viaja **SOLO** en el path de la URL, **nunca** en el body — salvo que
+el DTO del backend lo declare explícitamente (confirmar contra `src/types/api.d.ts` caso por
+caso, no asumir).
+
+El backend usa un `ValidationPipe` global con `whitelist: true, forbidNonWhitelisted: true`:
+cualquier campo extra en el body (como un `id` que solo debería ir en el path) se rechaza con
+400 `property id should not exist`. Este bug de clase ya mordió en Banners, Menú (items y
+categorías) — cada hook de update debe seguir este patrón:
+
+```ts
+export function useUpdateItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { id: string } & UpdateMenuItemInput) => {
+      const { id, ...body } = input; // el id viaja SOLO en el path
+      return patch<MenuItem>(`/menu/items/${id}`, body);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['menu', 'items'] }),
+  });
+}
+```
+
+Cada hook de edición corregido por este bug DEBE tener un test de regresión que mockee `patch`
+de `@/lib/api-client` y verifique que el body enviado no incluye `id` (y que el test FALLA si se
+revierte el fix). Ver `src/features/menu/items/hooks.test.tsx` y
+`src/features/menu/categories/hooks.test.tsx` como referencia del patrón.
+
 ## Formularios (React Hook Form + Zod)
 
 - El schema de Zod debe reflejar las mismas reglas del DTO del backend (límites de longitud,

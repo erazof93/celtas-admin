@@ -2554,6 +2554,8 @@ export interface operations {
                 limit?: number;
                 /** @description Filtrar por estado */
                 status?: "active" | "used" | "expired";
+                /** @description Filtrar los cupones de un usuario específico (UUID) */
+                userId?: string;
             };
             header?: never;
             path?: never;

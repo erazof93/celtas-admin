@@ -8,13 +8,28 @@ export function useCoupons(
   page: number,
   limit: number,
   status?: CouponStatus,
+  userId?: string,
+  enabled = true,
 ) {
   return useQuery({
-    queryKey: ['coupons', 'list', page, limit, status ?? 'all'],
+    queryKey: [
+      'coupons',
+      'list',
+      page,
+      limit,
+      status ?? 'all',
+      userId ?? 'all',
+    ],
     queryFn: () =>
       get<PaginatedCoupons>('/coupons', {
-        params: { page, limit, ...(status ? { status } : {}) },
+        params: {
+          page,
+          limit,
+          ...(status ? { status } : {}),
+          ...(userId ? { userId } : {}),
+        },
       }),
+    enabled,
   })
 }
 
