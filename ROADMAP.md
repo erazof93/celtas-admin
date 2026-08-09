@@ -216,10 +216,28 @@ celtas-admin/
       edge case)
 
 ### 10. Deploy y Calidad
-- [ ] Pase de auditoría general (similar al módulo 10 del backend): tipos sin `any` sueltos,
-      estados de carga/error en todas las pantallas, accesibilidad básica (labels, contraste)
-- [ ] Deploy en Vercel o Netlify (free tier), variables de entorno de producción
-- [ ] Verificación end-to-end manual contra el backend real de producción
+- [x] Pase de auditoría general (parte 1 — código):
+  - [x] Tipos sin `any` sueltos: grep de `any`/`@ts-ignore`/`@ts-expect-error` en todo `src/` = 0
+        resultados (verificado con `rg`)
+  - [x] Estados de carga/error/vacío verificados pantalla por pantalla (Dashboard, Menú
+        categorías+items, Pedidos, Cupones, Banners, Settings WhatsApp, Usuarios + vista 360)
+  - [x] Accesibilidad: labels con `htmlFor` en todos los formularios, `alt` en imágenes (banners
+        con título, items decorativos con `alt=""`), contraste WCAG AA calculado: naranja 5.43:1,
+        dorado 11.21:1, cream 17.24:1, muted 7.58:1 — todos ≥ 4.5:1. El rojo de marca (#C1121F,
+        3.12:1) fallaba AA para texto normal → nuevo token `celtas-red-light` (#F87171, 7.03:1)
+        para texto de errores/badges; el rojo de marca queda solo para iconos (contraste no-texto
+        3:1 ✓)
+  - [x] Code-splitting: `React.lazy` + `Suspense` por ruta en `router.tsx` — bundle principal de
+        ~1.17 MB → **296 kB** (gzip 94 kB); Dashboard (Recharts) y Banners (dnd-kit) en chunks
+        separados; warning de chunk > 500 kB eliminado
+  - [x] Warning intermitente de `act()` en `GenerateCouponForm.test.tsx` cerrado: el test 2 ahora
+        espera el alert de éxito (`findByText('Cupón generado')`) que flushea el `setGenerated`
+        dentro de `act()`
+  - [x] Warning de lint `react-hooks/incompatible-library` en `BannerForm.tsx` eliminado:
+        `watch()` → `useWatch()` (API de RHF compatible con el compilador de React). Lint queda
+        con 0 errores y 0 warnings
+- [ ] Deploy en Vercel o Netlify (free tier), variables de entorno de producción — **parte 2**
+- [ ] Verificación end-to-end manual contra el backend real de producción — **parte 2**
 
 ---
 

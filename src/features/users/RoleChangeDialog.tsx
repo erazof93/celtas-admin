@@ -159,7 +159,7 @@ export function RoleChangeDialog({
               )}
             />
             {errors.role ? (
-              <p className="text-celtas-red text-xs">{errors.role.message}</p>
+              <p className="text-celtas-red-light text-xs">{errors.role.message}</p>
             ) : null}
           </div>
 

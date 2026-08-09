@@ -146,7 +146,7 @@ export function CategoriesSection() {
                         variant="ghost"
                         size="icon-sm"
                         aria-label={`Eliminar ${category.name}`}
-                        className="text-celtas-red hover:bg-celtas-red/10 hover:text-celtas-red"
+                        className="text-celtas-red-light hover:bg-celtas-red/10 hover:text-celtas-red-light"
                         onClick={() => {
                           setDeleteError(null)
                           setDeleteTarget(category)

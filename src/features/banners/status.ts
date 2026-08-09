@@ -10,7 +10,7 @@ export const BANNER_VIGENCIA_LABELS: Record<BannerVigencia, string> = {
 export const BANNER_VIGENCIA_BADGE: Record<BannerVigencia, string> = {
   vigente: 'bg-emerald-400/15 text-emerald-400',
   programado: 'bg-sky-400/15 text-sky-400',
-  vencido: 'bg-celtas-red/15 text-celtas-red',
+  vencido: 'bg-celtas-red/15 text-celtas-red-light',
   inactivo: 'bg-muted text-muted-foreground',
 }
 

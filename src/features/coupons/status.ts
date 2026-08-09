@@ -9,7 +9,7 @@ export const COUPON_STATUS_LABELS: Record<CouponStatus, string> = {
 export const COUPON_STATUS_BADGE: Record<CouponStatus, string> = {
   active: 'bg-emerald-400/15 text-emerald-400',
   used: 'bg-sky-400/15 text-sky-400',
-  expired: 'bg-celtas-red/15 text-celtas-red',
+  expired: 'bg-celtas-red/15 text-celtas-red-light',
 }
 
 export const COUPON_ORIGIN_LABELS: Record<CouponOrigin, string> = {

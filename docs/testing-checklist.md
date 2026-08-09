@@ -249,6 +249,28 @@ solo cuando pasa lo aplicable de este checklist.
       "al cambiar de usuario, la página de cupones vuelve a 1" falla con `page=2` para userB)
 
 
+## Módulo 10 — Auditoría global (parte 1: código)
+
+- [x] Grep de `any`/`@ts-ignore`/`@ts-expect-error`/`@ts-nocheck` en todo `src/` = 0 resultados
+- [x] Estados de UI (loading/error/vacío) verificados pantalla por pantalla: Dashboard,
+      Categorías, Productos, Pedidos, Cupones, Banners, Settings (WhatsApp), Usuarios (listado +
+      vista 360 en 3 tabs con datos)
+- [x] Labels asociados (`htmlFor`/`id`) en todos los formularios: Login, CategoryForm, ItemForm,
+      BannerForm, GenerateCouponForm, WhatsappSettingsCard, RoleManagerCard
+- [x] Imágenes con `alt`: banners `alt={title}`, items decorativos `alt=""` (correcto para
+      decorativas)
+- [x] Contraste WCAG calculado sobre `#0D0D0D`: orange 5.43:1, gold 11.21:1, cream 17.24:1,
+      muted 7.58:1, red de marca 3.12:1 (falla AA texto normal) → nuevo token `celtas-red-light`
+      (#F87171, 7.03:1) en errores/badges; rojo de marca solo en iconos (no-texto 3:1 ✓)
+- [x] Code-splitting por ruta (`React.lazy` + `Suspense` en `router.tsx`): bundle principal
+      ~1.17 MB → 296 kB (gzip 94 kB); Dashboard/Banners en chunks separados; sin warning de
+      chunk > 500 kB
+- [x] Warning intermitente de `act()` en `GenerateCouponForm.test.tsx` cerrado (test 2 espera el
+      alert de éxito dentro de `act()`)
+- [x] Warning de lint `react-hooks/incompatible-library` en `BannerForm.tsx` eliminado
+      (`watch()` → `useWatch()`); `pnpm run lint` = 0 errores y 0 warnings
+- [x] `pnpm run type-check`, `pnpm run lint`, `pnpm run test` (53/53) y `pnpm run build` pasan
+
 ---
 
 ## Reporte de auditoría (formato esperado del @tester)

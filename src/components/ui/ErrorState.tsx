@@ -36,7 +36,7 @@ export function ErrorState({
     >
       <CircleAlert className="text-celtas-red size-6" />
       <div>
-        <p className="text-celtas-red font-medium">{title}</p>
+        <p className="text-celtas-red-light font-medium">{title}</p>
         {description ? (
           <p className="text-muted-foreground mt-1 text-sm">{description}</p>
         ) : null}

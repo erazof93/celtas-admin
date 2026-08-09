@@ -86,7 +86,7 @@ export default function LoginPage() {
                 {...register('email')}
               />
               {errors.email && (
-                <p className="text-celtas-red text-sm">
+                <p className="text-celtas-red-light text-sm">
                   {errors.email.message}
                 </p>
               )}
@@ -103,7 +103,7 @@ export default function LoginPage() {
                 {...register('password')}
               />
               {errors.password && (
-                <p className="text-celtas-red text-sm">
+                <p className="text-celtas-red-light text-sm">
                   {errors.password.message}
                 </p>
               )}

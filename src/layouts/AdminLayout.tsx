@@ -198,7 +198,7 @@ export default function AdminLayout() {
             <Button
               variant="ghost"
               onClick={logout}
-              className="text-muted-foreground hover:text-celtas-red hover:bg-celtas-red/10"
+              className="text-muted-foreground hover:text-celtas-red-light hover:bg-celtas-red/10"
               title="Cerrar sesión"
             >
               <LogOut />

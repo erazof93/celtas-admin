@@ -125,7 +125,7 @@ export function DateRangeSelector({
       ) : null}
 
       {draftError ? (
-        <p className="text-celtas-red text-xs">{draftError}</p>
+        <p className="text-celtas-red-light text-xs">{draftError}</p>
       ) : null}
     </div>
   )

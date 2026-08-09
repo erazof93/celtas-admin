@@ -146,7 +146,7 @@ export function GenerateCouponForm({ onClose }: GenerateCouponFormProps) {
           {...register('userId')}
         />
         {errors.userId ? (
-          <p className="text-celtas-red text-xs">{errors.userId.message}</p>
+          <p className="text-celtas-red-light text-xs">{errors.userId.message}</p>
         ) : null}
         <p className="text-muted-foreground text-xs">
           El selector de usuarios llega en el módulo Usuarios; por ahora pega el
@@ -181,7 +181,7 @@ export function GenerateCouponForm({ onClose }: GenerateCouponFormProps) {
             )}
           />
           {errors.discountType ? (
-            <p className="text-celtas-red text-xs">
+            <p className="text-celtas-red-light text-xs">
               {errors.discountType.message}
             </p>
           ) : null}
@@ -200,7 +200,7 @@ export function GenerateCouponForm({ onClose }: GenerateCouponFormProps) {
             {...register('discountValue')}
           />
           {errors.discountValue ? (
-            <p className="text-celtas-red text-xs">
+            <p className="text-celtas-red-light text-xs">
               {errors.discountValue.message}
             </p>
           ) : null}

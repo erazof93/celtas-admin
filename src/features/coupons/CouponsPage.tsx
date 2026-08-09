@@ -55,7 +55,7 @@ function ExpiryCell({ coupon }: { coupon: { status: CouponStatus; expiresAt: str
 
   if (effective === 'expired') {
     return (
-      <span className="text-celtas-red text-sm">Expirado</span>
+      <span className="text-celtas-red-light text-sm">Expirado</span>
     )
   }
 

@@ -187,7 +187,7 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
           {...register('name')}
         />
         {errors.name ? (
-          <p className="text-celtas-red text-xs">{errors.name.message}</p>
+          <p className="text-celtas-red-light text-xs">{errors.name.message}</p>
         ) : null}
       </div>
 
@@ -215,7 +215,7 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
             {...register('price')}
           />
           {errors.price ? (
-            <p className="text-celtas-red text-xs">{errors.price.message}</p>
+            <p className="text-celtas-red-light text-xs">{errors.price.message}</p>
           ) : null}
         </div>
 
@@ -254,7 +254,7 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
             )}
           />
           {errors.categoryId ? (
-            <p className="text-celtas-red text-xs">{errors.categoryId.message}</p>
+            <p className="text-celtas-red-light text-xs">{errors.categoryId.message}</p>
           ) : null}
         </div>
       </div>

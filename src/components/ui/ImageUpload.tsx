@@ -106,7 +106,7 @@ export function ImageUpload({
         onChange={(e) => handleSelect(e.target.files?.[0])}
       />
 
-      {error ? <p className="text-celtas-red text-xs">{error}</p> : null}
+      {error ? <p className="text-celtas-red-light text-xs">{error}</p> : null}
       {file ? <p className="text-muted-foreground text-xs">{file.name}</p> : null}
     </div>
   )

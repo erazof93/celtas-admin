@@ -14,7 +14,7 @@ export const ORDER_STATUS_BADGE: Record<OrderStatus, string> = {
   confirmado: 'bg-sky-400/15 text-sky-400',
   en_camino: 'bg-celtas-orange/15 text-celtas-orange',
   entregado: 'bg-emerald-400/15 text-emerald-400',
-  cancelado: 'bg-celtas-red/15 text-celtas-red',
+  cancelado: 'bg-celtas-red/15 text-celtas-red-light',
 }
 
 /**

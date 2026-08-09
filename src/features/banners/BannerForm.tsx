@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Controller, useForm } from 'react-hook-form'
+import { Controller, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
@@ -101,7 +101,6 @@ export function BannerForm({ banner, onClose }: BannerFormProps) {
     register,
     handleSubmit,
     control,
-    watch,
     setError,
     formState: { errors, isSubmitting },
   } = useForm<BannerFormInputValues, unknown, BannerFormValues>({
@@ -116,9 +115,11 @@ export function BannerForm({ banner, onClose }: BannerFormProps) {
     },
   })
 
-  const actionType = watch('actionType')
-  const startDate = watch('startDate')
-  const endDate = watch('endDate')
+  // useWatch en vez de watch(): la regla react-hooks/incompatible-library
+  // marca watch() como no memoizable por el compilador de React.
+  const actionType = useWatch({ control, name: 'actionType' })
+  const startDate = useWatch({ control, name: 'startDate' })
+  const endDate = useWatch({ control, name: 'endDate' })
 
   async function onSubmit(values: BannerFormValues) {
     setServerError(null)
@@ -192,7 +193,7 @@ export function BannerForm({ banner, onClose }: BannerFormProps) {
           {...register('title')}
         />
         {errors.title ? (
-          <p className="text-celtas-red text-xs">{errors.title.message}</p>
+          <p className="text-celtas-red-light text-xs">{errors.title.message}</p>
         ) : null}
       </div>
 
@@ -241,7 +242,7 @@ export function BannerForm({ banner, onClose }: BannerFormProps) {
             {...register('actionValue')}
           />
           {errors.actionValue ? (
-            <p className="text-celtas-red text-xs">
+            <p className="text-celtas-red-light text-xs">
               {errors.actionValue.message}
             </p>
           ) : null}
@@ -294,7 +295,7 @@ export function BannerForm({ banner, onClose }: BannerFormProps) {
             )}
           />
           {errors.endDate ? (
-            <p className="text-celtas-red text-xs">{errors.endDate.message}</p>
+            <p className="text-celtas-red-light text-xs">{errors.endDate.message}</p>
           ) : null}
         </div>
       </div>

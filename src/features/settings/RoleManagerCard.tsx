@@ -68,7 +68,7 @@ export function RoleManagerCard() {
               {...register('userId')}
             />
             {errors.userId ? (
-              <p className="text-celtas-red text-xs">{errors.userId.message}</p>
+              <p className="text-celtas-red-light text-xs">{errors.userId.message}</p>
             ) : null}
           </div>
 

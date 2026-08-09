@@ -23,7 +23,7 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
     return (
       <div className="bg-celtas-black text-celtas-cream flex min-h-screen items-center justify-center p-4">
         <div className="border-celtas-red/40 bg-card max-w-md rounded-lg border p-8 text-center">
-          <h1 className="text-celtas-red text-2xl font-bold">
+          <h1 className="text-celtas-red-light text-2xl font-bold">
             Acceso denegado
           </h1>
           <p className="text-muted-foreground mt-3">

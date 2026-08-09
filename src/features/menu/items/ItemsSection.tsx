@@ -179,7 +179,7 @@ export function ItemsSection() {
                         variant="ghost"
                         size="icon-sm"
                         aria-label={`Eliminar ${item.name}`}
-                        className="text-celtas-red hover:bg-celtas-red/10 hover:text-celtas-red"
+                        className="text-celtas-red-light hover:bg-celtas-red/10 hover:text-celtas-red-light"
                         onClick={() => {
                           setDeleteError(null)
                           setDeleteTarget(item)

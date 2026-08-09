@@ -135,7 +135,7 @@ export function WhatsappSettingsCard() {
                 {...register('whatsapp')}
               />
               {errors.whatsapp ? (
-                <p className="text-celtas-red text-xs">
+                <p className="text-celtas-red-light text-xs">
                   {errors.whatsapp.message}
                 </p>
               ) : null}

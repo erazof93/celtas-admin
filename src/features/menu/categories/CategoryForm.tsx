@@ -115,7 +115,7 @@ export function CategoryForm({ category, onClose }: CategoryFormProps) {
           {...register('name')}
         />
         {errors.name ? (
-          <p className="text-celtas-red text-xs">{errors.name.message}</p>
+          <p className="text-celtas-red-light text-xs">{errors.name.message}</p>
         ) : null}
       </div>
 
@@ -141,7 +141,7 @@ export function CategoryForm({ category, onClose }: CategoryFormProps) {
             {...register('sortOrder')}
           />
           {errors.sortOrder ? (
-            <p className="text-celtas-red text-xs">{errors.sortOrder.message}</p>
+            <p className="text-celtas-red-light text-xs">{errors.sortOrder.message}</p>
           ) : null}
         </div>
 

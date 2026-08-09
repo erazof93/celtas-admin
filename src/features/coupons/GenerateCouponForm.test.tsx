@@ -88,6 +88,11 @@ describe('GenerateCouponForm', () => {
         discountValue: 150,
       })
     })
+
+    // Espera el alert de éxito: flushea el setGenerated (que ocurre DESPUÉS de
+    // que mutateAsync resuelve) dentro de act() — evita el warning intermitente
+    // de "update not wrapped in act" cuando el test termina antes.
+    expect(await screen.findByText('Cupón generado')).toBeInTheDocument()
   })
 
   it('mapea el 404 de usuario inexistente al campo userId', async () => {
