@@ -40,3 +40,20 @@ export interface UpdateUserRoleInput {
   id: string
   role: UserRole
 }
+
+/**
+ * Dirección guardada de un usuario — GET /users/:id/addresses (admin).
+ * Espejo de Address.entity.ts del backend: array plano (NO paginado),
+ * ordenado principal primero (isDefault DESC, createdAt ASC).
+ */
+export interface UserAddress {
+  id: string
+  alias: string
+  fullAddress: string
+  reference: string | null
+  district: string
+  isDefault: boolean
+  userId: string
+  createdAt: string
+  updatedAt: string
+}

@@ -115,6 +115,26 @@ export interface paths {
         patch: operations["UsersController_updateAddress"];
         trace?: never;
     };
+    "/users/{id}/addresses": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Listar las direcciones de un usuario (solo admin)
+         * @description Vista 360 del cliente en el panel admin. 404 si el usuario no existe; array vacío si no tiene direcciones.
+         */
+        get: operations["UsersController_listUserAddresses"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/users": {
         parameters: {
             query?: never;
@@ -1462,6 +1482,48 @@ export interface operations {
             };
         };
     };
+    UsersController_listUserAddresses: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID del usuario */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lista de direcciones del usuario (principal primero) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El usuario no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     UsersController_listUsers: {
         parameters: {
             query?: {
@@ -2241,6 +2303,8 @@ export interface operations {
                 limit?: number;
                 /** @description Filtrar por estado */
                 status?: "pendiente" | "confirmado" | "en_camino" | "entregado" | "cancelado";
+                /** @description Filtrar los pedidos de un usuario específico (UUID) */
+                userId?: string;
             };
             header?: never;
             path?: never;

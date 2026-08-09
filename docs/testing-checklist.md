@@ -225,6 +225,29 @@ solo cuando pasa lo aplicable de este checklist.
       @tester: sin `key={user.id}`, `useCoupons` se llama con `page=2` para el usuario B).
       `pnpm run lint` pasa con 0 errores.
 
+- [x] Vista 360 en tabs (Perfil / Direcciones / Cupones / Pedidos) — `UserDetailDialog.tsx` con
+      `Tabs` de shadcn; el contenido se monta con `key={user.id}` para que al cambiar de usuario
+      todas las queries apunten al usuario correcto (mismo patrón que el fix de cupones)
+- [x] `GET /users/:id/addresses` (admin) — `useUserAddresses` en `users/hooks.ts`: el `id` viaja
+      SOLO en el path (regla de la skill), `enabled: Boolean(userId)`, query key
+      `['users','addresses',userId]`. Contrato confirmado en `api.d.ts`
+      (`UsersController_listUserAddresses`: path `{id}`, 404 si no existe, array plano)
+- [x] `GET /orders?userId=X` (admin) — `useUserOrders` envuelve `useOrders` del módulo de pedidos
+      (misma query key → la invalidación de `useUpdateOrderStatus` refresca también esta vista);
+      `userId` es query param legítimo de `QueryOrdersDto` (confirmado en `api.d.ts`
+      `OrdersController_listAll.query.userId`), no va en el body
+- [x] `UserAddressesSection`: 3 estados — loading (`LoadingState`), error (`ErrorState` con retry →
+      `refetch`), vacío ("Este cliente no tiene direcciones guardadas"); badge "Principal" cuando
+      `isDefault`, referencia opcional
+- [x] `UserOrdersSection`: 3 estados — loading, error, vacío ("Este cliente no tiene pedidos
+      todavía"); tabla paginada con `Pagination` (usa `meta.page`/`totalPages` del backend,
+      `onPageChange` actualiza la página); badges reutilizados de `@/features/orders/status`
+      (`ORDER_STATUS_BADGE`/`ORDER_STATUS_LABELS`) — NO duplica la lógica de labels/colores
+- [x] Test de regresión del edge case de cambio de usuario (`UserDetailDialog.test.tsx`): al
+      cambiar de usuario con el modal abierto, direcciones y pedidos se consultan con el userId
+      NUEVO. **Verificado por @tester: FALLA si se revierte el fix** (sin `key={user.id}`, el test
+      "al cambiar de usuario, la página de cupones vuelve a 1" falla con `page=2` para userB)
+
 
 ---
 

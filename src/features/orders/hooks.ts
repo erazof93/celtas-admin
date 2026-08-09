@@ -8,13 +8,28 @@ export function useOrders(
   page: number,
   limit: number,
   status?: OrderStatus,
+  userId?: string,
+  enabled = true,
 ) {
   return useQuery({
-    queryKey: ['orders', 'list', page, limit, status ?? 'all'],
+    queryKey: [
+      'orders',
+      'list',
+      page,
+      limit,
+      status ?? 'all',
+      userId ?? 'all',
+    ],
     queryFn: () =>
       get<PaginatedOrders>('/orders', {
-        params: { page, limit, ...(status ? { status } : {}) },
+        params: {
+          page,
+          limit,
+          ...(status ? { status } : {}),
+          ...(userId ? { userId } : {}),
+        },
       }),
+    enabled,
   })
 }
 

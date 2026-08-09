@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { get, patch } from '@/lib/api-client'
-import type { PaginatedUsers, UpdateUserRoleInput } from './types'
+import { useOrders } from '@/features/orders/hooks'
+import type { PaginatedUsers, UpdateUserRoleInput, UserAddress } from './types'
 
 const USERS_KEY = ['users'] as const
 
@@ -13,6 +14,33 @@ export function useUsers(page: number, limit: number) {
         params: { page, limit },
       }),
   })
+}
+
+/**
+ * GET /users/:id/addresses (admin): direcciones del usuario, principal
+ * primero. El `id` viaja SOLO en el path (regla de la skill). Array plano,
+ * no paginado. 404 si el usuario no existe; [] si no tiene direcciones.
+ */
+export function useUserAddresses(userId: string | undefined) {
+  return useQuery({
+    queryKey: ['users', 'addresses', userId ?? 'none'],
+    queryFn: () => get<UserAddress[]>(`/users/${userId}/addresses`),
+    enabled: Boolean(userId),
+  })
+}
+
+/**
+ * GET /orders?userId=X (admin): pedidos de un usuario, paginado. Reutiliza
+ * useOrders del módulo de pedidos (misma query key → la invalidación de
+ * useUpdateOrderStatus refresca también esta vista). El `userId` es un query
+ * param legítimo del backend (QueryOrdersDto), no va en el body.
+ */
+export function useUserOrders(
+  page: number,
+  limit: number,
+  userId: string | undefined,
+) {
+  return useOrders(page, limit, undefined, userId, Boolean(userId))
 }
 
 /**

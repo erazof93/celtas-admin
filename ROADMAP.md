@@ -119,22 +119,21 @@ celtas-admin/
 
 ## Checklist por módulos
 
-### 0. Setup inicial
-- [ ] Crear proyecto: `pnpm create vite celtas-admin -- --template react-ts`
-- [ ] Instalar y configurar Tailwind CSS con la paleta de colores del proyecto
-- [ ] Instalar shadcn/ui (`pnpm dlx shadcn@latest init`) — tema dark por defecto, acorde a la
-      identidad de marca (fondo negro, acentos naranja/dorado)
-- [ ] ESLint + Prettier configurados
-- [ ] Instalar: `react-router-dom`, `@tanstack/react-query`, `axios`, `zustand`,
-      `react-hook-form`, `zod`, `@hookform/resolvers`, `recharts`, `date-fns`
-- [ ] `.env` / `.env.example` con `VITE_API_BASE_URL=https://backend-celtas.onrender.com`
-      (y una nota de cómo apuntar a `http://localhost:3000` para desarrollar contra el backend local)
-- [ ] Generar tipos desde Swagger: `pnpm dlx openapi-typescript https://backend-celtas.onrender.com/docs-json -o src/types/api.d.ts`
-      — agregar un script `pnpm run generate:types` para repetirlo cuando el backend cambie
-- [ ] `api-client.ts`: instancia de Axios con `baseURL` desde env, interceptor de request (header
-      `Authorization`) e interceptor de response (401 → intenta refresh una vez → si falla, logout)
-- [ ] Estructura de carpetas base creada según el diagrama de este documento
-- [ ] `pnpm run dev` corre limpio, con el layout base (aunque esté vacío) visible en pantalla
+### 0. Setup inicial — ✅ COMPLETO
+- [x] Crear proyecto: `pnpm create vite celtas-admin -- --template react-ts` (React 19, TS, ESLint — el scaffold real trajo versiones más nuevas que las anotadas originalmente, todas compatibles)
+- [x] Tailwind CSS con tokens `celtas-black/orange/red/gold/cream` (Tailwind v4)
+- [x] shadcn/ui inicializado, tema dark
+- [x] ESLint + Prettier configurados
+- [x] Dependencias: `react-router-dom` (v7), `@tanstack/react-query`, `axios`, `zustand`, `react-hook-form`, `zod` (v4), `@hookform/resolvers`, `recharts`, `date-fns`, `date-fns-tz`
+- [x] `.env`/`.env.example` con `VITE_API_BASE_URL`
+- [x] Tipos generados con `openapi-typescript` contra el Swagger real de producción, script `generate:types`
+- [x] `api-client.ts` con estructura base (interceptor completo terminado en el módulo 1)
+- [x] Estructura de carpetas completa según el diagrama
+- [x] `pnpm run dev`/`build`/`lint` limpios (verificado con evidencia cruda: `cat`, `grep`, timestamps)
+- ⚠️ **Incidente registrado**: en la primera pasada, el agente (modelo free) reportó un fragmento
+  fabricado de `api.d.ts` con campos que nunca existieron (`isAvailable`, `paymentMethod`). Se
+  detectó cruzando contra el Swagger real antes de aceptar el reporte, y se corrigió pidiendo
+  evidencia cruda en vez de resúmenes. Lección aplicada de ahí en adelante para módulos sensibles.
 
 ### 1. Auth
 - [x] `LoginPage`: formulario email/password con React Hook Form + Zod, consumiendo `POST /auth/login`
@@ -208,12 +207,13 @@ celtas-admin/
       `page`/`limit`, no búsqueda server-side)
 - [x] Ver perfil de un usuario específico (modal con datos de `GET /users`, sin password)
 - [x] Ver cupones de un usuario específico (`GET /coupons?userId=X`, filtro agregado por el backend)
-- [ ] Ver direcciones de un usuario — **BLOQUEADO**: el backend no expone un endpoint admin para
-      ver las direcciones de otro usuario (solo `GET /users/me/addresses`, del propio autenticado).
-      Requiere cambio en el backend (ej. `GET /users/:id/addresses` con rol admin).
-- [ ] Ver pedidos de un usuario — **BLOQUEADO**: `GET /orders` solo filtra por `status`, no por
-      `userId` (y `GET /orders/me` es solo del autenticado). Requiere cambio en el backend (ej.
-      filtro `userId` en `GET /orders` o un endpoint admin dedicado).
+- [x] Ver direcciones de un usuario (`GET /users/:id/addresses`, endpoint admin agregado por el
+      backend — array plano, principal primero)
+- [x] Ver pedidos de un usuario (`GET /orders?userId=X`, filtro agregado por el backend — listado
+      paginado con badges de estado reutilizados del módulo de pedidos)
+- [x] Vista 360 en tabs (Perfil / Direcciones / Cupones / Pedidos) con `key={user.id}` para que al
+      cambiar de usuario todas las queries apunten al usuario correcto (test de regresión cubre el
+      edge case)
 
 ### 10. Deploy y Calidad
 - [ ] Pase de auditoría general (similar al módulo 10 del backend): tipos sin `any` sueltos,
