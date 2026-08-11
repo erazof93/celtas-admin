@@ -1042,6 +1042,11 @@ export interface components {
              * @example 10
              */
             discountValue: number;
+            /**
+             * @description Monto mínimo de compra (subtotal del pedido) para poder usar el cupón. Omitido o null = sin mínimo. Pensado para campañas manuales.
+             * @example 50
+             */
+            minPurchaseAmount?: number;
         };
         ValidateCouponDto: {
             /**
@@ -1049,6 +1054,11 @@ export interface components {
              * @example A1B2C3D4
              */
             code: string;
+            /**
+             * @description Subtotal del pedido (opcional). Si el cupón tiene un monto mínimo de compra, se valida contra este valor y se rechaza si el subtotal es menor.
+             * @example 49.8
+             */
+            subtotal?: number;
         };
         SendTestNotificationDto: {
             /**

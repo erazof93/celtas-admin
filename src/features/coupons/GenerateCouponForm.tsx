@@ -25,9 +25,11 @@ import type { Coupon, CouponDiscountType } from './types'
 
 /**
  * Reglas espejo del GenerateCouponDto del backend: userId UUID, discountType
- * enum, discountValue > 0. El límite de 100% para percentage se valida en el
- * cliente (superRefine) para evitar el submit inútil — el backend también lo
- * valida (IsPercentageWithinLimit), pero no debe llegar ahí.
+ * enum, discountValue > 0, minPurchaseAmount opcional (>= 0, null si se deja
+ * vacío — el backend lo acepta como "sin mínimo"). El límite de 100% para
+ * percentage se valida en el cliente (superRefine) para evitar el submit
+ * inútil — el backend también lo valida (IsPercentageWithinLimit), pero no
+ * debe llegar ahí.
  *
  * NOTA de contrato: el backend NO acepta expiresAt en el payload — lo calcula
  * él mismo (hoy + coupons.expirationDays, default 15). Por eso el formulario
@@ -42,6 +44,24 @@ const generateCouponSchema = z
     discountValue: z.coerce
       .number('El valor debe ser un número')
       .positive('El valor debe ser mayor a 0'),
+    // Opcional: '' / undefined / null / 0 → null (sin mínimo, no 0). Si se
+    // ingresa algo distinto de cero, debe ser un número >= 0. z.coerce.number()
+    // convierte '' a 0, por eso el preprocess normaliza ANTES de validar.
+    minPurchaseAmount: z.preprocess(
+      (value) => {
+        if (value === '' || value === undefined || value === null) return null
+        // 0 (o '0', '0.00') es funcionalmente "sin mínimo" en el backend — se
+        // normaliza a null igual que el campo vacío, no se envía ni se muestra.
+        const num = typeof value === 'number' ? value : Number(value)
+        return num === 0 ? null : value
+      },
+      z.union([
+        z.null(),
+        z.coerce
+          .number('El monto debe ser un número')
+          .nonnegative('El monto mínimo no puede ser negativo'),
+      ]),
+    ),
   })
   .superRefine((data, ctx) => {
     if (data.discountType === 'percentage' && data.discountValue > 100) {
@@ -83,6 +103,7 @@ export function GenerateCouponForm({ onClose }: GenerateCouponFormProps) {
         userId: '',
         discountType: 'percentage',
         discountValue: undefined,
+        minPurchaseAmount: null,
       },
     },
   )
@@ -94,10 +115,15 @@ export function GenerateCouponForm({ onClose }: GenerateCouponFormProps) {
         userId: values.userId.trim(),
         discountType: values.discountType,
         discountValue: values.discountValue,
+        minPurchaseAmount: values.minPurchaseAmount,
       })
       setGenerated(coupon)
       // Listo para generar otro: se conserva el userId (misma campaña).
-      reset({ userId: values.userId.trim(), discountType: 'percentage' })
+      reset({
+        userId: values.userId.trim(),
+        discountType: 'percentage',
+        minPurchaseAmount: null,
+      })
     } catch (error) {
       if (isNotFound(error)) {
         setError('userId', {
@@ -205,6 +231,30 @@ export function GenerateCouponForm({ onClose }: GenerateCouponFormProps) {
             </p>
           ) : null}
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="coupon-min-purchase">
+          Monto mínimo de compra (S/)
+        </Label>
+        <Input
+          id="coupon-min-purchase"
+          type="number"
+          inputMode="decimal"
+          step="0.01"
+          placeholder="Opcional — ej. 50"
+          aria-invalid={Boolean(errors.minPurchaseAmount)}
+          {...register('minPurchaseAmount')}
+        />
+        {errors.minPurchaseAmount ? (
+          <p className="text-celtas-red-light text-xs">
+            {errors.minPurchaseAmount.message}
+          </p>
+        ) : null}
+        <p className="text-muted-foreground text-xs">
+          Subtotal mínimo del pedido para poder usar el cupón. Vacío = sin
+          mínimo.
+        </p>
       </div>
 
       <p className="text-muted-foreground text-xs">

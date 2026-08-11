@@ -133,7 +133,25 @@ solo cuando pasa lo aplicable de este checklist.
       reintentar → `refetch`), vacío explícito ("No hay cupones" / mensaje contextual por filtro)
 - [x] Convenciones: URL desde `VITE_API_BASE_URL` vía `api-client`, UI en español, paleta celtas
       (badges con tokens), `formatLima` para fechas de la tabla, `Pagination` genérico reutilizado
-- [x] `pnpm run test` (17 tests), `pnpm run type-check`, `pnpm run lint`, `pnpm run build` pasan
+- [x] `minPurchaseAmount` (monto mínimo de compra): espejo del `GenerateCouponDto` (opcional,
+      `@IsOptional() @IsNumber() @Min(0)`) y de la entidad `Coupon` (columna decimal nullable,
+      `null` = sin mínimo). Confirmado contra `coupon.entity.ts` y `generate-coupon.dto.ts` del
+      backend; el servicio persiste `dto.minPurchaseAmount ?? null` y los automáticos siempre
+      llevan `null`. Swagger no documenta los responses, se confirmó contra el código fuente
+- [x] Formulario de generación: vacío → `null` (no 0) vía `z.preprocess` (''/undefined/null → null
+      ANTES de `z.coerce.number()`, que convertiría '' a 0); **0 y sus representaciones ('0',
+      '0.00', '-0') también → null** (el backend trata 0 como "sin mínimo", misma semántica que
+      null); negativo → error Zod "El monto mínimo no puede ser negativo" sin llamar a la API;
+      valor válido → se envía como número. 4 tests en `GenerateCouponForm.test.tsx` verificados con
+      mutación: el de "vacío → null" y el de "0 → null" FALLAN si el schema envía 0, y el de
+      negativo FALLA sin `.nonnegative()`
+- [x] Se quitó `min={0}` del input de monto mínimo: la validación nativa del navegador bloqueaba el
+      submit antes de que Zod mostrara su mensaje (bug detectado en test)
+- [x] Listado: `CouponsPage` muestra "Mín. S/ xx.xx" (helper puro `formatMinPurchaseAmount`) solo si
+      hay mínimo; null/undefined/0 → NO se muestra nada (ni siquiera un `<p>` vacío — `DiscountCell`
+      delega la decisión al helper). 2 tests en `coupon-utils.test.ts` (formato con 2 decimales y
+      null/undefined/0 → null)
+- [x] `pnpm run test` (59 tests), `pnpm run type-check`, `pnpm run lint`, `pnpm run build` pasan
 
 
 ## Banners

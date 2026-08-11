@@ -66,6 +66,7 @@ describe('GenerateCouponForm', () => {
       code: 'ABC12345',
       discountType: 'fixed_amount',
       discountValue: 150,
+      minPurchaseAmount: null,
       status: 'active',
       origin: 'manual',
       expiresAt: '2026-08-23T12:00:00.000Z',
@@ -86,6 +87,7 @@ describe('GenerateCouponForm', () => {
         userId: VALID_UUID,
         discountType: 'fixed_amount',
         discountValue: 150,
+        minPurchaseAmount: null,
       })
     })
 
@@ -105,5 +107,121 @@ describe('GenerateCouponForm', () => {
     await user.click(screen.getByRole('button', { name: 'Generar cupón' }))
 
     expect(await screen.findByText('Usuario no encontrado')).toBeInTheDocument()
+  })
+
+  it('envía minPurchaseAmount como null cuando se deja vacío (no 0)', async () => {
+    const user = userEvent.setup()
+    mutateAsyncMock.mockResolvedValue({
+      id: 'c2',
+      userId: VALID_UUID,
+      code: 'DEF67890',
+      discountType: 'percentage',
+      discountValue: 10,
+      minPurchaseAmount: null,
+      status: 'active',
+      origin: 'manual',
+      expiresAt: '2026-08-23T12:00:00.000Z',
+      usedAt: null,
+      usedInOrderId: null,
+      createdAt: '2026-08-08T12:00:00.000Z',
+    })
+    render(<GenerateCouponForm onClose={() => {}} />)
+
+    await user.type(screen.getByLabelText(/Usuario/i), VALID_UUID)
+    await user.type(screen.getByLabelText(/Valor/i), '10')
+    // No se toca el campo "Monto mínimo de compra" → queda vacío.
+    await user.click(screen.getByRole('button', { name: 'Generar cupón' }))
+
+    await waitFor(() => {
+      expect(mutateAsyncMock).toHaveBeenCalledWith({
+        userId: VALID_UUID,
+        discountType: 'percentage',
+        discountValue: 10,
+        minPurchaseAmount: null,
+      })
+    })
+  })
+
+  it('envía el monto mínimo ingresado en el payload', async () => {
+    const user = userEvent.setup()
+    mutateAsyncMock.mockResolvedValue({
+      id: 'c3',
+      userId: VALID_UUID,
+      code: 'GHI13579',
+      discountType: 'fixed_amount',
+      discountValue: 15,
+      minPurchaseAmount: 50,
+      status: 'active',
+      origin: 'manual',
+      expiresAt: '2026-08-23T12:00:00.000Z',
+      usedAt: null,
+      usedInOrderId: null,
+      createdAt: '2026-08-08T12:00:00.000Z',
+    })
+    render(<GenerateCouponForm onClose={() => {}} />)
+
+    await user.type(screen.getByLabelText(/Usuario/i), VALID_UUID)
+    await user.click(screen.getByRole('combobox', { name: /Tipo de descuento/i }))
+    await user.click(await screen.findByRole('option', { name: /Monto fijo/i }))
+    await user.type(screen.getByLabelText(/Valor/i), '15')
+    await user.type(screen.getByLabelText(/Monto mínimo de compra/i), '50')
+    await user.click(screen.getByRole('button', { name: 'Generar cupón' }))
+
+    await waitFor(() => {
+      expect(mutateAsyncMock).toHaveBeenCalledWith({
+        userId: VALID_UUID,
+        discountType: 'fixed_amount',
+        discountValue: 15,
+        minPurchaseAmount: 50,
+      })
+    })
+  })
+
+  it('rechaza un monto mínimo negativo en el cliente, sin llamar a la API', async () => {
+    const user = userEvent.setup()
+    render(<GenerateCouponForm onClose={() => {}} />)
+
+    await user.type(screen.getByLabelText(/Usuario/i), VALID_UUID)
+    await user.type(screen.getByLabelText(/Valor/i), '10')
+    await user.type(screen.getByLabelText(/Monto mínimo de compra/i), '-5')
+    await user.click(screen.getByRole('button', { name: 'Generar cupón' }))
+
+    expect(
+      await screen.findByText('El monto mínimo no puede ser negativo'),
+    ).toBeInTheDocument()
+    expect(mutateAsyncMock).not.toHaveBeenCalled()
+  })
+
+  it('normaliza 0 a null en el payload (0 = sin mínimo, igual que vacío)', async () => {
+    const user = userEvent.setup()
+    mutateAsyncMock.mockResolvedValue({
+      id: 'c4',
+      userId: VALID_UUID,
+      code: 'JKL24680',
+      discountType: 'percentage',
+      discountValue: 10,
+      minPurchaseAmount: null,
+      status: 'active',
+      origin: 'manual',
+      expiresAt: '2026-08-23T12:00:00.000Z',
+      usedAt: null,
+      usedInOrderId: null,
+      createdAt: '2026-08-08T12:00:00.000Z',
+    })
+    render(<GenerateCouponForm onClose={() => {}} />)
+
+    await user.type(screen.getByLabelText(/Usuario/i), VALID_UUID)
+    await user.type(screen.getByLabelText(/Valor/i), '10')
+    await user.type(screen.getByLabelText(/Monto mínimo de compra/i), '0')
+    await user.click(screen.getByRole('button', { name: 'Generar cupón' }))
+
+    await waitFor(() => {
+      expect(mutateAsyncMock).toHaveBeenCalledWith({
+        userId: VALID_UUID,
+        discountType: 'percentage',
+        discountValue: 10,
+        minPurchaseAmount: null,
+      })
+    })
   })
 })

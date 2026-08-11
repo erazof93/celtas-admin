@@ -17,6 +17,24 @@ export function formatCouponDiscount(
 }
 
 /**
+ * Texto del monto mínimo de compra para las tablas de cupones: "Mín. S/ 50.00".
+ * Devuelve null si no hay mínimo (null/undefined/0 — 0 es funcionalmente "sin
+ * mínimo" en el backend) — en ese caso la UI omite la info por completo, no
+ * muestra "Sin mínimo".
+ */
+export function formatMinPurchaseAmount(
+  minPurchaseAmount: number | null | undefined,
+): string | null {
+  if (minPurchaseAmount === null || minPurchaseAmount === undefined) {
+    return null
+  }
+  if (minPurchaseAmount === 0) {
+    return null
+  }
+  return `Mín. ${formatCouponDiscount('fixed_amount', minPurchaseAmount)}`
+}
+
+/**
  * Días restantes hasta la expiración (redondeado hacia arriba: si expira en
  * 12 horas, quedan "1 día"). Devuelve 0 si ya expiró (nunca negativo).
  */

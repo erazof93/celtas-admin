@@ -18,6 +18,11 @@ export interface Coupon {
   discountType: CouponDiscountType
   /** % si es percentage, soles si es fixed_amount (decimal transformado a number). */
   discountValue: number
+  /**
+   * Monto mínimo de compra (subtotal del pedido) para poder usar el cupón.
+   * null = sin mínimo. Confirmado en GenerateCouponDto del Swagger.
+   */
+  minPurchaseAmount: number | null
   status: CouponStatus
   origin: CouponOrigin
   /** Calculado por el backend al generar (default: hoy + 15 días). */
@@ -44,4 +49,9 @@ export interface GenerateCouponInput {
   userId: string
   discountType: CouponDiscountType
   discountValue: number
+  /**
+   * Opcional: monto mínimo de compra (subtotal) para usar el cupón.
+   * Omitido o null = sin mínimo (espejo de GenerateCouponDto).
+   */
+  minPurchaseAmount?: number | null
 }

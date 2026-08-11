@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   formatCouponDiscount,
+  formatMinPurchaseAmount,
   getDaysUntilExpiry,
   getEffectiveStatus,
   isExpired,
@@ -21,6 +22,19 @@ describe('formatCouponDiscount', () => {
   it('formatea montos fijos en soles con 2 decimales', () => {
     expect(formatCouponDiscount('fixed_amount', 15)).toBe('S/ 15.00')
     expect(formatCouponDiscount('fixed_amount', 150.5)).toBe('S/ 150.50')
+  })
+})
+
+describe('formatMinPurchaseAmount', () => {
+  it('devuelve el texto "Mín. S/ xx.xx" cuando hay mínimo', () => {
+    expect(formatMinPurchaseAmount(50)).toBe('Mín. S/ 50.00')
+    expect(formatMinPurchaseAmount(49.8)).toBe('Mín. S/ 49.80')
+  })
+
+  it('devuelve null si no hay mínimo (null, undefined o 0) — la UI omite la info', () => {
+    expect(formatMinPurchaseAmount(null)).toBeNull()
+    expect(formatMinPurchaseAmount(undefined)).toBeNull()
+    expect(formatMinPurchaseAmount(0)).toBeNull()
   })
 })
 

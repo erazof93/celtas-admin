@@ -31,13 +31,14 @@ import { formatLima } from '@/lib/dates'
 import { cn } from '@/lib/utils'
 import {
   formatCouponDiscount,
+  formatMinPurchaseAmount,
   getDaysUntilExpiry,
   getEffectiveStatus,
 } from './coupon-utils'
 import { GenerateCouponForm } from './GenerateCouponForm'
 import { useCoupons } from './hooks'
 import { COUPON_ORIGIN_LABELS, COUPON_STATUS_BADGE, COUPON_STATUS_LABELS } from './status'
-import type { CouponStatus } from './types'
+import type { Coupon, CouponStatus } from './types'
 
 const PAGE_SIZE = 10
 
@@ -47,6 +48,23 @@ const STATUS_FILTERS: { value: CouponStatus | 'all'; label: string }[] = [
   { value: 'used', label: COUPON_STATUS_LABELS.used },
   { value: 'expired', label: COUPON_STATUS_LABELS.expired },
 ]
+
+/**
+ * Celda "Descuento": valor del descuento + línea secundaria con el monto
+ * mínimo de compra SOLO si existe (null/0 = sin mínimo → no se muestra nada,
+ * ni siquiera un <p> vacío).
+ */
+function DiscountCell({ coupon }: { coupon: Coupon }) {
+  const minText = formatMinPurchaseAmount(coupon.minPurchaseAmount)
+  return (
+    <TableCell className="text-sm">
+      <p>{formatCouponDiscount(coupon.discountType, coupon.discountValue)}</p>
+      {minText ? (
+        <p className="text-muted-foreground text-xs">{minText}</p>
+      ) : null}
+    </TableCell>
+  )
+}
 
 /** Texto de la columna "Expiración" según el estado efectivo y los días restantes. */
 function ExpiryCell({ coupon }: { coupon: { status: CouponStatus; expiresAt: string } }) {
@@ -168,9 +186,7 @@ export default function CouponsPage() {
                   <TableCell className="font-mono text-xs">
                     {coupon.userId.slice(0, 8).toUpperCase()}
                   </TableCell>
-                  <TableCell className="text-sm">
-                    {formatCouponDiscount(coupon.discountType, coupon.discountValue)}
-                  </TableCell>
+                  <DiscountCell coupon={coupon} />
                   <TableCell>
                     <Badge
                       className={cn(

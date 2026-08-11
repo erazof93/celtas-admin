@@ -70,6 +70,7 @@ function makeCoupon(id: string) {
     code: `CODE${id}`,
     discountType: 'percentage' as const,
     discountValue: 10,
+    minPurchaseAmount: null,
     status: 'active' as const,
     origin: 'manual' as const,
     expiresAt: '2026-08-23T12:00:00.000Z',
