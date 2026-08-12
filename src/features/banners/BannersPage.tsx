@@ -34,9 +34,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { formatLima } from '@/lib/dates'
 import { cn } from '@/lib/utils'
-import { getBannerVigencia, formatDaysOfWeek } from './banner-utils'
+import {
+  getBannerVigencia,
+  formatDaysOfWeek,
+  formatBannerDateRange,
+} from './banner-utils'
 import { BannerForm } from './BannerForm'
 import { useBanners, useDeleteBanner, useReorderBanners } from './hooks'
 import {
@@ -121,22 +124,14 @@ function SortableBannerRow({
         </Badge>
       </TableCell>
       <TableCell className="text-muted-foreground text-sm">
-        {banner.startDate || banner.endDate ? (
-          <span>
-            {banner.startDate
-              ? formatLima(banner.startDate, 'dd/MM/yyyy')
-              : '…'}{' '}
-            →{' '}
-            {banner.endDate ? formatLima(banner.endDate, 'dd/MM/yyyy') : '…'}
-          </span>
-        ) : (
-          'Sin fechas'
-        )}
-        {banner.daysOfWeek && banner.daysOfWeek.length > 0 && formatDaysOfWeek(banner.daysOfWeek) !== 'Todos los días' && (
-          <span className="text-xs text-muted-foreground capitalize">
-            {formatDaysOfWeek(banner.daysOfWeek)}
-          </span>
-        )}
+        <div className="flex flex-col gap-0.5">
+          <span>{formatBannerDateRange(banner)}</span>
+          {banner.daysOfWeek && banner.daysOfWeek.length > 0 && formatDaysOfWeek(banner.daysOfWeek) !== 'Todos los días' && (
+            <span className="text-xs text-muted-foreground capitalize">
+              {formatDaysOfWeek(banner.daysOfWeek)}
+            </span>
+          )}
+        </div>
       </TableCell>
       <TableCell className="text-right">
         <div className="flex justify-end gap-1">

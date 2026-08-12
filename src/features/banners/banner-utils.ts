@@ -1,4 +1,4 @@
-import { getLimaDayOfWeek } from '@/lib/dates'
+import { formatLima, getLimaDayOfWeek } from '@/lib/dates'
 import type { Banner, BannerVigencia } from './types'
 
 /** Días de la semana abreviados (0=domingo ... 6=sábado), igual que el backend. */
@@ -63,6 +63,24 @@ export function formatDaysOfWeek(daysOfWeek: number[] | null): string {
     .sort((a, b) => a - b)
     .map((d) => DAY_LABELS[d])
     .join(', ')
+}
+
+/**
+ * Formatea el rango de vigencia de un banner para el listado.
+ * - sin startDate ni endDate → "Sin fechas"
+ * - con al menos una de las dos, cada lado se formatea si existe; el lado
+ *   ausente se muestra como "…" (SOLO ese lado, nunca el que sí tiene valor —
+ *   el bug reportado era que un startDate real también se truncaba).
+ */
+export function formatBannerDateRange(
+  banner: Pick<Banner, 'startDate' | 'endDate'>,
+): string {
+  if (!banner.startDate && !banner.endDate) return 'Sin fechas'
+  const start = banner.startDate
+    ? formatLima(banner.startDate, 'dd/MM/yyyy')
+    : '…'
+  const end = banner.endDate ? formatLima(banner.endDate, 'dd/MM/yyyy') : '…'
+  return `${start} → ${end}`
 }
 
 /**

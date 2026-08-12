@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { getBannerVigencia, isValidBannerDateRange } from './banner-utils'
+import {
+  formatBannerDateRange,
+  getBannerVigencia,
+  isValidBannerDateRange,
+} from './banner-utils'
 import { getLimaDayOfWeek } from '@/lib/dates'
 import type { Banner } from './types'
 
@@ -137,5 +141,46 @@ describe('isValidBannerDateRange', () => {
         '2026-08-31T00:00:00.000Z',
       ),
     ).toBe(false)
+  })
+})
+
+/**
+ * Regresión de bug visual en el listado (columna "Fechas"): un banner con
+ * startDate real se truncaba a "…" como si no tuviera inicio definido. La
+ * regla es que "…" SOLO debe aparecer del lado que de verdad es null —
+ * nunca reemplazar un valor real.
+ */
+describe('formatBannerDateRange', () => {
+  it('sin startDate ni endDate → "Sin fechas"', () => {
+    expect(
+      formatBannerDateRange({ startDate: null, endDate: null }),
+    ).toBe('Sin fechas')
+  })
+
+  it('con startDate y endDate reales, muestra ambas fechas sin "…"', () => {
+    const text = formatBannerDateRange({
+      startDate: '2026-08-01T00:00:00.000Z',
+      endDate: '2026-08-14T23:59:59.000Z',
+    })
+    expect(text).not.toContain('…')
+    expect(text).toBe('31/07/2026 → 14/08/2026')
+  })
+
+  it('solo endDate real (sin inicio definido): "…" únicamente del lado sin valor', () => {
+    expect(
+      formatBannerDateRange({
+        startDate: null,
+        endDate: '2026-08-14T23:59:59.000Z',
+      }),
+    ).toBe('… → 14/08/2026')
+  })
+
+  it('solo startDate real (sin fin definido): "…" únicamente del lado sin valor', () => {
+    expect(
+      formatBannerDateRange({
+        startDate: '2026-08-01T00:00:00.000Z',
+        endDate: null,
+      }),
+    ).toBe('31/07/2026 → …')
   })
 })

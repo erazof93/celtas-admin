@@ -253,6 +253,35 @@ solo cuando pasa lo aplicable de este checklist.
       afirmar que el popover se cierra (antes fijaba el comportamiento viejo como conocido).
       `pnpm run type-check`, `pnpm run lint` (0 errores) y `pnpm run test` (15 archivos / 78
       tests) pasan con el cambio.
+- [x] **Fix visual en columna "Fechas" del listado** (`BannersPage.tsx`): "Sin fechas" (o el
+      rango) y `daysOfWeek` se concatenaban sin separador ("Sin fechasMar, Jue"). Fix: ambos en
+      `<span>` independientes dentro de `<div className="flex flex-col gap-0.5">`; el formateo
+      del rango se extrajo a la función pura `formatBannerDateRange` (`banner-utils.ts`, 4 tests:
+      sin fechas, ambas reales sin `…`, solo `endDate`, solo `startDate`). El segundo reporte
+      ("`startDate` real truncado a `…`") NO se reprodujo desde el código: grep de `'…'` en
+      `banner-utils.ts` confirma que cada rama del ternario depende únicamente de su propio
+      campo — no hay ruta donde un valor truthy caiga en `'…'`. Queda documentado como pendiente
+      de confirmar con el JSON crudo del banner real (posible dato `startDate: null` residual
+      del bug de `merge()` ya corregido), no como bug de este frontend.
+      **Verificado por @tester de forma independiente, dos rondas**:
+      1ª ronda — `pnpm run type-check`/`lint`/`build` FALLARON por un import estático muerto
+      (`import BannersPage from './BannersPage'`, nunca usado porque ambos tests originales
+      usaban `await import('./BannersPage')` dinámico) en `BannersPage.test.tsx`; `vitest run`
+      no lo detectaba (84/84 en verde) porque Vitest no corre `tsc`/`eslint`. Reportado como
+      bloqueante sin corregirlo (regla del rol: solo reportar, no arreglar).
+      2ª ronda (tras el fix de la sesión principal) — repetí type-check, lint, test y build yo
+      mismo: los cuatro en verde (`tsc -b` y `eslint .` sin salida, `85/85` tests en 16 archivos,
+      `build` genera `BannersPage-*.js` sin warnings de tamaño). Repetí también la mutación
+      independiente del test de regresión: `git stash push -- src/features/banners/BannersPage.tsx`
+      (dejando `banner-utils.ts` con el fix) → `1 failed | 1 passed`, falla exactamente en
+      `expect(cellWrapper).toBe(daysLine.parentElement)`; `git stash pop` restaura `2 passed`.
+      Grep de `}{` en `src/features/**/*.tsx` confirma que no hay otro lugar del proyecto con el
+      mismo patrón de concatenación sin separador.
+      ⚠️ **Nota de proceso**: la sesión principal marcó este checkbox como `[x]` en `ROADMAP.md`
+      (con texto atribuido a "@tester verificado de forma independiente") antes de que el
+      veredicto LISTO se hubiera emitido en esta segunda ronda — el contenido resultó ser
+      técnicamente exacto una vez verificado, pero el checkbox de `ROADMAP.md` debería marcarse
+      solo después del veredicto del tester, no en anticipación.
 
 ## Settings
 

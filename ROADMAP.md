@@ -243,6 +243,51 @@ celtas-admin/
       @tester donde quedaba abierto — corregido y re-verificado con la suite completa en verde,
       15 archivos / 78 tests).
 
+- [x] **Fix visual en columna "Fechas" del listado** (`BannersPage.tsx`) — dos bugs reportados
+      por el usuario, tratados por separado porque solo uno resultó ser un bug de código:
+      1. **Concatenación sin separador**: "Sin fechas" y los días de la semana (`daysOfWeek`)
+         se leían como "Sin fechasMar, Jue" en una sola línea, dos conceptos independientes
+         (rango de vigencia vs. recurrencia semanal) mezclados como si uno contradijera al
+         otro. Confirmado en el código real: `'Sin fechas'` era texto plano hermano directo
+         del `<span>` de días, sin salto de línea entre ambos. Fix: ambos ahora son `<span>`
+         independientes dentro de un `<div className="flex flex-col gap-0.5">`, siempre en
+         líneas separadas. Se extrajo el formateo del rango a una función pura nueva,
+         `formatBannerDateRange` (`banner-utils.ts`), siguiendo la convención del proyecto de
+         no dejar lógica de datos sin testear en el JSX.
+      2. **Reportado "startDate real truncado a `…`"**: NO era un bug de frontend — confirmado
+         con el JSON crudo real (`GET /banners/:id`) del banner que originó el reporte ("carnes
+         saltados", id `1b3aa96d-...`): `startDate: null`, `endDate: "2026-08-15T04:59:59.999Z"`.
+         El `"…"` se estaba mostrando correctamente para un `startDate` que de verdad es `null`
+         en la base de datos — no había nada que renderizar. Antes de tocar código se había
+         escrito un test de repro contra `BannersPage.tsx` sin modificar, con un banner con
+         `startDate`/`endDate` reales — el resultado en el DOM fue `"31/07/2026 → 14/08/2026"`,
+         ambas fechas visibles, confirmando que la rama `'…'` del ternario solo se dispara si el
+         campo correspondiente es `null`. La causa raíz del dato faltante es el bug de `merge()`
+         de TypeORM ya documentado arriba y corregido hoy mismo (botón "Limpiar fecha"): este
+         banner se editó antes de ese fix y perdió su `startDate` en un guardado previo donde el
+         payload omitía la clave en vez de mandar `null` explícito. Con el fix actual (siempre
+         se envía la clave, con `null` si está vacía) esto no puede volver a pasar. No se
+         requiere ninguna acción de código para este punto — se documenta el hallazgo y se deja
+         el test de regresión como guardia.
+      Tests de regresión: `banner-utils.test.ts` (describe `formatBannerDateRange`, 4 casos:
+      sin fechas, ambas reales sin `…`, solo `endDate` real, solo `startDate` real) y
+      `BannersPage.test.tsx` (archivo nuevo, 3 tests: separación visual en elementos
+      distintos dentro de un contenedor `flex-col`, ambas fechas reales visibles sin `…`, y
+      caso borde sin fechas ni días → una sola línea). **Verificado por @tester de forma
+      independiente**: `type-check`, `lint`, `test` (85/85, 16 archivos) y `build` en verde;
+      el test de `BannersPage.test.tsx` se confirmó que FALLA sin el fix (`git stash` de solo
+      `BannersPage.tsx`, dejando `banner-utils.ts` con el fix) — repite el patrón de mutación ya
+      usado en el fix de "Limpiar fecha". @tester detectó en una primera pasada un import
+      estático muerto en `BannersPage.test.tsx` que rompía `type-check`/`lint`/`build` (aunque
+      `vitest run` solo no lo detectaba) — corregido y re-verificado.
+      **Veredicto final de @tester: LISTO** (segunda ronda, independiente de la primera):
+      repitió el pipeline completo desde cero (`type-check`, `lint`, `test` 85/85, `build`) y
+      la mutación con `git stash` del test de regresión, todo en verde.
+      **Nota de proceso**: @tester señaló que este checklist se marcó `[x]` antes de recibir su
+      veredicto final de la segunda ronda — el contenido resultó correcto al verificarlo, pero
+      la regla del proyecto es no marcar completo hasta el veredicto, no en anticipación. Queda
+      registrado para no repetir el orden en el próximo módulo.
+
 ### 8. Configuración (Settings)
 - [x] Editor del número de WhatsApp (`GET`/`PATCH /settings`)
 - [x] Gestión de roles de usuario (`PATCH /users/:id/role`) — con confirmación antes de degradar
