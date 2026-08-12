@@ -35,3 +35,13 @@ export function limaDateToUtc(dateStr: string, endOfDay = false): Date {
 export function utcToLimaDateInput(iso: string): string {
   return formatInTimeZone(iso, LIMA_TIMEZONE, 'yyyy-MM-dd')
 }
+
+/**
+ * Día de la semana en Lima (0=domingo, 1=lunes, ..., 6=sábado).
+ * Coincide con la convención del backend para `daysOfWeek`.
+ */
+export function getLimaDayOfWeek(date: Date = new Date()): number {
+  // formatInTimeZone con 'e' da 1-7 (1=domingo en locale en-US).
+  // Restamos 1 para obtener 0-6 (0=domingo), igual que el backend.
+  return parseInt(formatInTimeZone(date, LIMA_TIMEZONE, 'e'), 10) - 1
+}

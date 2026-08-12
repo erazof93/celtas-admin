@@ -56,6 +56,7 @@ function makeBannerResponse(overrides: Partial<Banner> = {}): Banner {
     endDate: null,
     active: true,
     order: 0,
+    daysOfWeek: null,
     createdAt: '2026-08-01T12:00:00.000Z',
     updatedAt: '2026-08-01T12:00:00.000Z',
     ...overrides,

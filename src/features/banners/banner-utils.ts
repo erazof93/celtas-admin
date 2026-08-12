@@ -1,4 +1,8 @@
+import { getLimaDayOfWeek } from '@/lib/dates'
 import type { Banner, BannerVigencia } from './types'
+
+/** Días de la semana abreviados (0=domingo ... 6=sábado), igual que el backend. */
+export const DAY_LABELS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 
 /**
  * Vigencia EFECTIVA de un banner para el panel admin.
@@ -7,9 +11,22 @@ import type { Banner, BannerVigencia } from './types'
  * si active=true Y (sin startDate O startDate <= ahora) Y (sin endDate O
  * endDate >= ahora). El panel muestra los 4 estados para que el admin vea
  * también los programados, vencidos e inactivos.
+ *
+ * Además considera `daysOfWeek`: si el banner tiene fechas vigentes pero hoy
+ * no está en su lista de días, se muestra como "programado" (está programado
+ * para otros días, no está activo hoy). Esto refleja el comportamiento real del
+ * endpoint público GET /banners/active, que filtra por día de hoy en Lima.
+ *
+ * Decisión de diseño: se integra en getBannerVigencia (no se mantiene separado)
+ * porque el indicador de vigencia debe reflejar la REALIDAD de visualización:
+ * un banner "vigente" que no se muestra hoy es confuso para el admin. El estado
+ * "programado" comunica correctamente que está activo pero no visible hoy.
  */
 export function getBannerVigencia(
-  banner: Pick<Banner, 'active' | 'startDate' | 'endDate'>,
+  banner: Pick<
+    Banner,
+    'active' | 'startDate' | 'endDate' | 'daysOfWeek'
+  >,
   now: Date,
 ): BannerVigencia {
   if (!banner.active) return 'inactivo'
@@ -22,7 +39,30 @@ export function getBannerVigencia(
   ) {
     return 'programado'
   }
+  // Fechas vigentes: si tiene restricción de días y hoy no está incluido,
+  // el banner no se muestra hoy → "programado" (no "vigente").
+  if (
+    banner.daysOfWeek &&
+    banner.daysOfWeek.length > 0 &&
+    !banner.daysOfWeek.includes(getLimaDayOfWeek(now))
+  ) {
+    return 'programado'
+  }
   return 'vigente'
+}
+
+/**
+ * Formatea los días de la semana de un banner de forma compacta.
+ * - null/vacío → "Todos los días"
+ * - [2, 4] → "Mar, Mié"
+ * - [0] → "Dom"
+ */
+export function formatDaysOfWeek(daysOfWeek: number[] | null): string {
+  if (!daysOfWeek || daysOfWeek.length === 0) return 'Todos los días'
+  return [...daysOfWeek]
+    .sort((a, b) => a - b)
+    .map((d) => DAY_LABELS[d])
+    .join(', ')
 }
 
 /**

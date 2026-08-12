@@ -611,7 +611,7 @@ export interface paths {
         };
         /**
          * Banners vigentes (público, para la app)
-         * @description Devuelve los banners con active=true y dentro de su rango de fechas (si no hay fechas, siempre vigentes), ordenados por posición.
+         * @description Devuelve los banners con active=true, dentro de su rango de fechas (si no hay fechas, siempre vigentes) y cuyo daysOfWeek incluye el día de hoy en Lima (si daysOfWeek es null o vacío, se muestra cualquier día), ordenados por posición.
          */
         get: operations["BannersController_getActiveBanners"];
         put?: never;
@@ -1135,6 +1135,14 @@ export interface components {
              */
             active: boolean;
             /**
+             * @description Días de la semana en que se muestra el banner (0=domingo ... 6=sábado). null o vacío = todos los días.
+             * @example [
+             *       2,
+             *       4
+             *     ]
+             */
+            daysOfWeek?: number[];
+            /**
              * @description Orden de visualización (ascendente)
              * @default 0
              * @example 0
@@ -1184,6 +1192,14 @@ export interface components {
             endDate?: string;
             /** @description Si el banner está habilitado */
             active?: boolean;
+            /**
+             * @description Días de la semana en que se muestra el banner (0=domingo ... 6=sábado). null o vacío = todos los días.
+             * @example [
+             *       2,
+             *       4
+             *     ]
+             */
+            daysOfWeek?: number[];
             /** @description Orden de visualización (ascendente) */
             order?: number;
         };

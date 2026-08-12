@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { getBannerVigencia, isValidBannerDateRange } from './banner-utils'
+import { getLimaDayOfWeek } from '@/lib/dates'
 import type { Banner } from './types'
 
 /**
@@ -11,15 +12,34 @@ import type { Banner } from './types'
 const NOW = new Date('2026-08-08T12:00:00.000Z')
 
 function makeBanner(
-  overrides: Partial<Pick<Banner, 'active' | 'startDate' | 'endDate'>> = {},
+  overrides: Partial<Pick<Banner, 'active' | 'startDate' | 'endDate' | 'daysOfWeek'>> = {},
 ) {
   return {
     active: true,
     startDate: null,
     endDate: null,
+    daysOfWeek: null,
     ...overrides,
   }
 }
+
+/**
+ * Verificación crítica: getLimaDayOfWeek debe coincidir con la convención del backend
+ * (0=domingo...6=sábado). Usamos fechas reales conocidas:
+ * - 8 de agosto de 2026 (NOW del test) es sábado → debe devolver 6
+ * - 11 de agosto de 2026 es martes → debe devolver 2
+ */
+describe('getLimaDayOfWeek', () => {
+  it('8 de agosto de 2026 (sábado) devuelve 6', () => {
+    // 2026-08-08 es sábado según el NOW del módulo
+    expect(getLimaDayOfWeek(new Date('2026-08-08T12:00:00.000Z'))).toBe(6)
+  })
+
+  it('11 de agosto de 2026 (martes) devuelve 2', () => {
+    // 2026-08-11 es martes
+    expect(getLimaDayOfWeek(new Date('2026-08-11T12:00:00.000Z'))).toBe(2)
+  })
+})
 
 describe('getBannerVigencia', () => {
   it('vigente: activo sin fechas', () => {

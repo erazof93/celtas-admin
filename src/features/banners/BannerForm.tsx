@@ -8,6 +8,7 @@ import {
   AlertTitle,
 } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { DatePicker } from '@/components/ui/DatePicker'
 import { ImageUpload } from '@/components/ui/ImageUpload'
 import { Input } from '@/components/ui/input'
@@ -28,6 +29,9 @@ import { isValidBannerDateRange } from './banner-utils'
 import { useCreateBanner, useUpdateBanner, useUploadBannerImage } from './hooks'
 import type { Banner, BannerActionType } from './types'
 
+/** Días de la semana abreviados (0=domingo ... 6=sábado), igual que el backend. */
+const DAY_LABELS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+
 /** Convierte un Date del calendario a YYYY-MM-DD (fecha local, sin hora). */
 function toDateInput(date: Date): string {
   const y = date.getFullYear()
@@ -46,6 +50,7 @@ function parseDateInput(dateStr: string): Date {
  * Reglas espejo del CreateBannerDto del backend: título obligatorio,
  * actionValue obligatorio si actionType no es none, y startDate < endDate
  * cuando vienen ambas (validado en el cliente para evitar el submit inútil).
+ * daysOfWeek es un array opcional de enteros 0-6.
  */
 const bannerSchema = z
   .object({
@@ -55,6 +60,9 @@ const bannerSchema = z
     startDate: z.string().optional(),
     endDate: z.string().optional(),
     active: z.boolean(),
+    daysOfWeek: z
+      .array(z.number().int().min(0).max(6))
+      .optional(),
   })
   .superRefine((data, ctx) => {
     if (data.actionType !== 'none' && !data.actionValue?.trim()) {
@@ -120,6 +128,8 @@ export function BannerForm({ banner, onClose }: BannerFormProps) {
       startDate: banner?.startDate ? utcToLimaDateInput(banner.startDate) : '',
       endDate: banner?.endDate ? utcToLimaDateInput(banner.endDate) : '',
       active: banner?.active ?? true,
+      // null del backend → [] en el formulario (más fácil de manejar con checkboxes)
+      daysOfWeek: banner?.daysOfWeek ?? [],
     },
   })
 
@@ -128,6 +138,7 @@ export function BannerForm({ banner, onClose }: BannerFormProps) {
   const actionType = useWatch({ control, name: 'actionType' })
   const startDate = useWatch({ control, name: 'startDate' })
   const endDate = useWatch({ control, name: 'endDate' })
+  const daysOfWeek = useWatch({ control, name: 'daysOfWeek' })
 
   async function onSubmit(values: BannerFormValues) {
     setServerError(null)
@@ -148,6 +159,11 @@ export function BannerForm({ banner, onClose }: BannerFormProps) {
         ? { endDate: limaDateToUtc(values.endDate, true).toISOString() }
         : {}),
       active: values.active,
+      // Array vacío → null (todos los días, igual que el backend).
+      daysOfWeek:
+        values.daysOfWeek && values.daysOfWeek.length > 0
+          ? values.daysOfWeek
+          : null,
     }
 
     try {
@@ -434,6 +450,33 @@ export function BannerForm({ banner, onClose }: BannerFormProps) {
           <span className="text-muted-foreground text-sm">
             Visible en la app (si está dentro de las fechas)
           </span>
+        </div>
+      </div>
+
+      <div className="space-y-1.5 pt-2">
+        <Label className="text-sm font-medium">Días de la semana</Label>
+        <p className="text-xs text-muted-foreground mb-1">
+          Sin selección = se muestra todos los días
+        </p>
+        <div className="grid grid-cols-7 gap-1.5">
+          {[0, 1, 2, 3, 4, 5, 6].map((day) => (
+            <label key={day} className="flex flex-col items-center gap-0.5 text-xs">
+              <Checkbox
+                checked={daysOfWeek && daysOfWeek.includes(day)}
+                onCheckedChange={(isChecked) => {
+                  if (isChecked) {
+                    setValue('daysOfWeek', [...(daysOfWeek ?? []), day])
+                  } else {
+                    setValue(
+                      'daysOfWeek',
+                      (daysOfWeek ?? []).filter((d) => d !== day),
+                    )
+                  }
+                }}
+              />
+              <span className="text-caption capitalize">{DAY_LABELS[day]}</span>
+            </label>
+          ))}
         </div>
       </div>
 

@@ -213,6 +213,12 @@ celtas-admin/
       la entidad `Category` NO tiene campo `slug` (confirmado en `category.entity.ts` y con
       `rg slug` = 0 en todo el backend) — el identificador real es el `id` UUID, que es lo que
       la app móvil ya usa para filtrar categorías (`category.id == selected`).
+- [x] **Nueva mejora**: Campo `daysOfWeek` (array de enteros 0-6, 0=domingo...6=sábado).
+      Formulario: 7 checkboxes con labels Dom/Lun/Mar/Mié/Jue/Vie/Sáb. Si no hay selección,
+      envía `null` (todos los días). Listado: muestra "Mar, Jue" para días múltiples, "Dom"
+      para un solo día, o nada para todos los días. `getBannerVigencia`: integra el día de
+      hoy en Lima — si el banner tiene fechas válidas pero hoy no está en su `daysOfWeek`,
+      muestra "programado" en lugar de "vigente". Verificado contra checklist de QA.
 
 ### 8. Configuración (Settings)
 - [x] Editor del número de WhatsApp (`GET`/`PATCH /settings`)

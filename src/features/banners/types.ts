@@ -20,6 +20,11 @@ export interface Banner {
   startDate: string | null
   endDate: string | null
   active: boolean
+  /**
+   * Días de la semana en que se muestra el banner (0=domingo ... 6=sábado).
+   * null o vacío = todos los días.
+   */
+  daysOfWeek: number[] | null
   /** Posición de visualización (ascendente). */
   order: number
   createdAt: string
@@ -35,6 +40,8 @@ export interface CreateBannerInput {
   startDate?: string
   endDate?: string
   active?: boolean
+  /** 0=domingo ... 6=sábado. null/omitido = todos los días. */
+  daysOfWeek?: number[] | null
 }
 
 export type UpdateBannerInput = Partial<CreateBannerInput>

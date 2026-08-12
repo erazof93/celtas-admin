@@ -36,7 +36,7 @@ import {
 } from '@/components/ui/table'
 import { formatLima } from '@/lib/dates'
 import { cn } from '@/lib/utils'
-import { getBannerVigencia } from './banner-utils'
+import { getBannerVigencia, formatDaysOfWeek } from './banner-utils'
 import { BannerForm } from './BannerForm'
 import { useBanners, useDeleteBanner, useReorderBanners } from './hooks'
 import {
@@ -131,6 +131,11 @@ function SortableBannerRow({
           </span>
         ) : (
           'Sin fechas'
+        )}
+        {banner.daysOfWeek && banner.daysOfWeek.length > 0 && formatDaysOfWeek(banner.daysOfWeek) !== 'Todos los días' && (
+          <span className="text-xs text-muted-foreground capitalize">
+            {formatDaysOfWeek(banner.daysOfWeek)}
+          </span>
         )}
       </TableCell>
       <TableCell className="text-right">

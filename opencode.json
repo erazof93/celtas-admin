@@ -3,7 +3,7 @@
   "autoupdate": true,
 
   // Mismo modelo que el backend por defecto — cámbialo aquí si quieres probar otro.
-  "model": "openrouter/deepseek/deepseek-v4-flash:free",
+  "model": "opencode/nemotron-3.5-lightning-free",
 
   "permission": {
     "edit": "allow",
