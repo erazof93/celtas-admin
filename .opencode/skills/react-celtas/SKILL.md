@@ -25,6 +25,26 @@ confirma el contrato exacto (método, path, body, response, códigos de error) c
 `src/types/api.d.ts` (generado desde Swagger) o directamente contra `/docs-json`. Nunca asumas
 la forma de los datos.
 
+### ⚠️ Verificación de código real de proyectos hermanos
+
+**Nunca reconstruyas código de un proyecto backend basándote solo en:**
+- Descripciones de Swagger/OpenAPI
+- Inferencias sobre la estructura de DTOs
+- Patrones "probables" basados en convenios comunes
+
+Esto ya causó un incidente real en este proyecto donde se presentaron implementaciones
+falsas de campos que nunca existieron en el backend, requiriendo corrección posterior tras
+verificar contra el código fuente real.
+
+Si no tienes acceso directo al código fuente del proyecto backend (`celtas-backend`):
+1. **Dice explícitamente** que no tienes acceso al código real
+2. **Pide al usuario** que pegue el archivo o fragmento relevante
+3. **Nunca presentes código reconstruido** con el mismo nivel de confianza que código verificado
+
+El acceso directo al código fuente del proyecto hermano es la única fuente de verdad para
+implementaciones que no están documentadas en Swagger o que han evolucionado desde el último
+generación de tipos.
+
 ### Regenerar tipos cuando el backend cambie
 
 ```bash
