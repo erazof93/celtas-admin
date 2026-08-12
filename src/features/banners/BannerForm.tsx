@@ -152,12 +152,17 @@ export function BannerForm({ banner, onClose }: BannerFormProps) {
         : {}),
       // Fechas en zona Lima: startDate inicia a las 00:00 y endDate termina a
       // las 23:59:59 de ese día (el día completo cuenta como vigente).
-      ...(values.startDate
-        ? { startDate: limaDateToUtc(values.startDate).toISOString() }
-        : {}),
-      ...(values.endDate
-        ? { endDate: limaDateToUtc(values.endDate, true).toISOString() }
-        : {}),
+      // Siempre se envía la clave (con null si está vacía): el backend hace
+      // merge() de TypeORM en el update, que solo copia claves que NO son
+      // undefined — si se omite la clave en vez de mandar null, un banner que
+      // ya tenía fecha guardada nunca se limpia (el merge deja el valor viejo
+      // intacto). Confirmado contra banners.service.ts en celtas-backend.
+      startDate: values.startDate
+        ? limaDateToUtc(values.startDate).toISOString()
+        : null,
+      endDate: values.endDate
+        ? limaDateToUtc(values.endDate, true).toISOString()
+        : null,
       active: values.active,
       // Array vacío → null (todos los días, igual que el backend).
       daysOfWeek:
@@ -401,6 +406,7 @@ export function BannerForm({ banner, onClose }: BannerFormProps) {
                 }
                 placeholder="Sin fecha de inicio"
                 toDate={endDate ? parseDateInput(endDate) : undefined}
+                clearLabel="Limpiar inicio de vigencia"
               />
             )}
           />
@@ -419,6 +425,7 @@ export function BannerForm({ banner, onClose }: BannerFormProps) {
                 }
                 placeholder="Sin fecha de fin"
                 fromDate={startDate ? parseDateInput(startDate) : undefined}
+                clearLabel="Limpiar fin de vigencia"
               />
             )}
           />

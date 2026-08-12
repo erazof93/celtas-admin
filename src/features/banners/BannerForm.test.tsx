@@ -234,3 +234,71 @@ describe('BannerForm actionValue', () => {
     ).toBeInTheDocument()
   })
 })
+
+/**
+ * Regresión del botón "Limpiar fecha": el backend hace merge() de TypeORM en
+ * el update, que solo copia claves que NO son undefined (confirmado contra
+ * banners.service.ts en celtas-backend). Si el payload OMITE startDate/endDate
+ * en vez de mandar `null` explícito al limpiar, el merge deja la fecha vieja
+ * intacta y el clic en "Limpiar" no tiene ningún efecto real contra el
+ * backend, aunque el formulario se vea vacío. Este test falla si se vuelve a
+ * la versión con spread condicional (`...(values.startDate ? {...} : {})`).
+ */
+describe('BannerForm limpiar fecha', () => {
+  beforeEach(() => {
+    createMock.mockReset()
+    updateMock.mockReset()
+    uploadMock.mockReset()
+  })
+
+  it('al limpiar startDate y endDate, el payload envía null explícito (no se omite la clave)', async () => {
+    const user = userEvent.setup()
+    updateMock.mockResolvedValue(makeBannerResponse())
+
+    render(
+      <BannerForm
+        banner={makeBannerResponse({
+          startDate: '2026-08-01T05:00:00.000Z',
+          endDate: '2026-08-31T04:59:59.000Z',
+        })}
+        onClose={() => {}}
+      />,
+    )
+
+    // Antes de limpiar, el DatePicker muestra la fecha guardada.
+    expect(screen.getByText('01/08/2026')).toBeInTheDocument()
+    expect(screen.getByText('30/08/2026')).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('button', { name: 'Limpiar inicio de vigencia' }),
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Limpiar fin de vigencia' }),
+    )
+
+    expect(screen.getByText('Sin fecha de inicio')).toBeInTheDocument()
+    expect(screen.getByText('Sin fecha de fin')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    await waitFor(() => {
+      expect(updateMock).toHaveBeenCalled()
+    })
+    const payload = updateMock.mock.calls[0][0]
+    // La clave debe existir en el payload (no debe estar ausente/omitida) y
+    // su valor debe ser null, nunca un string vacío.
+    expect(payload).toHaveProperty('startDate', null)
+    expect(payload).toHaveProperty('endDate', null)
+  })
+
+  it('el botón de limpiar fecha no aparece cuando el campo ya está vacío', () => {
+    render(<BannerForm onClose={() => {}} />)
+
+    expect(
+      screen.queryByRole('button', { name: 'Limpiar inicio de vigencia' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Limpiar fin de vigencia' }),
+    ).not.toBeInTheDocument()
+  })
+})

@@ -221,6 +221,38 @@ solo cuando pasa lo aplicable de este checklist.
       suite completa pasa (63/63) sin romper otros tests
 - [x] `pnpm run test` (63 tests), `pnpm run type-check`, `pnpm run lint` (0 errores) y
       `pnpm run build` pasan
+- [x] **Botón "Limpiar fecha" (startDate/endDate) — fix del bug raíz reportado antes como
+      "completo" sin estarlo**: el backend hace `bannersRepository.merge(banner, dto)` en
+      `update()`; `PlainObjectToNewEntityTransformer` (TypeORM) solo copia una clave si
+      `objectColumnValue !== undefined` — si el frontend OMITE `startDate`/`endDate` del
+      payload en vez de mandar `null` explícito, el merge deja la fecha vieja intacta aunque
+      el form se vea vacío. `BannerForm.tsx` ahora siempre incluye la clave (`null` explícito
+      si el campo está vacío). Confirmado independientemente contra el código fuente real de
+      `celtas-backend`: `banners.service.ts` (merge), `IsOptional.js` de class-validator (trata
+      `null` igual que `undefined`, no rompe la validación), `TransformOperationExecutor.js` de
+      class-transformer (con `targetType === Date`, si `value === null` devuelve `null` tal
+      cual, NO hace `new Date(null)`). `DatePicker.tsx`: botón "X" solo visible con
+      `value && !disabled`, `aria-label` vía prop `clearLabel`, `stopPropagation` en el click.
+      Único consumidor de `DatePicker` en todo `src/` es `BannerForm.tsx` (confirmado con grep,
+      2 usos: startDate/endDate) — no hay otro formulario que dependa del payload viejo.
+      **Verificado por @tester con mutación real** (no solo confiado en el reporte de la sesión
+      principal): revertí el fix del payload al spread condicional
+      (`...(values.startDate ? {...} : {})`) y el test
+      `BannerForm.test.tsx > BannerForm limpiar fecha` FALLÓ exactamente como se esperaba
+      (`expected undefined... to have property "startDate" with value null`); restauré el fix
+      y la suite completa volvió a 78/78 en verde.
+      **Test nuevo agregado por @tester**: `src/components/ui/DatePicker.test.tsx` (3 tests,
+      componente aislado sin pasar por todo el formulario) — el botón no aparece sin valor; al
+      limpiar, `onChange(null)` se dispara y el calendario NO se abre por el click en la X (la
+      X es un elemento hermano del trigger en el DOM, no un hijo, así que el click no
+      propaga la apertura del popover).
+      **Hallazgo de @tester corregido en la sesión principal**: si el popover del calendario ya
+      estaba abierto y se hacía click en "Limpiar", el valor se limpiaba bien pero el popover
+      quedaba abierto (faltaba `setOpen(false)` en el handler de la X). Se agregó
+      `setOpen(false)` al handler; el tercer test de `DatePicker.test.tsx` se actualizó para
+      afirmar que el popover se cierra (antes fijaba el comportamiento viejo como conocido).
+      `pnpm run type-check`, `pnpm run lint` (0 errores) y `pnpm run test` (15 archivos / 78
+      tests) pasan con el cambio.
 
 ## Settings
 

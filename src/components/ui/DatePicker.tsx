@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CalendarIcon } from 'lucide-react'
+import { CalendarIcon, XIcon } from 'lucide-react'
 import { DayPicker } from 'react-day-picker'
 import { es } from 'react-day-picker/locale'
 import { Popover as PopoverPrimitive } from 'radix-ui'
@@ -16,6 +16,8 @@ interface DatePickerProps {
   fromDate?: Date
   /** Fecha máxima seleccionable (ej. endDate para startDate). */
   toDate?: Date
+  /** Nombre accesible del botón de limpiar (ej. "Limpiar inicio de vigencia"). */
+  clearLabel?: string
 }
 
 /**
@@ -30,32 +32,35 @@ export function DatePicker({
   disabled,
   fromDate,
   toDate,
+  clearLabel = 'Limpiar fecha',
 }: DatePickerProps) {
   const [open, setOpen] = useState(false)
 
   return (
-    <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
-      <PopoverPrimitive.Trigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={disabled}
-          className={cn(
-            'w-full justify-start text-left font-normal',
-            !value && 'text-muted-foreground',
-          )}
-        >
-          <CalendarIcon />
-          {value
-            ? value.toLocaleDateString('es-PE', {
-                day: '2-digit',
-                month: '2-digit',
-                year: 'numeric',
-              })
-            : placeholder}
-        </Button>
-      </PopoverPrimitive.Trigger>
-      <PopoverPrimitive.Portal>
+    <div className="relative">
+      <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
+        <PopoverPrimitive.Trigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={disabled}
+            className={cn(
+              'w-full justify-start text-left font-normal',
+              !value && 'text-muted-foreground',
+              value && 'pr-8',
+            )}
+          >
+            <CalendarIcon />
+            {value
+              ? value.toLocaleDateString('es-PE', {
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                })
+              : placeholder}
+          </Button>
+        </PopoverPrimitive.Trigger>
+        <PopoverPrimitive.Portal>
         <PopoverPrimitive.Content
           align="start"
           sideOffset={4}
@@ -96,7 +101,22 @@ export function DatePicker({
             }}
           />
         </PopoverPrimitive.Content>
-      </PopoverPrimitive.Portal>
-    </PopoverPrimitive.Root>
+        </PopoverPrimitive.Portal>
+      </PopoverPrimitive.Root>
+      {value && !disabled ? (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation()
+            onChange(null)
+            setOpen(false)
+          }}
+          aria-label={clearLabel}
+          className="text-muted-foreground hover:bg-muted hover:text-foreground absolute top-1/2 right-2 -translate-y-1/2 rounded-sm p-0.5"
+        >
+          <XIcon className="size-3.5" />
+        </button>
+      ) : null}
+    </div>
   )
 }

@@ -4,7 +4,7 @@ description: Convenciones y patrones específicos del panel admin de Celtas en R
 license: MIT
 metadata:
   project: celtas-admin
-  audience: opencode-agent
+  audience: claude-code
 ---
 
 ## Cuándo usar esta skill

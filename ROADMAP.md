@@ -220,6 +220,29 @@ celtas-admin/
       hoy en Lima — si el banner tiene fechas válidas pero hoy no está en su `daysOfWeek`,
       muestra "programado" en lugar de "vigente". Verificado contra checklist de QA.
 
+
+- [x] **Botón "Limpiar fecha" en `BannerForm.tsx`** (startDate/endDate) — corregido el bug raíz
+      que hacía que el "completo" reportado antes fuera falso: el backend hace
+      `bannersRepository.merge(banner, dto)` en el `update()` (TypeORM), y
+      `PlainObjectToNewEntityTransformer` solo copia una clave si
+      `objectColumnValue !== undefined` — si el payload OMITE `startDate`/`endDate` en vez de
+      mandar `null` explícito, el merge deja la fecha vieja intacta aunque el form se vea
+      vacío. `BannerForm.tsx` ahora siempre incluye la clave en el payload
+      (`startDate: values.startDate ? ... : null`, igual `endDate`); `DatePicker.tsx` tiene un
+      botón "X" (visible solo con valor y no disabled) con `clearLabel` configurable.
+      **Verificado por @tester de forma independiente**: contra el código fuente real de
+      `celtas-backend` (`banners.service.ts`, `PlainObjectToNewEntityTransformer.js` en
+      `node_modules/typeorm`, `IsOptional.js` de `class-validator` y el manejo de `null` en
+      `TransformOperationExecutor.js` de `class-transformer` — `null` no se transforma a
+      `new Date(null)`, pasa intacto); mutación del fix en `BannerForm.tsx` confirma que el
+      test nuevo (`BannerForm.test.tsx`, describe "BannerForm limpiar fecha") FALLA sin el fix
+      (`expected undefined... to have property "startDate" with value null"`). Test adicional
+      en `DatePicker.test.tsx` (3 tests, componente aislado) confirma que la X no abre el
+      calendario, que el botón no aparece sin valor, y que limpiar con el popover ya abierto
+      también lo cierra (`setOpen(false)` agregado al handler de la X tras un hallazgo de
+      @tester donde quedaba abierto — corregido y re-verificado con la suite completa en verde,
+      15 archivos / 78 tests).
+
 ### 8. Configuración (Settings)
 - [x] Editor del número de WhatsApp (`GET`/`PATCH /settings`)
 - [x] Gestión de roles de usuario (`PATCH /users/:id/role`) — con confirmación antes de degradar

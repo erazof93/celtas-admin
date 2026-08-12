@@ -36,9 +36,13 @@ export interface CreateBannerInput {
   actionType: BannerActionType
   /** Obligatorio si actionType no es none. */
   actionValue?: string
-  /** ISO string (el backend lo parsea con @Type(() => Date)). */
-  startDate?: string
-  endDate?: string
+  /**
+   * ISO string (el backend lo parsea con @Type(() => Date)). `null` explícito
+   * limpia la fecha en un update — el backend usa merge() de TypeORM, que
+   * ignora claves `undefined` pero sí aplica `null` (ver BannerForm.tsx).
+   */
+  startDate?: string | null
+  endDate?: string | null
   active?: boolean
   /** 0=domingo ... 6=sábado. null/omitido = todos los días. */
   daysOfWeek?: number[] | null
