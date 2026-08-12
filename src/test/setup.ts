@@ -21,3 +21,14 @@ if (!Element.prototype.hasPointerCapture) {
 if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {}
 }
+
+// jsdom no implementa ResizeObserver; Radix lo usa vía react-use-size (Select,
+// DatePicker/Calendar, etc.) al montar. Sin el stub, cualquier test que monte
+// un componente con estos primitivos lanza "ResizeObserver is not defined".
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+}

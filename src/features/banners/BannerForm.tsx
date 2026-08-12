@@ -22,6 +22,8 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { getApiMessage } from '@/lib/api-errors'
 import { limaDateToUtc, utcToLimaDateInput } from '@/lib/dates'
+import { useCategories } from '../menu/categories/hooks'
+import { useMenuItems } from '../menu/items/hooks'
 import { isValidBannerDateRange } from './banner-utils'
 import { useCreateBanner, useUpdateBanner, useUploadBannerImage } from './hooks'
 import type { Banner, BannerActionType } from './types'
@@ -92,6 +94,11 @@ export function BannerForm({ banner, onClose }: BannerFormProps) {
   const createMutation = useCreateBanner()
   const updateMutation = useUpdateBanner()
   const uploadMutation = useUploadBannerImage()
+  // Opciones reales para el selector de acción: categorías (por id) y
+  // productos (por id). Se cargan aunque actionType sea none/external_url
+  // para que el cache esté listo si el admin cambia de tipo.
+  const categoriesQuery = useCategories()
+  const itemsQuery = useMenuItems()
   const isEditing = Boolean(banner)
   const [serverError, setServerError] = useState<string | null>(null)
   const [imageError, setImageError] = useState<string | null>(null)
@@ -101,6 +108,7 @@ export function BannerForm({ banner, onClose }: BannerFormProps) {
     register,
     handleSubmit,
     control,
+    setValue,
     setError,
     formState: { errors, isSubmitting },
   } = useForm<BannerFormInputValues, unknown, BannerFormValues>({
@@ -206,9 +214,16 @@ export function BannerForm({ banner, onClose }: BannerFormProps) {
             render={({ field }) => (
               <Select
                 value={field.value}
-                onValueChange={(value) =>
-                  field.onChange(value as BannerActionType)
-                }
+                onValueChange={(value) => {
+                  const next = value as BannerActionType
+                  // Al cambiar el tipo de acción, el valor anterior no aplica
+                  // (un id de categoría no sirve como id de producto ni como
+                  // URL). Se limpia para no guardar un actionValue huérfano.
+                  if (next !== field.value) {
+                    setValue('actionValue', '')
+                  }
+                  field.onChange(next)
+                }}
               >
                 <SelectTrigger id="banner-action-type">
                   <SelectValue placeholder="Acción" />
@@ -226,24 +241,121 @@ export function BannerForm({ banner, onClose }: BannerFormProps) {
 
         <div className="space-y-1.5">
           <Label htmlFor="banner-action-value">Valor de la acción</Label>
-          <Input
-            id="banner-action-value"
-            placeholder={
-              actionType === 'category'
-                ? 'Slug de la categoría (ej. burgers)'
-                : actionType === 'menuItem'
-                  ? 'ID del producto'
-                  : actionType === 'external_url'
-                    ? 'https://…'
-                    : '—'
-            }
-            disabled={actionType === 'none'}
-            aria-invalid={Boolean(errors.actionValue)}
-            {...register('actionValue')}
-          />
+          {actionType === 'category' ? (
+            <Controller
+              control={control}
+              name="actionValue"
+              render={({ field }) => {
+                const categories = categoriesQuery.data ?? []
+                const hasMatch = categories.some((c) => c.id === field.value)
+                return (
+                  <Select
+                    value={field.value || undefined}
+                    onValueChange={field.onChange}
+                    disabled={
+                      categoriesQuery.isLoading || categoriesQuery.isError
+                    }
+                  >
+                    <SelectTrigger
+                      id="banner-action-value"
+                      className="w-full"
+                      aria-invalid={Boolean(errors.actionValue)}
+                    >
+                      <SelectValue
+                        placeholder={
+                          categoriesQuery.isLoading
+                            ? 'Cargando categorías…'
+                            : 'Selecciona una categoría'
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.name}
+                        </SelectItem>
+                      ))}
+                      {/* Banner creado antes del selector: el valor guardado
+                          (slug escrito a mano) no matchea ninguna categoría.
+                          Se muestra como opción para no perderlo al guardar. */}
+                      {field.value && !hasMatch ? (
+                        <SelectItem value={field.value}>
+                          {field.value} (sin coincidencia)
+                        </SelectItem>
+                      ) : null}
+                    </SelectContent>
+                  </Select>
+                )
+              }}
+            />
+          ) : actionType === 'menuItem' ? (
+            <Controller
+              control={control}
+              name="actionValue"
+              render={({ field }) => {
+                const items = itemsQuery.data ?? []
+                const hasMatch = items.some((i) => i.id === field.value)
+                return (
+                  <Select
+                    value={field.value || undefined}
+                    onValueChange={field.onChange}
+                    disabled={itemsQuery.isLoading || itemsQuery.isError}
+                  >
+                    <SelectTrigger
+                      id="banner-action-value"
+                      className="w-full"
+                      aria-invalid={Boolean(errors.actionValue)}
+                    >
+                      <SelectValue
+                        placeholder={
+                          itemsQuery.isLoading
+                            ? 'Cargando productos…'
+                            : 'Selecciona un producto'
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {items.map((item) => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.name}
+                        </SelectItem>
+                      ))}
+                      {field.value && !hasMatch ? (
+                        <SelectItem value={field.value}>
+                          {field.value} (sin coincidencia)
+                        </SelectItem>
+                      ) : null}
+                    </SelectContent>
+                  </Select>
+                )
+              }}
+            />
+          ) : (
+            <Input
+              id="banner-action-value"
+              placeholder={
+                actionType === 'external_url' ? 'https://…' : '—'
+              }
+              disabled={actionType === 'none'}
+              aria-invalid={Boolean(errors.actionValue)}
+              {...register('actionValue')}
+            />
+          )}
           {errors.actionValue ? (
             <p className="text-celtas-red-light text-xs">
               {errors.actionValue.message}
+            </p>
+          ) : null}
+          {actionType === 'category' && categoriesQuery.isError ? (
+            <p className="text-celtas-red-light text-xs">
+              No se pudieron cargar las categorías. Recarga la página y vuelve
+              a intentar.
+            </p>
+          ) : null}
+          {actionType === 'menuItem' && itemsQuery.isError ? (
+            <p className="text-celtas-red-light text-xs">
+              No se pudieron cargar los productos. Recarga la página y vuelve a
+              intentar.
             </p>
           ) : null}
         </div>
@@ -251,9 +363,9 @@ export function BannerForm({ banner, onClose }: BannerFormProps) {
 
       <p className="text-muted-foreground -mt-1 text-xs">
         {actionType === 'category'
-          ? 'El slug de categoría se escribe a mano por ahora (el selector real llega con el módulo de Usuarios/Menú).'
+          ? 'El banner lleva a la categoría seleccionada del menú.'
           : actionType === 'menuItem'
-            ? 'El ID del producto se escribe a mano por ahora (el selector real llega con el módulo de Usuarios/Menú).'
+            ? 'El banner lleva al detalle del producto seleccionado.'
             : actionType === 'external_url'
               ? 'URL externa a la que lleva el banner al tocarlo.'
               : 'El banner no lleva a ningún lado al tocarlo.'}

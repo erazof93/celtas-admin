@@ -3,6 +3,7 @@ import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { CopyIdButton } from '@/components/ui/CopyIdButton'
 import {
   Dialog,
   DialogContent,
@@ -121,6 +122,7 @@ export function ItemsSection() {
                 <TableHead>Categoría</TableHead>
                 <TableHead>Precio</TableHead>
                 <TableHead>Disponible</TableHead>
+                <TableHead className="text-center">ID</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
@@ -161,6 +163,9 @@ export function ItemsSection() {
                       disabled={togglingId === item.id}
                       aria-label={`Cambiar disponibilidad de ${item.name}`}
                     />
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <CopyIdButton id={item.id} label={item.name} />
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">

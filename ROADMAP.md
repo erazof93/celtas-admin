@@ -168,6 +168,11 @@ celtas-admin/
 - [x] Fix de auditoría (bug de clase): `useUpdateItem` y `useUpdateCategory` ya NO envían `id` en el
       body del PATCH (el `id` viaja solo en el path; el ValidationPipe del backend rechaza campos
       extra con 400). Tests de regresión en `hooks.test.tsx` de items y categorías
+- [x] **Mejora de UX (auditoría)**: columna "ID" con botón de copiar al portapapeles en las tablas
+      de productos y categorías (`CopyIdButton` reutilizable + mini-sistema de toasts sin
+      dependencias en `src/components/ui/toast.tsx`). El UUID no se muestra como texto en la tabla
+      (largo y poco legible); el botón copia el id real con toast "ID copiado" y fallback de error
+      si el portapapeles falla. Tests en `CopyIdButton.test.tsx`
 
 ### 5. Pedidos
 - [x] Listado paginado, filtro por estado
@@ -195,6 +200,19 @@ celtas-admin/
 - [x] CRUD con subida de imagen
 - [x] Selector de fechas de vigencia (startDate/endDate)
 - [x] Reordenamiento drag-and-drop (consume `PATCH /banners/reorder`)
+- [x] **Mejora (auditoría)**: `actionValue` para `category`/`menuItem` ya NO es un input de
+      texto libre — ahora es un `<Select>` real poblado con `GET /menu/categories` (muestra el
+      nombre, guarda el **id** UUID) y `GET /menu/items` (muestra el nombre, guarda el **id**).
+      Elimina el riesgo de banners mal configurados por error de tipeo. `external_url` sigue
+      siendo input de texto y `none` queda deshabilitado. Al cambiar `actionType` se limpia el
+      `actionValue` viejo (un id de categoría no sirve como id de producto). Banners creados
+      antes del selector (con slug escrito a mano) muestran su valor como opción "(sin
+      coincidencia)" para no perderlo al guardar. Tests de regresión en
+      `BannerForm.test.tsx` (verifican que el payload usa el id real, no texto libre).
+      **Nota de contrato**: el backend documenta `actionValue` de categoría como "slug", pero
+      la entidad `Category` NO tiene campo `slug` (confirmado en `category.entity.ts` y con
+      `rg slug` = 0 en todo el backend) — el identificador real es el `id` UUID, que es lo que
+      la app móvil ya usa para filtrar categorías (`category.id == selected`).
 
 ### 8. Configuración (Settings)
 - [x] Editor del número de WhatsApp (`GET`/`PATCH /settings`)

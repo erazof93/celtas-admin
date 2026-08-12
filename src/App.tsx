@@ -1,6 +1,7 @@
 import { RouterProvider } from 'react-router-dom'
 import { router } from '@/routes/router'
 import { useBootstrap } from '@/features/auth/hooks'
+import { ToastProvider } from '@/components/ui/toast'
 
 /**
  * Al montar la app: si hay refreshToken en localStorage pero el store está
@@ -23,5 +24,9 @@ export default function App() {
     )
   }
 
-  return <RouterProvider router={router} />
+  return (
+    <ToastProvider>
+      <RouterProvider router={router} />
+    </ToastProvider>
+  )
 }

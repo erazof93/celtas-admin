@@ -80,6 +80,19 @@ solo cuando pasa lo aplicable de este checklist.
       `src/features/menu/categories/hooks.test.tsx` (mockean `patch` de `@/lib/api-client` y
       verifican body sin `id`). **Verificado por @tester: cada test FALLA si se revierte el fix**
       (2/2 por hook, con el mensaje exacto del bug)
+- [x] **Mejora de UX (auditoría @tester) — columna "ID" con copiar al portapapeles**: `CopyIdButton`
+      copia el `id` real (no el nombre) — verificado por mutación: el test FALLA si se revierte a
+      `copyTextToClipboard(label)` y si se cambia el mensaje de éxito/error. El toast se renderiza
+      en un portal a `document.body` con `position: fixed` (`ToastProvider` en `App.tsx`), así que
+      no depende del overflow de la tabla; `aria-live="polite"` + `role="status"`, auto-dismiss 2s
+      con timeouts limpiados al desmontar (sin warnings de `act()` en la suite). El fallback de
+      `clipboard.ts` (http no-secure: `navigator.clipboard` ausente o `writeText` rechaza → cae a
+      `document.execCommand('copy')`) tiene 5 tests propios en `src/lib/clipboard.test.ts`
+      (clipboard disponible, ausente, rechazo de writeText, execCommand=false, execCommand lanza).
+      ⚠️ **Hallazgo menor**: si `execCommand` lanza, el textarea temporal queda en el DOM (el
+      `removeChild` está después de `execCommand` en el mismo `try`) — fuga invisible en un caso
+      patológico (execCommand casi nunca lanza, devuelve false). Fix sugerido: `try/finally`.
+      Sin dependencias nuevas (`package.json`/`pnpm-lock.yaml` sin cambios). Suite completa: 71/71.
 
 
 ## Orders
@@ -182,7 +195,31 @@ solo cuando pasa lo aplicable de este checklist.
       explícito ("No hay banners"); confirmación de borrado en dos clics
 - [x] Tipos del módulo (`types.ts`) coinciden campo a campo con `banner.entity.ts` y los DTOs del
       backend; `ReorderBannerItem` ↔ `ReorderBannerItemDto`. Sin `any` ni castings forzados
-- [x] `pnpm run test` (28 tests), `pnpm run type-check`, `pnpm run lint` (0 errores) y
+- [x] Selector real de acción (mejora de auditoría): `actionValue` para `category`/`menuItem`
+      ya NO es input de texto libre — es un `<Select>` poblado con `useCategories()`/`useMenuItems()`
+      que muestra el nombre y guarda el **id UUID** (no texto libre, no el nombre). `external_url`
+      sigue siendo input de texto y `none` queda deshabilitado. **Verificado por @tester con
+      mutación**: los tests 1 y 2 de `BannerForm.test.tsx` fallan si se revierte el Select por el
+      input libre (assert del payload `actionValue: 'cat-chicken'`/`'item-2'` + placeholder viejo)
+- [x] Al cambiar `actionType` se limpia `actionValue` (`setValue('actionValue', '')`) para no
+      mandar un id de categoría como id de producto/URL. **Verificado por @tester con mutación**:
+      el test 4 "limpia el actionValue viejo" FALLA si se revierte el `setValue` (el submit manda
+      `actionValue: 'cat-burgers'` con `actionType: 'menuItem'`)
+- [x] Banners legacy (actionValue escrito a mano que no matchea ninguna categoría/producto)
+      muestran una opción "(sin coincidencia)" para no perder el valor al guardar (sin esto,
+      Radix Select no muestra el valor y el superRefine bloquearía el submit)
+- [x] Estados de UI del selector: placeholder "Cargando categorías…/productos…" mientras
+      `isLoading`, mensaje de error bajo el campo + `<Select>` deshabilitado en `isError`
+- [x] Contrato: el backend documenta `actionValue` de categoría como "slug" (solo docstring en
+      `banner.entity.ts`), pero la entidad `Category` NO tiene campo `slug` (grep en todo el
+      backend = 1 match, el docstring del banner); el `CreateBannerDto.actionValue` es `string`
+      plano, así que guardar el id UUID es compatible y es lo que la app móvil usa para filtrar
+      categorías (`category.id == selected` en `home_screen.dart`)
+- [x] `src/test/setup.ts` agrega polyfill de `ResizeObserver` (jsdom no lo implementa y Radix
+      Select lo usa vía react-use-size). **Verificado por @tester**: sin el polyfill, los 4
+      tests de `BannerForm.test.tsx` fallan con "ResizeObserver is not defined"; con él, la
+      suite completa pasa (63/63) sin romper otros tests
+- [x] `pnpm run test` (63 tests), `pnpm run type-check`, `pnpm run lint` (0 errores) y
       `pnpm run build` pasan
 
 ## Settings

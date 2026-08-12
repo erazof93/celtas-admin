@@ -8,6 +8,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { CopyIdButton } from '@/components/ui/CopyIdButton'
 import {
   Dialog,
   DialogContent,
@@ -107,6 +108,7 @@ export function CategoriesSection() {
                 <TableHead>Orden</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead className="text-right">Productos</TableHead>
+                <TableHead className="text-center">ID</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
@@ -128,6 +130,9 @@ export function CategoriesSection() {
                   </TableCell>
                   <TableCell className="text-right">
                     {category.items.length}
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <CopyIdButton id={category.id} label={category.name} />
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
