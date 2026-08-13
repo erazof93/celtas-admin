@@ -165,6 +165,64 @@ solo cuando pasa lo aplicable de este checklist.
       delega la decisión al helper). 2 tests en `coupon-utils.test.ts` (formato con 2 decimales y
       null/undefined/0 → null)
 - [x] `pnpm run test` (59 tests), `pnpm run type-check`, `pnpm run lint`, `pnpm run build` pasan
+- [x] **Campaña masiva de cupones (`POST /coupons/generate-bulk`)**: contrato confirmado en
+      `src/types/api.d.ts` (`GenerateBulkCouponDto`) y contra el código fuente real del backend
+      (`generate-bulk-coupon.dto.ts` y `CouponsService.generateBulk()` en `coupons.service.ts`,
+      línea `async generateBulk(dto): Promise<{ count: number }>`) — la respuesta `BulkCouponResult
+      { count: number }` en `types.ts` es exacta, no inventada; Swagger la documenta como
+      `unknown` así que sin el código fuente esto no se podía confirmar. `useGenerateBulkCoupons`
+      invalida `['coupons','list']` al éxito
+- [x] Límite de 100% para `percentage` — mismo `superRefine` que `GenerateCouponForm`, espejo de
+      `IsPercentageWithinLimit` (reutilizado sin cambios entre `GenerateCouponDto` y
+      `GenerateBulkCouponDto` en el backend); `fixed_amount` no tiene tope
+- [x] `minPurchaseAmount`: `''`/`0`/`'0'` → `null` (mismo `z.preprocess` que el form individual);
+      negativo rechazado con `.nonnegative()` sin `min={0}` nativo en el input (evita el bug ya
+      conocido de que la validación del navegador bloquee el submit antes del mensaje de Zod)
+- [x] **Confirmación explícita antes de la mutación — verificado por @tester con mutación
+      independiente**: el submit del form (`onValidated`) solo hace `setPendingValues(values)`;
+      la llamada real a `mutateAsync` vive únicamente en `handleConfirm`, disparado por el clic en
+      "Sí, generar cupones". Revertí el fix (hice que `onValidated` llamara a `mutateAsync`
+      directamente, saltándose la confirmación) y **4 de 6 tests de
+      `GenerateBulkCouponForm.test.tsx` fallaron** exactamente como se esperaba (el texto de
+      confirmación nunca aparece porque el submit va directo al resultado); restauré el fix y los
+      6/6 volvieron a pasar. El panel de confirmación se renderiza reemplazando el formulario (no
+      hay `<form>` en ese árbol), así que no hay manera de disparar la mutación con Enter u otro
+      atajo de teclado sin pasar por el clic explícito
+- [x] Estados de UI del panel de confirmación: alerta destructiva con resumen (campaña, descuento,
+      expiración), botones "Cancelar" (descarta sin llamar a la API, vuelve al formulario) y "Sí,
+      generar cupones" (deshabilitados ambos mientras `isPending`); error del servidor se muestra
+      dentro del mismo panel sin perder el resumen
+- [x] `GenerateCouponForm` ahora acepta `defaultUserId?` opcional (prellenado de Top Usuarios) sin
+      romper su uso existente desde `CouponsPage` (sin la prop, `userId: ''` como antes)
+
+## Users — Top usuarios (`GET /users?sortBy=totalSpent&order=desc`)
+
+- [x] Contrato confirmado en `src/types/api.d.ts` (`UsersController_listUsers.parameters.query`:
+      `sortBy?: "totalSpent" | "createdAt"`, `order?: "asc" | "desc"`) y contra el código fuente
+      real (`query-users.dto.ts`: `UsersSortBy`/`SortOrder` enums con `@IsEnum`, whitelist
+      explícita "evita inyección de columna"; `users.service.ts findAll()` usa
+      `order: { [sortColumn]: direction }` sobre `sortColumn = query.sortBy ?? CREATED_AT`).
+      `totalSpent` es una columna `decimal` real en `User` entity (no calculada al vuelo), así que
+      el `ORDER BY` funciona directo en SQL
+- [x] `useUsers` solo agrega `sortBy`/`order` al query si vienen definidos — verificado con test
+      (`hooks.test.tsx`) que sin esos argumentos el request sigue siendo exactamente
+      `{ page, limit }` (comportamiento previo intacto, sin params extra colándose para la vista
+      "Todos")
+- [x] `TopUsersSection`: tabla paginada con `useUsers(page, PAGE_SIZE, 'totalSpent', 'desc')`.
+      Estados de UI completos: `LoadingState`, `ErrorState` con retry (`refetch`), vacío explícito
+      ("No hay usuarios")
+- [x] Botón "Generar cupón" por fila abre `GenerateCouponForm` (individual, no el de campaña) con
+      `defaultUserId={user.id}` prellenado — **verificado por @tester con mutación
+      independiente**: rompí el prefill en `GenerateCouponForm` (`userId: ''` en vez de
+      `defaultUserId ?? ''`) y el test "abre el formulario de cupón individual con el userId de la
+      fila correcta prellenado" de `TopUsersSection.test.tsx` **falló** (`toHaveValue` esperaba el
+      UUID de la fila B y recibió `''`); restauré el fix y 2/2 volvieron a pasar
+- [x] Accesibilidad: `aria-label={\`Generar cupón para ${user.fullName}\`}` único por fila (mismo
+      patrón que "Ver detalle de X" ya usado en `UsersPage`), columna de acciones con `sr-only`
+      "Acciones" en el header
+- [x] `UsersPage` reestructurado con `Tabs` ("Todos"/"Top usuarios") sin romper el listado ni el
+      filtro de búsqueda en cliente existentes; cambiar de tab desmonta el contenido inactivo
+      (Radix `Tabs.Content` sin `forceMount`), así que no hay estado obsoleto entre pestañas
 
 
 ## Banners
@@ -405,3 +463,81 @@ solo cuando pasa lo aplicable de este checklist.
 
 Veredicto: LISTO PARA MARCAR COMPLETO / PENDIENTE
 ```
+
+---
+
+## Auditoría: Campaña masiva de cupones (`POST /coupons/generate-bulk`) + Top Usuarios (`GET /users?sortBy&order`)
+
+✅ Pasó:
+- `pnpm run type-check` (`tsc -b`), `pnpm run lint` (`eslint .`), `pnpm run build`: los tres sin
+  salida, cero errores/warnings
+- `pnpm run test`: 18 archivos / 95 tests en verde (confirmado independientemente, no solo de
+  palabra)
+- Contrato de `GenerateBulkCouponDto`/respuesta confirmado en `src/types/api.d.ts` Y contra el
+  código fuente real de `celtas-backend` (no solo Swagger, que documenta la respuesta como
+  `unknown`): `generate-bulk-coupon.dto.ts` y `CouponsService.generateBulk()` en
+  `coupons.service.ts` — `Promise<{ count: number }>`, coincide exacto con `BulkCouponResult` en
+  `src/features/coupons/types.ts`
+- Contrato de `sortBy`/`order` de `GET /users` confirmado en `api.d.ts`
+  (`UsersController_listUsers.parameters.query`) y contra `query-users.dto.ts` /
+  `users.service.ts` del backend real: whitelist por enum (`UsersSortBy`/`SortOrder`), `totalSpent`
+  es columna `decimal` real (no calculada), el `ORDER BY` funciona directo en SQL
+- **Mutación independiente #1 (campaña masiva)**: rompí la confirmación (hice que el submit
+  llamara a `mutateAsync` directamente) → 4/6 tests de `GenerateBulkCouponForm.test.tsx` fallaron
+  como se esperaba; restauré el fix → 6/6 en verde de nuevo
+- **Mutación independiente #2 (prefill de Top Usuarios)**: rompí `defaultUserId ?? ''` a `''` en
+  `GenerateCouponForm` → 1/2 tests de `TopUsersSection.test.tsx` falló exactamente en el
+  `toHaveValue` del UUID esperado; restauré el fix → 2/2 en verde de nuevo
+- El panel de confirmación de la campaña masiva es imposible de saltarse: reemplaza por completo
+  el `<form>` mientras está activo (no hay ningún elemento `<form>` en ese árbol), así que no hay
+  ruta de teclado (Enter) ni de doble-submit que dispare `mutateAsync` sin el clic explícito en
+  "Sí, generar cupones"; "Cancelar" descarta sin llamar a la API y deja el formulario reutilizable
+- `useGenerateBulkCoupons` invalida `['coupons','list']` en `onSuccess` — el listado se refresca
+  tras la campaña
+- Estados de UI completos y consistentes con el resto del proyecto: `LoadingState`, `ErrorState`
+  con retry, vacío explícito en `TopUsersSection`; alerta de éxito/error en ambos formularios de
+  cupón
+- Accesibilidad: labels con `htmlFor`/`id` en todos los campos nuevos, `aria-label` único por fila
+  en "Generar cupón para {nombre}" (mismo patrón que "Ver detalle de {nombre}" ya usado en
+  `UsersPage`), `sr-only` en columna de acciones
+- Sin `any`/`@ts-ignore`/`@ts-expect-error`/`@ts-nocheck` nuevos (grep en los 9 archivos
+  nuevos/modificados = 0 resultados), sin hex hardcodeado fuera de tokens celtas, sin texto en
+  inglés visible (el único patrón "No" detectado por el grep heurístico es el "No" de "No se pudo…"
+  en español, falso positivo)
+- Regla del `id` en el body: no aplica a estos dos endpoints (ambos son `POST`, no `PATCH` con id
+  en el path) — sin regresión del bug de clase ya conocido
+- Reglas de negocio específicas del checklist verificadas: límite de 100% en `percentage` (mismo
+  `superRefine`, espejo de `IsPercentageWithinLimit` reutilizado sin cambios en el backend entre
+  `GenerateCouponDto` y `GenerateBulkCouponDto`), `minPurchaseAmount` normaliza `''`/`0`/`'0'` a
+  `null` en el formulario de campaña masiva igual que el individual
+
+❌ Falló:
+- Ninguno de los puntos críticos del checklist
+
+⚠️ Riesgos / casos borde no cubiertos:
+- `GenerateBulkCouponForm.test.tsx` no tiene un test dedicado para `minPurchaseAmount` negativo
+  (sí lo tiene `GenerateCouponForm.test.tsx` para el form individual). El código es idéntico
+  (mismo `z.preprocess` + `.nonnegative()`, sin `min={0}` nativo en el input), así que el riesgo
+  real es bajo, pero falta el test explícito de regresión por si el patrón diverge en el futuro
+- Al cerrar y reabrir el diálogo de "Generar cupones" en `CouponsPage` (o cambiar de tab
+  individual↔campaña), no se verificó en runtime contra el DOM real si Radix `Dialog.Content`/
+  `Tabs.Content` desmontan de forma confiable el estado interno (`pendingValues`, `result`) en
+  todos los navegadores — por código fuente de Radix esto debería desmontar (`Tabs.Content` sin
+  `forceMount`), pero no hay un test de componente que lo cubra explícitamente para
+  `GenerateBulkCouponForm`
+- No se probó el flujo end-to-end contra el backend real desplegado (`https://backend-celtas.onrender.com`) — toda la verificación de contrato fue estática (tipos + código fuente) y de
+  componente (mocks). Sigue pendiente una prueba manual real de `POST /coupons/generate-bulk` con
+  una base de datos de prueba antes de usarlo con clientes reales de producción, dado que es una
+  acción irreversible que impacta a TODOS los clientes
+- No se verificó qué pasa si `clients.length` es muy grande (el backend usa `BULK_INSERT_CHUNK_SIZE
+  = 500` para el batch insert) — el frontend no tiene timeout ni manejo especial para una campaña
+  que tarde varios segundos en generarse con una base de clientes grande; solo muestra
+  "Generando…" sin límite de tiempo. No es un bug, pero vale la pena confirmar con datos reales de
+  producción que el request no expire antes de que el backend responda
+- La sección "Users" original y "Users — Top usuarios" del checklist quedaron como bloques
+  separados en este documento (no fusionados) para no reescribir el bloque ya auditado
+  anteriormente; si se agrega más funcionalidad a Top Usuarios más adelante, considerar
+  fusionarlos en una sola sección "Users" para evitar fragmentación
+
+Veredicto: LISTO PARA MARCAR COMPLETO
+

@@ -487,6 +487,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/coupons/generate-bulk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generar cupones masivos de campaña (solo admin, uno por cliente)
+         * @description Crea un cupón individual (código único random) para cada usuario con role cliente (excluye admins), etiquetados con campaignName para agrupar/filtrar. Devuelve el conteo generado, no la lista completa.
+         */
+        post: operations["CouponsController_generateBulk"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/coupons/me": {
         parameters: {
             query?: never;
@@ -1047,6 +1067,38 @@ export interface components {
              * @example 50
              */
             minPurchaseAmount?: number;
+            /**
+             * @description Fecha de expiración del cupón (ISO 8601). Omitido = se calcula automático (hoy + días configurados).
+             * @example 2026-12-31T23:59:59.000Z
+             */
+            expiresAt?: string;
+        };
+        GenerateBulkCouponDto: {
+            /**
+             * @description Tipo de descuento: porcentaje o monto fijo
+             * @enum {string}
+             */
+            discountType: "percentage" | "fixed_amount";
+            /**
+             * @description Valor del descuento: % si es percentage, soles si es fixed_amount
+             * @example 10
+             */
+            discountValue: number;
+            /**
+             * @description Etiqueta de campaña para agrupar/filtrar los cupones generados en masa. No es el código del cupón (ese se genera random por usuario).
+             * @example padre2026
+             */
+            campaignName: string;
+            /**
+             * @description Monto mínimo de compra (subtotal del pedido) para poder usar el cupón. Omitido o null = sin mínimo.
+             * @example 50
+             */
+            minPurchaseAmount?: number;
+            /**
+             * @description Fecha de expiración de todos los cupones de la campaña (ISO 8601). Omitido = se calcula automático (hoy + días configurados).
+             * @example 2026-12-31T23:59:59.000Z
+             */
+            expiresAt?: string;
         };
         ValidateCouponDto: {
             /**
@@ -1557,6 +1609,10 @@ export interface operations {
                 page?: number;
                 /** @description Usuarios por página (default 10, máx 100) */
                 limit?: number;
+                /** @description Columna de ordenamiento. Sin este param, el comportamiento actual (createdAt DESC) queda intacto. */
+                sortBy?: "totalSpent" | "createdAt";
+                /** @description Orden ascendente o descendente (default desc) */
+                order?: "asc" | "desc";
             };
             header?: never;
             path?: never;
@@ -1566,6 +1622,13 @@ export interface operations {
         responses: {
             /** @description Lista paginada de usuarios */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description sortBy u order con un valor no permitido */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2567,6 +2630,51 @@ export interface operations {
             };
             /** @description Usuario no encontrado */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    CouponsController_generateBulk: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateBulkCouponDto"];
+            };
+        };
+        responses: {
+            /** @description Cupones generados */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Payload inválido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

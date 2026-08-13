@@ -195,6 +195,32 @@ celtas-admin/
 - [x] Ver cupones de un usuario específico — el backend agregó el filtro `userId` a `GET /coupons`
       (confirmado contra `/docs-json` y regenerado con `pnpm run generate:types`). Se consume desde
       el detalle de usuario (módulo 9) con `useCoupons(page, limit, status, userId)`.
+- [x] **Campaña masiva de cupones** (`POST /coupons/generate-bulk`, backend deployado): contrato
+      confirmado en `src/types/api.d.ts` (regenerado con `pnpm run generate:types`) y contra el
+      código fuente real de `celtas-backend` (`generate-bulk-coupon.dto.ts` y
+      `CouponsService.generateBulk()` en `coupons.service.ts` — Swagger documenta la respuesta
+      como `unknown`, el código confirma `Promise<{ count: number }>`, un cupón por cada usuario
+      con role `cliente`, admins excluidos). `CouponsPage` ahora abre un diálogo con `Tabs`
+      ("Cupón individual" / "Campaña para todos los clientes"); el tab nuevo es
+      `GenerateBulkCouponForm.tsx` con discountType, discountValue (mismo límite de 100% para
+      `percentage` que el form individual), campaignName (requerido), expiresAt (`DatePicker`
+      opcional — vacío = default automático del backend) y minPurchaseAmount (opcional, misma
+      normalización `''`/`0` → `null` que el form individual). **Confirmación explícita antes de
+      mutar**: el submit del formulario NO llama a la API directamente — muestra un panel de
+      confirmación con el resumen de la campaña y el texto exacto pedido ("¿Confirmas generar
+      cupones para todos los clientes? ... Esta acción no se puede deshacer"); solo el botón "Sí,
+      generar cupones" dispara `mutateAsync`. El resultado (`count`) se muestra en un alert de
+      éxito. `GenerateCouponForm` (individual) gana un prop opcional `defaultUserId` para
+      prellenar el UUID (usado por Top Usuarios, módulo 9), sin romper su uso previo.
+      **Verificado por @tester con mutación independiente**: rompió el fix de la confirmación
+      (submit directo a `mutateAsync`, saltándose el panel) y 4/6 tests de
+      `GenerateBulkCouponForm.test.tsx` fallaron como se esperaba; restauró el fix y 6/6 volvieron
+      a pasar. El panel de confirmación reemplaza por completo el `<form>` mientras está activo
+      (no hay ningún `<form>` en ese árbol) — no hay ruta de teclado (Enter) ni de doble-submit
+      que dispare la mutación sin el clic explícito. **Veredicto final de @tester: LISTO**
+      (`type-check`, `lint`, `test` 95/95 en 18 archivos, `build`, todo repetido de forma
+      independiente). Detalle completo en `docs/testing-checklist.md` (sección Coupons +
+      reporte de auditoría).
 
 ### 7. Banners
 - [x] CRUD con subida de imagen
@@ -306,6 +332,25 @@ celtas-admin/
 - [x] Vista 360 en tabs (Perfil / Direcciones / Cupones / Pedidos) con `key={user.id}` para que al
       cambiar de usuario todas las queries apunten al usuario correcto (test de regresión cubre el
       edge case)
+- [x] **Top Usuarios** (`GET /users?sortBy=totalSpent&order=desc`, backend deployado): contrato
+      confirmado en `src/types/api.d.ts` (`UsersController_listUsers.parameters.query`:
+      `sortBy?: "totalSpent" | "createdAt"`, `order?: "asc" | "desc"`) y contra el código fuente
+      real (`query-users.dto.ts` con whitelist por enum, `users.service.ts` — `totalSpent` es
+      columna `decimal` real, el `ORDER BY` corre directo en SQL, no hay cálculo al vuelo).
+      `useUsers` acepta `sortBy`/`order` opcionales y solo los agrega al query si vienen definidos
+      — sin ellos el request sigue siendo exactamente `{ page, limit }` (comportamiento previo
+      intacto para la vista "Todos"). `UsersPage` reestructurado con `Tabs` ("Todos" / "Top
+      usuarios"); el tab nuevo es `TopUsersSection.tsx`, tabla paginada reutilizando el mismo
+      patrón de `Pagination`/`LoadingState`/`ErrorState`. Columnas: Nombre, Email, Total gastado,
+      Registro. Cada fila tiene un botón "Generar cupón" que abre `GenerateCouponForm` (el
+      individual, no el de campaña) con `defaultUserId={user.id}` prellenado — evita copiar el
+      UUID a mano. **Verificado por @tester con mutación independiente**: rompió el prefill en
+      `GenerateCouponForm` (`userId: ''` en vez de `defaultUserId ?? ''`) y el test
+      correspondiente de `TopUsersSection.test.tsx` falló exactamente en el UUID esperado;
+      restauró el fix y volvió a pasar. **Veredicto final de @tester: LISTO** (`type-check`,
+      `lint`, `test` 95/95 en 18 archivos, `build`, todo repetido de forma independiente, incluida
+      la confirmación del contrato contra el código fuente real del backend). Detalle completo en
+      `docs/testing-checklist.md` (sección "Users — Top usuarios" + reporte de auditoría).
 
 ### 10. Deploy y Calidad
 - [x] Pase de auditoría general (parte 1 — código):

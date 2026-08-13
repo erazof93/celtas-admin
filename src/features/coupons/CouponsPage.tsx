@@ -27,6 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { formatLima } from '@/lib/dates'
 import { cn } from '@/lib/utils'
 import {
@@ -35,6 +36,7 @@ import {
   getDaysUntilExpiry,
   getEffectiveStatus,
 } from './coupon-utils'
+import { GenerateBulkCouponForm } from './GenerateBulkCouponForm'
 import { GenerateCouponForm } from './GenerateCouponForm'
 import { useCoupons } from './hooks'
 import { COUPON_ORIGIN_LABELS, COUPON_STATUS_BADGE, COUPON_STATUS_LABELS } from './status'
@@ -139,7 +141,7 @@ export default function CouponsPage() {
           </Select>
           <Button onClick={() => setGenerateOpen(true)}>
             <Plus />
-            Generar cupón
+            Generar cupones
           </Button>
         </div>
       </header>
@@ -219,13 +221,28 @@ export default function CouponsPage() {
       <Dialog open={generateOpen} onOpenChange={setGenerateOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Generar cupón de campaña</DialogTitle>
+            <DialogTitle>Generar cupones</DialogTitle>
             <DialogDescription>
-              Crea un cupón manual para un cliente específico. No depende del
-              umbral de gasto.
+              Un cupón manual para un cliente específico, o una campaña masiva
+              para todos los clientes.
             </DialogDescription>
           </DialogHeader>
-          <GenerateCouponForm onClose={() => setGenerateOpen(false)} />
+          <Tabs defaultValue="individual">
+            <TabsList className="w-full">
+              <TabsTrigger value="individual" className="flex-1">
+                Cupón individual
+              </TabsTrigger>
+              <TabsTrigger value="campaign" className="flex-1">
+                Campaña para todos los clientes
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="individual" className="mt-4">
+              <GenerateCouponForm onClose={() => setGenerateOpen(false)} />
+            </TabsContent>
+            <TabsContent value="campaign" className="mt-4">
+              <GenerateBulkCouponForm onClose={() => setGenerateOpen(false)} />
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
     </div>

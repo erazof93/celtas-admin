@@ -1,17 +1,22 @@
 {
   "permissions": {
     "allow": [
-      "Read(*)",
-      "Edit(*)",
-      "Grep(*)",
-      "Glob(*)",
-      "Bash(cat *)",
+      "Read(**)",
+      "Edit(**)",
+      "Write(**)",
+      "Grep(**)",
+      "Glob(**)",
+      "Bash(ls*)",
+      "Bash(mkdir*)",
+      "Bash(cat*)",
       "Bash(find *)",
       "Bash(pnpm *)",
       "Bash(pnpm dlx *)",
       "Bash(git status*)",
       "Bash(git diff*)",
-      "Bash(git log*)",
+      "Bash(git log*)"
+    ],
+    "deny": [
       "Bash(git add*)",
       "Bash(git commit*)",
       "Bash(git push*)"

@@ -1,6 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { get, post } from '@/lib/api-client'
-import type { Coupon, CouponStatus, GenerateCouponInput, PaginatedCoupons } from './types'
+import type {
+  BulkCouponResult,
+  Coupon,
+  CouponStatus,
+  GenerateBulkCouponInput,
+  GenerateCouponInput,
+  PaginatedCoupons,
+} from './types'
 
 const COUPONS_LIST_KEY = ['coupons', 'list'] as const
 
@@ -43,6 +50,21 @@ export function useGenerateCoupon() {
   return useMutation({
     mutationFn: (input: GenerateCouponInput) =>
       post<Coupon>('/coupons/generate', input),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: COUPONS_LIST_KEY }),
+  })
+}
+
+/**
+ * Generación masiva de campaña (POST /coupons/generate-bulk): un cupón por
+ * cada usuario con role cliente. Acción de impacto real — el componente que
+ * la usa exige confirmación explícita antes de llamar a mutateAsync.
+ */
+export function useGenerateBulkCoupons() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: GenerateBulkCouponInput) =>
+      post<BulkCouponResult>('/coupons/generate-bulk', input),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: COUPONS_LIST_KEY }),
   })

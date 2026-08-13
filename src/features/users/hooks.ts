@@ -5,13 +5,28 @@ import type { PaginatedUsers, UpdateUserRoleInput, UserAddress } from './types'
 
 const USERS_KEY = ['users'] as const
 
-/** GET /users (admin): listado paginado, sin búsqueda server-side. */
-export function useUsers(page: number, limit: number) {
+/**
+ * GET /users (admin): listado paginado, sin búsqueda server-side.
+ * sortBy/order son opcionales (confirmados en QueryUsersDto vía /docs-json):
+ * sortBy solo acepta 'totalSpent' | 'createdAt'; sin este param el backend
+ * mantiene el comportamiento por defecto (createdAt DESC).
+ */
+export function useUsers(
+  page: number,
+  limit: number,
+  sortBy?: 'totalSpent' | 'createdAt',
+  order?: 'asc' | 'desc',
+) {
   return useQuery({
-    queryKey: ['users', 'list', page, limit],
+    queryKey: ['users', 'list', page, limit, sortBy ?? 'default', order ?? 'default'],
     queryFn: () =>
       get<PaginatedUsers>('/users', {
-        params: { page, limit },
+        params: {
+          page,
+          limit,
+          ...(sortBy ? { sortBy } : {}),
+          ...(order ? { order } : {}),
+        },
       }),
   })
 }

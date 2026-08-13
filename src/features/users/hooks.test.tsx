@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { renderHook } from '@testing-library/react'
+import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
@@ -11,16 +11,19 @@ import type { ReactNode } from 'react'
  * El test FALLA si se revierte el fix (body = input completo con id).
  */
 
-const { patchMock } = vi.hoisted(() => ({ patchMock: vi.fn() }))
+const { patchMock, getMock } = vi.hoisted(() => ({
+  patchMock: vi.fn(),
+  getMock: vi.fn(),
+}))
 
 vi.mock('@/lib/api-client', () => ({
   patch: patchMock,
-  get: vi.fn(),
+  get: getMock,
   post: vi.fn(),
   del: vi.fn(),
 }))
 
-import { useUpdateUserRole } from './hooks'
+import { useUsers, useUpdateUserRole } from './hooks'
 
 function makeWrapper() {
   const queryClient = new QueryClient({
@@ -32,6 +35,46 @@ function makeWrapper() {
     )
   }
 }
+
+/**
+ * Top Usuarios (GET /users?sortBy=totalSpent&order=desc) depende de que
+ * useUsers reenvíe sortBy/order como query params solo cuando se pasan —
+ * la vista "Todos" (sin sortBy/order) debe seguir pidiendo exactamente lo
+ * mismo que antes de este cambio, sin params extra colándose.
+ */
+describe('useUsers', () => {
+  beforeEach(() => {
+    getMock.mockReset()
+    getMock.mockResolvedValue({
+      items: [],
+      meta: { page: 1, limit: 10, total: 0, totalPages: 0 },
+    })
+  })
+
+  it('sin sortBy/order: solo envía page y limit (comportamiento previo intacto)', async () => {
+    renderHook(() => useUsers(1, 10), {
+      wrapper: makeWrapper(),
+    })
+
+    await waitFor(() => expect(getMock).toHaveBeenCalledTimes(1))
+    expect(getMock).toHaveBeenCalledWith('/users', {
+      params: { page: 1, limit: 10 },
+    })
+  })
+
+  it('con sortBy=totalSpent y order=desc: los reenvía como query params', async () => {
+    const { result } = renderHook(
+      () => useUsers(1, 10, 'totalSpent', 'desc'),
+      { wrapper: makeWrapper() },
+    )
+
+    await waitFor(() => expect(getMock).toHaveBeenCalledTimes(1))
+    expect(getMock).toHaveBeenCalledWith('/users', {
+      params: { page: 1, limit: 10, sortBy: 'totalSpent', order: 'desc' },
+    })
+    expect(result.current).toBeDefined()
+  })
+})
 
 describe('useUpdateUserRole', () => {
   beforeEach(() => {

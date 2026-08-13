@@ -55,3 +55,29 @@ export interface GenerateCouponInput {
    */
   minPurchaseAmount?: number | null
 }
+
+/**
+ * Body de POST /coupons/generate-bulk (GenerateBulkCouponDto). A diferencia
+ * de GenerateCouponInput, SÍ acepta expiresAt (opcional — omitido = el
+ * backend calcula el default automático) y requiere campaignName. Confirmado
+ * contra generate-bulk-coupon.dto.ts del backend.
+ */
+export interface GenerateBulkCouponInput {
+  discountType: CouponDiscountType
+  discountValue: number
+  /** Etiqueta de campaña para agrupar/filtrar los cupones generados en masa. */
+  campaignName: string
+  minPurchaseAmount?: number | null
+  /** ISO 8601. Omitido = el backend calcula hoy + días configurados. */
+  expiresAt?: string
+}
+
+/**
+ * Respuesta de POST /coupons/generate-bulk. El Swagger la documenta como
+ * `unknown` (sin DTO de respuesta) — confirmado contra el código real:
+ * CouponsService.generateBulk() en coupons.service.ts devuelve
+ * `Promise<{ count: number }>`, un cupón por cada usuario con role cliente.
+ */
+export interface BulkCouponResult {
+  count: number
+}

@@ -78,13 +78,22 @@ type GenerateCouponFormInputValues = z.input<typeof generateCouponSchema>
 
 interface GenerateCouponFormProps {
   onClose: () => void
+  /**
+   * UUID prellenado (ej. desde la fila "Generar cupón" de Top Usuarios) —
+   * evita copiar el UUID a mano. El campo sigue editable por si el admin
+   * necesita corregirlo.
+   */
+  defaultUserId?: string
 }
 
 /**
  * Formulario de generación manual de cupón (campaña). Mapea el 404 de usuario
  * inexistente al campo userId; el resto de errores como alerta del formulario.
  */
-export function GenerateCouponForm({ onClose }: GenerateCouponFormProps) {
+export function GenerateCouponForm({
+  onClose,
+  defaultUserId,
+}: GenerateCouponFormProps) {
   const generateMutation = useGenerateCoupon()
   const [serverError, setServerError] = useState<string | null>(null)
   const [generated, setGenerated] = useState<Coupon | null>(null)
@@ -100,7 +109,7 @@ export function GenerateCouponForm({ onClose }: GenerateCouponFormProps) {
     {
       resolver: zodResolver(generateCouponSchema),
       defaultValues: {
-        userId: '',
+        userId: defaultUserId ?? '',
         discountType: 'percentage',
         discountValue: undefined,
         minPurchaseAmount: null,
@@ -175,8 +184,9 @@ export function GenerateCouponForm({ onClose }: GenerateCouponFormProps) {
           <p className="text-celtas-red-light text-xs">{errors.userId.message}</p>
         ) : null}
         <p className="text-muted-foreground text-xs">
-          El selector de usuarios llega en el módulo Usuarios; por ahora pega el
-          UUID del cliente.
+          {defaultUserId
+            ? 'Prellenado desde la fila de usuario seleccionada — puedes corregirlo si hace falta.'
+            : 'Pega el UUID del cliente (visible en el detalle de Usuarios).'}
         </p>
       </div>
 
