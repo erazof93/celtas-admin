@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Controller, useForm } from 'react-hook-form'
+import { Controller, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import {
@@ -8,6 +8,7 @@ import {
   AlertTitle,
 } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -21,6 +22,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { getApiMessage, getApiStatus, isConflict, isNotFound } from '@/lib/api-errors'
 import { useCategories } from '../categories/hooks'
+import { useSauces } from '../sauces/hooks'
 import {
   useCreateItem,
   useUpdateItem,
@@ -32,6 +34,9 @@ import type { MenuItem } from '../types'
 /**
  * Reglas espejo del CreateMenuItemDto: nombre obligatorio, precio > 0 con
  * máximo 2 decimales, categoryId UUID obligatorio, available booleano.
+ * sauceIds es opcional en el backend (undefined/[] = sin selector en la app,
+ * ej. arroz chaufa) — acá se normaliza siempre a array, nunca undefined, para
+ * no tener que distinguir "no tocado" de "vacío" en un formulario de UI.
  */
 const itemSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio'),
@@ -43,6 +48,7 @@ const itemSchema = z.object({
     .refine((v) => Math.round(v * 100) / 100 === v, 'Máximo 2 decimales'),
   categoryId: z.string().min(1, 'Selecciona una categoría'),
   available: z.boolean(),
+  sauceIds: z.array(z.string()).default([]),
 })
 
 type ItemFormValues = z.output<typeof itemSchema>
@@ -68,6 +74,7 @@ interface ItemFormProps {
  */
 export function ItemForm({ item, onClose }: ItemFormProps) {
   const categoriesQuery = useCategories()
+  const saucesQuery = useSauces()
   const createMutation = useCreateItem()
   const updateMutation = useUpdateItem()
   const uploadMutation = useUploadItemImage()
@@ -84,6 +91,7 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
     register,
     handleSubmit,
     control,
+    setValue,
     setError,
     formState: { errors, isSubmitting },
   } = useForm<ItemFormInputValues, unknown, ItemFormValues>({
@@ -94,8 +102,11 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
       price: item?.price ?? '',
       categoryId: item?.categoryId ?? '',
       available: item?.available ?? true,
+      sauceIds: item?.sauces.map((sauce) => sauce.id) ?? [],
     },
   })
+
+  const sauceIds = useWatch({ control, name: 'sauceIds' })
 
   function buildPayload(values: ItemFormValues) {
     return {
@@ -106,6 +117,7 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
       price: values.price,
       categoryId: values.categoryId,
       available: values.available,
+      sauceIds: values.sauceIds,
     }
   }
 
@@ -277,6 +289,57 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
             Se muestra en la app
           </span>
         </div>
+      </div>
+
+      <div className="space-y-1.5 pt-2">
+        <Label className="text-sm font-medium">Salsas y cremas</Label>
+        <p className="text-muted-foreground mb-1 text-xs">
+          Qué puede elegir el cliente al agregar este producto al carrito. Sin
+          selección = el producto no muestra selector de salsas en la app (ej.
+          arroz chaufa).
+        </p>
+        {saucesQuery.isLoading ? (
+          <p className="text-muted-foreground text-xs">Cargando salsas…</p>
+        ) : saucesQuery.isError ? (
+          <Alert variant="destructive">
+            <AlertTitle>No se pudieron cargar las salsas</AlertTitle>
+            <AlertDescription>
+              Este producto se puede guardar igual, pero no vas a poder
+              asignarle salsas hasta que recargues la página.
+            </AlertDescription>
+          </Alert>
+        ) : saucesQuery.data && saucesQuery.data.length === 0 ? (
+          <p className="text-muted-foreground text-xs">
+            Todavía no hay salsas en el catálogo. Créalas primero en la
+            pestaña "Salsas" del Menú.
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+            {(saucesQuery.data ?? []).map((sauce) => (
+              <label
+                key={sauce.id}
+                className="flex items-center gap-1.5 text-sm"
+              >
+                <Checkbox
+                  checked={sauceIds?.includes(sauce.id) ?? false}
+                  onCheckedChange={(isChecked) => {
+                    const current = sauceIds ?? []
+                    setValue(
+                      'sauceIds',
+                      isChecked
+                        ? [...current, sauce.id]
+                        : current.filter((id) => id !== sauce.id),
+                    )
+                  }}
+                />
+                <span className={sauce.active ? '' : 'text-muted-foreground'}>
+                  {sauce.name}
+                  {!sauce.active ? ' (oculta)' : ''}
+                </span>
+              </label>
+            ))}
+          </div>
+        )}
       </div>
 
       <ImageUpload

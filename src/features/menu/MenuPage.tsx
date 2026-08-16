@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { CategoriesSection } from './categories/CategoriesSection'
 import { ItemsSection } from './items/ItemsSection'
+import { SaucesSection } from './sauces/SaucesSection'
 
 const TABS = [
   { key: 'categories', label: 'Categorías' },
   { key: 'items', label: 'Productos' },
+  { key: 'sauces', label: 'Salsas' },
 ] as const
 
 type MenuTab = (typeof TABS)[number]['key']
@@ -49,7 +51,13 @@ export default function MenuPage() {
         ))}
       </div>
 
-      {tab === 'categories' ? <CategoriesSection /> : <ItemsSection />}
+      {tab === 'categories' ? (
+        <CategoriesSection />
+      ) : tab === 'items' ? (
+        <ItemsSection />
+      ) : (
+        <SaucesSection />
+      )}
     </div>
   )
 }

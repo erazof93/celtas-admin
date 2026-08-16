@@ -392,6 +392,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sauces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar todas las salsas del catálogo (admin) */
+        get: operations["SaucesController_findAll"];
+        put?: never;
+        /** Crear una salsa en el catálogo (admin) */
+        post: operations["SaucesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sauces/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Eliminar una salsa del catálogo (admin)
+         * @description No afecta pedidos ya creados (guardan un snapshot de texto); solo la quita de la oferta futura de los productos que la tenían asignada.
+         */
+        delete: operations["SaucesController_remove"];
+        options?: never;
+        head?: never;
+        /** Editar una salsa del catálogo (admin) */
+        patch: operations["SaucesController_update"];
+        trace?: never;
+    };
     "/orders": {
         parameters: {
             query?: never;
@@ -974,6 +1013,13 @@ export interface components {
              * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
              */
             categoryId: string;
+            /**
+             * @description UUIDs de las salsas del catálogo que este producto ofrece (vacío u omitido = sin selector de salsas, ej. arroz chaufa)
+             * @example [
+             *       "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+             *     ]
+             */
+            sauceIds?: string[];
         };
         UpdateMenuItemDto: {
             /**
@@ -1006,6 +1052,47 @@ export interface components {
              * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
              */
             categoryId?: string;
+            /**
+             * @description UUIDs de las salsas del catálogo que este producto ofrece (vacío u omitido = sin selector de salsas, ej. arroz chaufa)
+             * @example [
+             *       "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+             *     ]
+             */
+            sauceIds?: string[];
+        };
+        CreateSauceDto: {
+            /**
+             * @description Nombre de la salsa/crema
+             * @example Mayonesa
+             */
+            name: string;
+            /**
+             * @description Si la salsa está disponible para asignarse a productos (default true)
+             * @example true
+             */
+            active?: boolean;
+            /**
+             * @description Orden de aparición en el selector (menor = primero)
+             * @example 1
+             */
+            sortOrder?: number;
+        };
+        UpdateSauceDto: {
+            /**
+             * @description Nombre de la salsa/crema
+             * @example Mayonesa
+             */
+            name?: string;
+            /**
+             * @description Si la salsa está disponible para asignarse a productos (default true)
+             * @example true
+             */
+            active?: boolean;
+            /**
+             * @description Orden de aparición en el selector (menor = primero)
+             * @example 1
+             */
+            sortOrder?: number;
         };
         CreateOrderItemDto: {
             /**
@@ -1018,6 +1105,13 @@ export interface components {
              * @example 2
              */
             quantity: number;
+            /**
+             * @description UUIDs de las salsas elegidas para este ítem (deben estar entre las que el producto ofrece; se aplican a las `quantity` unidades del ítem, no una selección por unidad individual). Omitido o vacío = sin salsas.
+             * @example [
+             *       "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+             *     ]
+             */
+            sauceIds?: string[];
         };
         CreateOrderDto: {
             /**
@@ -2376,6 +2470,190 @@ export interface operations {
             };
             /** @description La categoría no existe */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SaucesController_findAll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lista de salsas */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SaucesController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSauceDto"];
+            };
+        };
+        responses: {
+            /** @description Salsa creada */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Payload inválido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya existe una salsa con ese nombre */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SaucesController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID de la salsa */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Salsa eliminada */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La salsa no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SaucesController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID de la salsa */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateSauceDto"];
+            };
+        };
+        responses: {
+            /** @description Salsa actualizada */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Payload inválido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La salsa no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya existe otra salsa con ese nombre */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

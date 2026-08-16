@@ -173,6 +173,25 @@ celtas-admin/
       dependencias en `src/components/ui/toast.tsx`). El UUID no se muestra como texto en la tabla
       (largo y poco legible); el botón copia el id real con toast "ID copiado" y fallback de error
       si el portapapeles falla. Tests en `CopyIdButton.test.tsx`
+- [ ] **Mejora nueva (en curso): catálogo de salsas/cremas + selección por producto.** El backend
+      agregó un módulo `sauces` (`GET/POST /sauces`, `PATCH/DELETE /sauces/:id`) y `MenuItem` gana
+      `sauces: Sauce[]` + `sauceIds?: string[]` en create/update — confirmado contra
+      `src/modules/sauces/` y `src/modules/menu/` reales del backend, `api.d.ts` regenerado con
+      `pnpm run generate:types` contra el swagger real. Nueva tercera pestaña "Salsas" en
+      `MenuPage.tsx` (`features/menu/sauces/`: `hooks.ts`, `SauceForm.tsx`, `SaucesSection.tsx` —
+      mismo patrón CRUD que Categorías, con el mismo fix de "id solo en el path del PATCH" ya
+      aplicado desde el inicio, cubierto en `hooks.test.tsx`). `ItemForm.tsx` gana un checklist de
+      checkboxes (mismo patrón que `daysOfWeek` en `BannerForm.tsx`) con todas las salsas del
+      catálogo — las inactivas se muestran igual (marcadas "(oculta)") si el producto ya las tenía
+      asignadas, para no perder la relación al editar sin querer; sin salsas en el catálogo
+      todavía, mensaje explícito señalando la pestaña "Salsas". `type-check`/`lint`/`build`
+      limpios, 100/100 tests (19 archivos). **Verificado con Playwright contra el backend local
+      real** (no solo tests): login real, crear una salsa nueva desde la UI y verla en la tabla,
+      editar "Arroz Chaufa" (checklist sin marcar, como corresponde) y "Celtas Burguesa Clásica"
+      (checklist con "Mostaza" pre-marcada según la relación real ya guardada) — capturas
+      confirmadas visualmente, sin errores de consola. **Pendiente antes de marcar completo**:
+      pase real del subagente `@tester` (lo de arriba lo verifiqué yo directamente, no es el pase
+      habitual de `@tester` del proyecto).
 
 ### 5. Pedidos
 - [x] Listado paginado, filtro por estado

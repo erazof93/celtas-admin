@@ -28,6 +28,23 @@ export interface MenuItem {
   categoryId: string
   /** Relación cargada por GET /menu/items. */
   category: Category
+  /**
+   * Salsas/cremas que este producto ofrece (relación ManyToMany, cargada por
+   * GET /menu/items). Vacío = el producto no ofrece selector en la app (ej.
+   * arroz chaufa) — no es opcional/undefined, el backend siempre devuelve el
+   * array (confirmado contra menu.service.ts findAllItems/createItem/updateItem).
+   */
+  sauces: Sauce[]
+  createdAt: string
+  updatedAt: string
+}
+
+/** Catálogo global de salsas/cremas (ej. Mayonesa, Mostaza, Ketchup). */
+export interface Sauce {
+  id: string
+  name: string
+  active: boolean
+  sortOrder: number
   createdAt: string
   updatedAt: string
 }
@@ -49,9 +66,22 @@ export interface CreateMenuItemInput {
   image?: string
   available?: boolean
   categoryId: string
+  /**
+   * UUIDs de las salsas del catálogo que este producto ofrece. Omitido o vacío
+   * = sin selector de salsas en la app (ej. arroz chaufa).
+   */
+  sauceIds?: string[]
 }
 
 export type UpdateMenuItemInput = Partial<CreateMenuItemInput>
 
 /** Resultado de POST /menu/items/:id/image (el item con la URL nueva). */
 export type UploadImageResult = MenuItem
+
+export interface CreateSauceInput {
+  name: string
+  active?: boolean
+  sortOrder?: number
+}
+
+export type UpdateSauceInput = Partial<CreateSauceInput>
