@@ -28,6 +28,7 @@ function makeItem(overrides: Partial<OrderItem> = {}): OrderItem {
     name: 'Celtas Burger',
     unitPrice: 18.5,
     quantity: 2,
+    selectedSauces: null,
     subtotal: 37,
     createdAt: '2026-08-08T10:00:00.000Z',
     updatedAt: '2026-08-08T10:00:00.000Z',

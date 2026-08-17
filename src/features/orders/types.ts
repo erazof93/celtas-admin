@@ -21,6 +21,15 @@ export interface OrderItem {
   /** Precio unitario copiado al crear el pedido (snapshot). */
   unitPrice: number
   quantity: number
+  /**
+   * Salsas/cremas elegidas, snapshot al crear el pedido. Tri-state real — no
+   * tratar como truthy check, los 3 casos son distintos en la UI:
+   * - `null`: no aplica (el producto no ofrece salsas, o pedido anterior a
+   *   esta feature).
+   * - `[]`: el cliente vio el selector y eligió explícitamente "Sin salsas".
+   * - `string[]` con nombres: las salsas elegidas.
+   */
+  selectedSauces: string[] | null
   /** unitPrice * quantity, calculado en el backend. */
   subtotal: number
   createdAt: string

@@ -138,6 +138,13 @@ export function OrderDetailDialog({
                         <p className="text-muted-foreground text-xs">
                           {item.quantity} x {CURRENCY.format(item.unitPrice)}
                         </p>
+                        {item.selectedSauces !== null ? (
+                          <p className="text-muted-foreground text-xs italic">
+                            {item.selectedSauces.length > 0
+                              ? `Salsas: ${item.selectedSauces.join(', ')}`
+                              : 'Sin salsas'}
+                          </p>
+                        ) : null}
                       </div>
                       <span className="shrink-0 font-medium">
                         {CURRENCY.format(item.subtotal)}

@@ -100,6 +100,18 @@ solo cuando pasa lo aplicable de este checklist.
 - [x] Solo se muestran botones de transición de estado válidos según el estado actual
 - [x] El link de WhatsApp del pedido es clickeable y correcto
 - [x] Tras un cambio de estado (PATCH /orders/:id/status), el detalle abierto conserva sus items: el backend devuelve el pedido SIN relaciones, y `onOrderUpdated` hace merge `{ ...prev, ...updated, items: prev.items }` en vez de reemplazar (fix del crash `order.items.map` con `undefined`)
+- [x] `OrderItem.selectedSauces` es tri-state real (`string[] | null`), confirmado contra el código
+      fuente real de `backend-celtas` (`order-item.entity.ts`, `orders.service.ts`,
+      `orders.service.spec.ts`): `null` = no aplica, `[]` = "Sin salsas" elegido a propósito por el
+      cliente, `string[]` = salsas elegidas. El detalle de pedido (`OrderDetailDialog.tsx`) muestra
+      la línea correcta para cada caso — no muestra nada solo cuando es `null`, nunca cuando es `[]`
+      (`OrderDetailDialog.test.tsx`, cubre los 3 casos por separado). **Verificado por @tester
+      contra el código fuente real** (no solo confiado en la descripción de la sesión principal):
+      `order-item.entity.ts` línea 65 (`selectedSauces: string[] | null`, columna `text array
+      nullable`); `orders.service.ts` líneas 397-402 (`buildWhatsappUrl`: `null` = sin sufijo, `[]`
+      = "(Salsas: Sin salsas)", con nombres = lista) — mismo criterio tri-state que el frontend;
+      `orders.service.spec.ts` líneas 296-319 (3 tests del backend: sin `sauceIds` → `null`,
+      `sauceIds: []` → `[]` explícito y `not.toBeNull()`, con `sauceIds` → nombres resueltos)
 
 ## Testing (5.1 Infraestructura)
 
@@ -119,6 +131,16 @@ solo cuando pasa lo aplicable de este checklist.
       y el diálogo crashearía en `items.map(...)`
 - [x] Convención de testing documentada en la skill `react-celtas` (dónde viven los tests, sin
       globals, regla de lógica de datos que ya mordió con bug real, patrón de función pura)
+- [x] `OrderDetailDialog.test.tsx` (nuevo) cubre los 3 casos del tri-state de `selectedSauces` por
+      separado (`null`, `[]`, con nombres). **Verificado con mutación por @tester**: cambié
+      `item.selectedSauces !== null` a un truthy check (`item.selectedSauces &&
+      item.selectedSauces.length > 0`) en `OrderDetailDialog.tsx` — reproduce el bug original que
+      motivó el refinamiento del backend (colapsar `[]` con `null`) — y el test del caso `[]` FALLÓ
+      exactamente como se esperaba: `1 failed | 2 passed`, error en
+      `expect(screen.getByText('Sin salsas')).toBeInTheDocument()` (elemento no encontrado); los
+      casos `null` y "con nombres" no se ven afectados por esa rama y siguieron pasando. Restauré el
+      fix y la suite volvió a 3/3. `merge.test.ts` sigue compilando y pasando 3/3 con
+      `selectedSauces: null` agregado a `makeItem()`
 
 ## Coupons
 

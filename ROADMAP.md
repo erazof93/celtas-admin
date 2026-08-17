@@ -198,6 +198,28 @@ celtas-admin/
 - [x] Vista de detalle de un pedido (items, dirección, link de WhatsApp)
 - [x] Cambio de estado con los botones/acciones válidas según la transición (no mostrar botones
       de transiciones inválidas, ej. no ofrecer "entregado" si sigue en "pendiente")
+- [x] **Tri-state de `selectedSauces` en el detalle de pedido**: el backend refinó
+      `OrderItem.selectedSauces` a `string[] | null` con 3 estados reales (confirmado contra el
+      código fuente real de `backend-celtas` — `order-item.entity.ts`, `orders.service.ts` y
+      `orders.service.spec.ts`, no solo Swagger): `null` = no aplica (producto sin salsas
+      ofrecidas, o pedido anterior a esta feature); `[]` = el cliente vio el selector y eligió
+      explícitamente "Sin salsas"; `string[]` con nombres = las salsas elegidas. Antes de este
+      fix, `[]` no mostraba nada en el panel (se trataba igual que `null`). `types.ts` documenta
+      el campo con doc-comment explicando el tri-state; `OrderDetailDialog.tsx` agrega una línea
+      bajo cada item (`text-muted-foreground text-xs italic`): nada si `null`, "Sin salsas" si
+      `[]`, "Salsas: X, Y" si tiene nombres — sin tratarlo como truthy check en ningún punto.
+      **Verificado por @tester**: contrato confirmado de forma independiente contra el código
+      fuente real del backend (`order-item.entity.ts`, `orders.service.ts` líneas 397-402 del
+      mensaje de WhatsApp, `orders.service.spec.ts` líneas 296-319), no solo de palabra.
+      `type-check`, `lint` y `build` en verde; suite completa 102/103 (único fallo:
+      `BannersPage.test.tsx` por timeout, flaky pre-existente no relacionado a este cambio,
+      confirmado que pasa aislado, 3/3). **Verificado con mutación**: cambié la condición de
+      `item.selectedSauces !== null` a un truthy check (`item.selectedSauces &&
+      item.selectedSauces.length > 0`) en `OrderDetailDialog.tsx` — reproduce el bug original
+      (colapsa `[]` con `null`) — y el test del caso `[]` de `OrderDetailDialog.test.tsx` FALLÓ
+      exactamente como se esperaba (1 failed | 2 passed, falla en
+      `expect(screen.getByText('Sin salsas')).toBeInTheDocument()`); restauré el fix y volvió a
+      3/3.
 
 ### 5.1 Infraestructura de tests
 - [x] Vitest + React Testing Library + jsdom instalados y configurados (script `pnpm run test`,
@@ -207,6 +229,11 @@ celtas-admin/
       `merge.test.ts`) — verificado que FALLA si se revierte el fix
 - [x] Convención de testing documentada en la skill `react-celtas` (dónde viven los tests y la
       regla de no dejar sin test la lógica de datos que ya mordió con un bug real)
+- [x] Test de los 3 casos del tri-state de `selectedSauces` (`OrderDetailDialog.test.tsx`, nuevo):
+      `null` → no aparece texto de salsas, `[]` → aparece "Sin salsas", con nombres → aparece
+      "Salsas: X, Y" — **verificado por @tester con mutación**: el caso `[]` FALLA si el código
+      vuelve a colapsarlo con `null` (bug original que motivó el refinamiento del backend);
+      `merge.test.ts` sigue pasando 3/3 con `selectedSauces: null` agregado a su `makeItem()` base
 
 ### 6. Cupones
 - [x] Listado paginado, filtro por status
