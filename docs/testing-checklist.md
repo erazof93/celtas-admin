@@ -389,6 +389,124 @@ solo cuando pasa lo aplicable de este checklist.
 - [x] `pnpm run test` (45 tests), `pnpm run type-check`, `pnpm run lint` (0 errores) y
       `pnpm run build` pasan
 
+## Configuración — Horario de atención (`business_hours_schedule`, `business_manual_closed`, `business_manual_closed_reason`)
+
+- [x] Sigue la tabla genérica `settings`: `GET /settings` (admin, array) / `PATCH /settings`
+      (admin, upsert por key, body `{ key, value, description? }`, sin `id`) — mismo endpoint que
+      WhatsApp y confirmado contra el código fuente real del backend
+      (`settings.service.ts`, `settings.controller.ts`, `update-setting.dto.ts` de
+      `backend-celtas`), no solo Swagger
+- [x] Las 3 keys nuevas coinciden carácter a carácter con las constantes reales del backend
+      (`BUSINESS_HOURS_SCHEDULE_KEY`, `BUSINESS_MANUAL_CLOSED_KEY`,
+      `BUSINESS_MANUAL_CLOSED_REASON_KEY` en `settings.service.ts`); las descripciones enviadas
+      por el frontend (`settings-utils.ts`) también coinciden texto a texto con las del seed real
+      del backend
+- [x] `close <= open` (cruce de medianoche, ej. viernes 11:00→01:00) es válido y NO se rechaza —
+      confirmado contra `SettingsService.evaluateSchedule`/`isOpenToday`/
+      `isCarriedOverFromYesterday` del backend real, que maneja explícitamente ese caso; el
+      `dayScheduleSchema` (`superRefine`) del frontend solo exige formato `HH:mm` y rechaza
+      `open === close` (ventana de duración cero), nunca `close < open`
+- [x] `parseSchedule`/`serializeSchedule` nunca lanzan: JSON malformado, `undefined` y `''` caen al
+      default de 7 días 11:00-23:00 (5 tests en `settings-utils.test.ts`, incluye round-trip con
+      un cruce de medianoche que se conserva sin alterar)
+- [x] `resolveManualClosedReason`: motivo no vacío se conserva tal cual; vacío o solo-espacios cae
+      a `DEFAULT_MANUAL_CLOSED_REASON` ("Cerrado temporalmente") — evita el 400 real de
+      `UpdateSettingDto.value` (`@IsNotEmpty()`, confirmado en el DTO real del backend) contra el
+      seed real de `business_manual_closed_reason` (`''`). Se aplica **siempre**, sin importar si
+      el switch de cierre manual está encendido o apagado (decisión deliberada, así el primer
+      guardado nunca falla con 400 aunque el admin no toque el campo de motivo)
+- [x] Gap del backend documentado explícitamente (no oculto): `value: ''` da 400 para CUALQUIER
+      key del endpoint genérico `PATCH /settings`, no solo esta — el frontend lo resuelve del lado
+      del formulario porque no es viable ni deseable relajar el DTO del backend solo por este caso
+- [x] `open === close` en un día NO cerrado bloquea el submit con mensaje visible en el campo
+      "close" y NO llama a `mutateAsync` — **verificado por @tester con mutación real**: eliminé el
+      bloque `if (... day.open === day.close)` del `superRefine` en
+      `BusinessHoursSettingsCard.tsx` y el test 3 de `BusinessHoursSettingsCard.test.tsx` FALLÓ
+      exactamente como se esperaba (`1 failed | 2 passed`, timeout en
+      `findByText('La hora de cierre no puede ser igual a la de apertura')` porque el mensaje
+      nunca aparece); restauré el fix y volvió a `3 passed`
+- [x] El motivo vacío REALMENTE se reemplaza por el default antes de mandarse al backend —
+      **verificado por @tester con mutación real**: cambié la llamada del componente para mandar
+      `values.manualClosedReason` directo (sin pasar por `resolveManualClosedReason`); agregué un
+      test de regresión permanente (`BusinessHoursSettingsCard.test.tsx`, 4º test) que simula el
+      escenario real de primer guardado (switch de cierre manual apagado, campo "Motivo" nunca
+      tocado, seed real `''`) y asegura que el payload de `business_manual_closed_reason` nunca es
+      `''`; con la mutación aplicada el test FALLÓ exactamente como se esperaba
+      (`expected '' not to be ''`, reproduciendo el 400 real); restauré el fix y la suite volvió a
+      `4 passed`. El test queda como guardia permanente (no se descartó tras la verificación)
+- [x] Domingo cerrado (`closed: true`) no muestra los inputs de hora — cubierto en el 1er test de
+      `BusinessHoursSettingsCard.test.tsx`, junto con la precarga correcta de un horario ya
+      guardado por día, incluyendo el cruce de medianoche del viernes sin alterarlo
+- [x] Activar el switch de cierre manual muestra el campo "Motivo" (2º test), consistente con el
+      patrón condicional de otros formularios del proyecto (ej. `BannerForm`)
+- [x] Regla del id-en-el-body: no aplica de forma directa (el endpoint es `PATCH /settings` sin
+      `:id` en el path, upsert por `key`) — `UpdateSettingInput`/`useUpsertSetting` (compartido con
+      WhatsApp) nunca declaran `id`, confirmado en `types.ts`/`hooks.ts`
+- [x] Estados de UI: loading (`LoadingState`), error (`ErrorState` con retry → `refetch`), éxito
+      ("Horario guardado"), error del servidor (`Alert` destructivo) — mismo patrón que
+      `WhatsappSettingsCard`, ya auditado. No hay un estado "vacío" explícito de lista (es un
+      formulario, no un listado): si `GET /settings` devuelve un array sin las 3 keys (base sin
+      sembrar), el formulario cae a los defaults de UX sin crashear (`scheduleToDays(undefined)` →
+      7 días default, `manualClosedValue === 'true'` → `false` con `undefined`,
+      `manualClosedReasonValue ?? ''` → `''`)
+- [x] Accesibilidad: `aria-label` único por día en cada switch/input de hora (`"${DAY_LABELS[i]}
+      hora de apertura/cierre/cerrado"`), `Label htmlFor` en el campo "Motivo"
+- [x] Sin `any`/casting forzado en los archivos nuevos/modificados del módulo (grep = 0 resultados)
+- [x] `pnpm run type-check`, `pnpm run lint`, `pnpm run build`: los tres sin salida, cero
+      errores/warnings — repetidos de forma independiente por @tester, no solo de palabra
+- [x] `pnpm run test`: 114/115 en verde (único fallo: `BannersPage.test.tsx` por timeout, flaky
+      pre-existente ya documentado en este mismo checklist y en `ROADMAP.md` módulo 7 — confirmado
+      que pasa 3/3 aislado); los 22 tests de `src/features/settings/` (2 archivos, incluido el
+      test nuevo de esta auditoría) pasan 100% tanto en aislado como dentro de la suite completa
+
+⚠️ **Riesgos / casos borde no cubiertos** (documentados, no bloqueantes):
+- Las 3 keys se guardan con `mutateAsync` secuencial y `await`, sin transacción ni rollback: si el
+  1er PATCH (`business_hours_schedule`) tiene éxito y el 2º o 3er PATCH falla (ej. el backend se
+  cae a mitad del guardado), el horario semanal ya quedó persistido en el backend pero el switch
+  de cierre manual/motivo no — el usuario ve un error genérico sin saber cuál de las 3 keys sí se
+  guardó. Es un riesgo inherente al diseño de settings clave-valor genérico (cada `PATCH` es
+  independiente en el backend, no hay endpoint transaccional para las 3 a la vez) y no es exclusivo
+  de este formulario, pero es la primera vez que un formulario del panel encadena 3 mutaciones
+  secuenciales sin all-or-nothing — vale la pena que la sesión principal lo tenga en cuenta si se
+  agrega otro formulario multi-key en el futuro
+- No hay un test de componente que verifique explícitamente el contenido del payload
+  `business_hours_schedule` (JSON serializado) en un submit exitoso con datos válidos incluyendo el
+  cruce de medianoche del viernes — el 4º test agregado por @tester lo ejerce indirectamente (el
+  submit por defecto incluye el horario del viernes con `close < open` sin tocar) pero no hace un
+  `expect` explícito sobre ese payload. Bajo riesgo (la lógica de serialización ya tiene 5 tests
+  puros en `settings-utils.test.ts`), pero es un hueco de cobertura explícita
+- Fallback de UI para JSON malformado/`undefined` (`DEFAULT_SCHEDULE`, 7 días uniformes 11:00-23:00
+  en `settings-utils.ts`) NO coincide con el seed real del backend (`DEFAULT_BUSINESS_HOURS_SCHEDULE`
+  en `settings.service.ts`: domingo cierra 22:00, viernes/sábado cruzan medianoche a la 01:00) —
+  esto es intencional y está documentado en el comment del código (es solo un fallback defensivo
+  del formulario ante datos corruptos, nunca se usa en el flujo normal porque `GET /settings`
+  siempre trae los valores reales sembrados), pero podría confundir a alguien que audite el código
+  sin leer el comentario. No es un bug
+- **Gap real de E2E — NO minimizado**: no se corrió Playwright de extremo a extremo (login real +
+  cambiar el horario desde la UI + recargar y confirmar persistencia + probar el interruptor de
+  cierre manual visible en la app cliente o en `GET /settings/business-hours`) contra el backend
+  real. Toda la verificación de este módulo fue: (1) contrato confirmado contra el código fuente
+  real del backend (no solo Swagger), (2) tests de componente con mocks de `useSettings`/
+  `useUpsertSetting`, (3) mutación real de dos fixes críticos con reversión y restauración
+  confirmadas. No se probó contra `http://localhost:3000` ni contra
+  `https://backend-celtas.onrender.com` con una sesión de admin real. Antes de que el dueño del
+  negocio use esta pantalla en producción, se recomienda una pasada manual real: guardar un
+  horario, recargar la página y confirmar que persiste, y activar el cierre manual y confirmar
+  que `GET /settings/business-hours` (endpoint público, sin auth) refleja el cambio correctamente
+- No se verificó el efecto de este formulario sobre `POST /orders` (el backend bloquea pedidos
+  fuera de horario según `isOpenNow()`) ni sobre la app cliente (Flutter) — fuera del alcance de
+  este panel admin, pero es la consecuencia real de negocio de esta feature y no se validó
+  end-to-end
+
+Veredicto: LISTO PARA MARCAR COMPLETO (con el gap de E2E real explícito, no oculto — ver arriba)
+
+**Pendiente restante de esta feature completa (fuera del alcance de `celtas-admin`)**: el panel
+admin ya permite configurar el horario y el cierre manual, y el backend ya bloquea pedidos fuera
+de horario en `POST /orders` (auditado y en producción). Lo único que falta para que la feature
+esté completa de punta a punta es que **`celtas-app`** (cliente Flutter) muestre al usuario el 409
+del checkout cuando el local está cerrado (en vez de un error genérico) — no requiere ningún
+cambio adicional en `celtas-admin` ni en `celtas-backend`.
+
 ## Users
 
 - [x] Paginación coincide con el formato real del backend — `GET /users` devuelve

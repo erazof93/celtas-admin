@@ -1,10 +1,12 @@
+import { BusinessHoursSettingsCard } from './BusinessHoursSettingsCard'
 import { RoleManagerCard } from './RoleManagerCard'
 import { WhatsappSettingsCard } from './WhatsappSettingsCard'
 
 /**
- * Configuración — MÓDULO 8. WhatsApp del negocio (GET/PATCH /settings) y
- * gestión de roles (PATCH /users/:id/role, con auto-degradación bloqueada en
- * la UI). El selector de usuarios real llega con el módulo 9.
+ * Configuración — MÓDULO 8. WhatsApp del negocio, horario de atención
+ * (GET/PATCH /settings) y gestión de roles (PATCH /users/:id/role, con
+ * auto-degradación bloqueada en la UI). El selector de usuarios real llega
+ * con el módulo 9.
  */
 export default function SettingsPage() {
   return (
@@ -12,13 +14,14 @@ export default function SettingsPage() {
       <header>
         <h1 className="text-2xl font-bold tracking-tight">Configuración</h1>
         <p className="text-muted-foreground text-sm">
-          WhatsApp del negocio y roles de usuario.
+          WhatsApp del negocio, horario de atención y roles de usuario.
         </p>
       </header>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <WhatsappSettingsCard />
         <RoleManagerCard />
+        <BusinessHoursSettingsCard />
       </div>
     </div>
   )

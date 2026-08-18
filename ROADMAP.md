@@ -365,6 +365,35 @@ celtas-admin/
 - [x] Gestión de roles de usuario (`PATCH /users/:id/role`) — con confirmación antes de degradar
       o promover a alguien, y el caso de "no puedes quitarte tu propio admin" reflejado en la UI
       (deshabilitar esa opción para el propio usuario logueado, no solo esperar el 400 del backend)
+- [x] **Horario de atención del negocio** (`business_hours_schedule`, `business_manual_closed`,
+      `business_manual_closed_reason` — mismo endpoint genérico `GET`/`PATCH /settings`, sin `id`
+      en el body): contrato confirmado contra el código fuente real de `backend-celtas`
+      (`settings.service.ts`, `settings.controller.ts`, `update-setting.dto.ts`), no solo Swagger.
+      `BusinessHoursSettingsCard.tsx` — 7 filas con Switch "Cerrado" + `<Input type="time">` por
+      día (`close <= open` es un cruce de medianoche VÁLIDO, ej. viernes 11:00→01:00, y no se
+      rechaza; solo `open === close` se bloquea) y sección de cierre manual con Switch + motivo.
+      `resolveManualClosedReason` reemplaza el motivo vacío por un default no vacío
+      ("Cerrado temporalmente") **siempre** (switch encendido o no) para evitar el 400 real de
+      `UpdateSettingDto.value` (`@IsNotEmpty()`) contra el seed real del backend
+      (`business_manual_closed_reason: ''`). **Verificado por @tester con mutación real (dos
+      fixes)**: (a) eliminó el bloque de `superRefine` que rechaza `open === close` →
+      el test correspondiente de `BusinessHoursSettingsCard.test.tsx` FALLÓ como se esperaba
+      (timeout esperando el mensaje de error que nunca aparece); restauró el fix y volvió a pasar;
+      (b) hizo que el componente mandara `values.manualClosedReason` directo sin
+      `resolveManualClosedReason` → agregó un test de regresión permanente que simula el primer
+      guardado real (motivo nunca tocado, seed `''`) y confirma que el payload nunca es `''`; con
+      la mutación aplicada el test FALLÓ reproduciendo el 400 real; restauró el fix y volvió a
+      pasar. `type-check`, `lint`, `build` limpios; `test` 114/115 (único fallo: `BannersPage.test.tsx`
+      por timeout, flaky pre-existente ya documentado, confirmado 3/3 aislado); los 22 tests de
+      `src/features/settings/` (incluido el test nuevo) pasan 100%. **Gap explícito, no oculto**:
+      no se corrió Playwright/E2E real contra el backend (login real + guardar horario + recargar
+      + confirmar persistencia + revisar `GET /settings/business-hours`) — toda la verificación
+      fue de contrato (código fuente real), componente (mocks) y mutación real de los dos fixes
+      críticos. Se recomienda una pasada manual real antes de que el dueño del negocio dependa de
+      esta pantalla en producción. Detalle completo (incluidos los riesgos de las 3 mutaciones
+      secuenciales sin transacción) en `docs/testing-checklist.md`, sección "Configuración —
+      Horario de atención". **Veredicto final de @tester: LISTO** (con el gap de E2E documentado
+      explícitamente, no minimizado)
 
 ### 9. Usuarios (listado admin)
 - [x] Listado paginado de `GET /users` (filtro de búsqueda en cliente: el backend solo expone
