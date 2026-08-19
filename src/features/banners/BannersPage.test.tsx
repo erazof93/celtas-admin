@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import BannersPage from './BannersPage'
 import type { Banner } from './types'
 
 /**
@@ -9,6 +10,14 @@ import type { Banner } from './types'
  * contradijera al otro. Deben quedar en líneas/elementos distintos dentro de
  * la misma celda.
  */
+
+const { useBannersMock } = vi.hoisted(() => ({ useBannersMock: vi.fn() }))
+
+vi.mock('./hooks', () => ({
+  useBanners: useBannersMock,
+  useDeleteBanner: () => ({ mutate: vi.fn() }),
+  useReorderBanners: () => ({ mutate: vi.fn() }),
+}))
 
 vi.mock('./BannerForm', () => ({ BannerForm: () => null }))
 
@@ -31,26 +40,20 @@ function makeBanner(overrides: Partial<Banner> = {}): Banner {
 }
 
 function mockBanners(banners: Banner[]) {
-  vi.doMock('./hooks', () => ({
-    useBanners: () => ({
-      data: banners,
-      isLoading: false,
-      isError: false,
-      refetch: vi.fn(),
-    }),
-    useDeleteBanner: () => ({ mutate: vi.fn() }),
-    useReorderBanners: () => ({ mutate: vi.fn() }),
-  }))
+  useBannersMock.mockReturnValue({
+    data: banners,
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  })
 }
 
 describe('BannersPage — columna Fechas', () => {
-  it('banner sin fechas + con días: "Sin fechas" y los días quedan en elementos separados, no concatenados', async () => {
-    vi.resetModules()
+  it('banner sin fechas + con días: "Sin fechas" y los días quedan en elementos separados, no concatenados', () => {
     mockBanners([
       makeBanner({ startDate: null, endDate: null, daysOfWeek: [2, 4] }),
     ])
-    const { default: Page } = await import('./BannersPage')
-    render(<Page />)
+    render(<BannersPage />)
 
     const dateLine = screen.getByText('Sin fechas')
     const daysLine = screen.getByText('Mar, Jue')
@@ -65,28 +68,24 @@ describe('BannersPage — columna Fechas', () => {
     expect(cellWrapper?.className).toContain('flex-col')
   })
 
-  it('banner con startDate y endDate reales: ambas fechas visibles, sin "…" de por medio', async () => {
-    vi.resetModules()
+  it('banner con startDate y endDate reales: ambas fechas visibles, sin "…" de por medio', () => {
     mockBanners([
       makeBanner({
         startDate: '2026-08-01T00:00:00.000Z',
         endDate: '2026-08-14T23:59:59.000Z',
       }),
     ])
-    const { default: Page } = await import('./BannersPage')
-    render(<Page />)
+    render(<BannersPage />)
 
     const dateLine = screen.getByText('31/07/2026 → 14/08/2026')
     expect(dateLine.textContent).not.toContain('…')
   })
 
-  it('banner sin fechas y sin daysOfWeek: solo "Sin fechas", sin segunda línea', async () => {
-    vi.resetModules()
+  it('banner sin fechas y sin daysOfWeek: solo "Sin fechas", sin segunda línea', () => {
     mockBanners([
       makeBanner({ startDate: null, endDate: null, daysOfWeek: null }),
     ])
-    const { default: Page } = await import('./BannersPage')
-    render(<Page />)
+    render(<BannersPage />)
 
     const dateLine = screen.getByText('Sin fechas')
     const cellWrapper = dateLine.parentElement

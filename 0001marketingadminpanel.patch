@@ -1,0 +1,1174 @@
+From 16a1fa2cf43703aafcc7830da34d1ebde3236b4a Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Wed, 19 Aug 2026 17:41:25 +0000
+Subject: [PATCH] =?UTF-8?q?feat(marketing):=20secci=C3=B3n=20de=20notifica?=
+ =?UTF-8?q?ciones=20de=20fidelizaci=C3=B3n=20(v1=20manual)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Consume el backend real ya implementado (POST /notifications/broadcast,
+GET /notifications/broadcast-history) — tipos escritos a mano leyendo el
+código fuente del backend hermano (los endpoints no declaran @ApiResponse
+type, así que Swagger no documenta el schema de respuesta).
+
+- Sección propia en el sidebar (/marketing, ícono Megaphone), no mezclada
+  con Configuración.
+- BroadcastForm: título + cuerpo, mismo patrón de confirmación explícita
+  que GenerateBulkCouponForm (Cupones) antes de disparar el envío masivo.
+  Muestra sent/total al completar.
+- MarketingPage: formulario + tabla de historial de campañas debajo.
+- src/types/api.d.ts regenerado contra el backend local real.
+- Tests (hooks + flujo de confirmación del form).
+
+Auditado por @tester: 23/23 suites, 125/125 tests, type-check/lint/build
+limpios. Verificación end-to-end real contra backend local (curl):
+{"sent":0,"total":16} y GET /notifications/broadcast-history con la fila
+esperada.
+
+Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CH29SPjv7tbUH7nxpMdv8Z
+---
+ ROADMAP.md                                    |  59 ++++++
+ docs/testing-checklist.md                     | 132 ++++++++++++
+ src/features/marketing/BroadcastForm.test.tsx | 141 +++++++++++++
+ src/features/marketing/BroadcastForm.tsx      | 188 ++++++++++++++++++
+ src/features/marketing/MarketingPage.tsx      |  97 +++++++++
+ src/features/marketing/hooks.test.tsx         |  93 +++++++++
+ src/features/marketing/hooks.ts               |  33 +++
+ src/features/marketing/types.ts               |  42 ++++
+ src/layouts/AdminLayout.tsx                   |   2 +
+ src/routes/router.tsx                         |   9 +
+ src/types/api.d.ts                            | 174 +++++++++++++++-
+ 11 files changed, 969 insertions(+), 1 deletion(-)
+ create mode 100644 src/features/marketing/BroadcastForm.test.tsx
+ create mode 100644 src/features/marketing/BroadcastForm.tsx
+ create mode 100644 src/features/marketing/MarketingPage.tsx
+ create mode 100644 src/features/marketing/hooks.test.tsx
+ create mode 100644 src/features/marketing/hooks.ts
+ create mode 100644 src/features/marketing/types.ts
+
+diff --git a/ROADMAP.md b/ROADMAP.md
+index 882208b..0a08810 100644
+--- a/ROADMAP.md
++++ b/ROADMAP.md
+@@ -468,6 +468,65 @@ celtas-admin/
+ - [ ] Deploy en Vercel o Netlify (free tier), variables de entorno de producción — **parte 2**
+ - [ ] Verificación end-to-end manual contra el backend real de producción — **parte 2**
+ 
++### 11. Marketing (notificaciones de fidelización) — v1 manual
++- [x] Sección propia en el sidebar (`/marketing`, ícono `Megaphone`), **no mezclada con
++      Configuración**. Contrato confirmado contra el código fuente real de `backend-celtas`
++      (`notifications.controller.ts`, `notifications.service.ts`, entidad
++      `MarketingNotification`), no solo Swagger — `POST /notifications/broadcast` y
++      `GET /notifications/broadcast-history` no declaran `@ApiResponse({ type })`, así que
++      `src/types/api.d.ts` no documenta el schema de respuesta; los tipos en
++      `src/features/marketing/types.ts` vienen de leer el backend real.
++      `src/types/api.d.ts` regenerado (`pnpm run generate:types`) contra el backend local
++      (`localhost:3000/docs-json`) para confirmar los dos endpoints nuevos ya existen en el
++      contrato antes de construir.
++- [x] `BroadcastForm.tsx`: título + cuerpo (Zod, espejo de `BroadcastNotificationDto`:
++      requeridos, no vacíos) + botón "Enviar ahora". Acción de impacto real e inmediata (sin
++      scheduler, sin deshacer) — mismo patrón de confirmación explícita que
++      `GenerateBulkCouponForm` (Cupones): el submit NO llama a la API directo, primero muestra
++      un panel de confirmación con el título/cuerpo a enviar; solo "Sí, enviar ahora" dispara
++      `POST /notifications/broadcast`. Al completar, muestra `sent`/`total` (cuántos
++      dispositivos lo recibieron de cuántos tenían token).
++- [x] `MarketingPage.tsx`: formulario arriba + tabla con el historial de campañas debajo
++      (`GET /notifications/broadcast-history`, más recientes primero, columnas
++      título/cuerpo/alcance sent-total/fecha en Lima).
++- [x] Hooks en `src/features/marketing/hooks.ts` (`useBroadcastHistory`, `useSendBroadcast`,
++      React Query, invalida el historial al enviar con éxito).
++- [x] Verificación manual end-to-end contra el backend **local** real (`localhost:3000`, admin
++      QA creado a mano en la BD): `POST /notifications/broadcast` devolvió
++      `{"sent":0,"total":16}` (0 porque las credenciales de Firebase del `.env` local son de
++      prueba — el contrato `{sent, total}` y el guardado en historial se confirmaron reales, no
++      simulados) y `GET /notifications/broadcast-history` devolvió la fila esperada
++      (`id, title, body, adminId, sentCount, totalCount, createdAt`); `401` sin token confirmado.
++- [x] Tests: `hooks.test.tsx` (payload exacto del POST, invalidación del historial) y
++      `BroadcastForm.test.tsx` (flujo de confirmación — el test crítico es que `mutateAsync`
++      NUNCA se llama antes del clic en "Sí, enviar ahora", igual que el test de regresión
++      equivalente en Cupones).
++- [x] `type-check`, `lint`, `build`, `test` verificados por la sesión antes de pedir auditoría.
++- [x] **Auditoría @tester (2026-08-19)**: repitió `type-check`/`lint`/`build`/`test` de forma
++      independiente — los tres primeros sin salida (0 errores/warnings), `test` en **23 archivos /
++      125 tests en verde** (incluidos los 2 archivos nuevos de `src/features/marketing/`, 8/8
++      aislados y dentro de la suite completa). Comparó `types.ts` línea a línea contra
++      `notifications.controller.ts`/`notifications.service.ts`/`broadcast-notification.dto.ts`/
++      `marketing-notification.entity.ts` reales — coincide campo a campo, incluido `adminId: string
++      | null` (FK `SET NULL`) y `createdAt: string` (confirmado que llega como string ISO por HTTP
++      real, no `Date`). **Mutación real del guard de confirmación**: inyectó una llamada directa a
++      `mutateAsync` dentro de `onValidated` (bypaseando el panel de confirmación) →
++      2 de 5 tests de `BroadcastForm.test.tsx` FALLARON exactamente como se esperaba; restauró el
++      archivo y la suite volvió a 5/5. **Verificación end-to-end independiente** contra el backend
++      local real, con un admin QA propio creado vía `POST /auth/register` + promoción a `admin` por
++      SQL (sesión distinta de la usada por la sesión principal): `401` sin token, `201
++      {"sent":0,"total":16}` con token admin, `GET /notifications/broadcast-history` con la fila
++      esperada exacta. Confirmó por diff real que el ítem de sidebar y la ruta quedaron entre
++      "Banners" y "Configuración", sección propia. Sin `any` ni casting forzado en el módulo (grep =
++      0 resultados relevantes). Agregó la sección "Marketing (notificaciones de fidelización)" a
++      `docs/testing-checklist.md` (no existía) con el reporte de auditoría completo, incluidos los
++      riesgos no bloqueantes (sin límite de longitud en título/cuerpo, sin preview de audiencia
++      antes de confirmar, sin verificación de entrega real de FCM con credenciales de producción, y
++      sin prueba E2E por navegador/Playwright). **Veredicto final de @tester: LISTO PARA MARCAR
++      COMPLETO**. Detalle completo en `docs/testing-checklist.md`, sección "Marketing
++      (notificaciones de fidelización) — v1 manual" + reporte de auditoría al final del archivo.
++      Pendiente: veredicto de `@tester`.
++
+ ---
+ 
+ ## Cómo trabajar con OpenCode
+diff --git a/docs/testing-checklist.md b/docs/testing-checklist.md
+index e28b385..7a80fdf 100644
+--- a/docs/testing-checklist.md
++++ b/docs/testing-checklist.md
+@@ -587,6 +587,79 @@ cambio adicional en `celtas-admin` ni en `celtas-backend`.
+ 
+ ---
+ 
++## Marketing (notificaciones de fidelización) — v1 manual
++
++- [x] Sección propia en el sidebar (`/marketing`, ícono `Megaphone`), ubicada entre "Banners" y
++      "Configuración" en `AdminLayout.tsx` — NO mezclada con Configuración (`NAV_ITEMS` confirmado
++      por diff real)
++- [x] Ruta `/marketing` registrada en `router.tsx` con `React.lazy` + `Suspense` (mismo patrón de
++      code-splitting que el resto de rutas)
++- [x] Contrato confirmado línea a línea contra el código fuente real de `backend-celtas` (no solo
++      Swagger): `notifications.controller.ts` (`POST /notifications/broadcast`,
++      `GET /notifications/broadcast-history`, ambos `@Roles(UserRole.ADMIN)` +
++      `JwtAuthGuard`/`RolesGuard`), `notifications.service.ts`
++      (`sendMarketingBroadcast`/`getBroadcastHistory`), `broadcast-notification.dto.ts` y la
++      entidad `MarketingNotification` — ninguno de los dos endpoints declara `@ApiResponse({ type
++      })`, así que `src/types/api.d.ts` documenta ambas respuestas como `content?: never`
++      (confirmado grep línea 3199-3213 y 3230+); los tipos de
++      `src/features/marketing/types.ts` (`BroadcastNotificationInput { title, body }`,
++      `BroadcastResult { sent, total }`, `MarketingBroadcast { id, title, body, adminId, sentCount,
++      totalCount, createdAt }`) coinciden campo a campo con el DTO/entidad reales. `adminId:
++      string | null` es correcto (columna `nullable: true`, FK `onDelete: 'SET NULL'`);
++      `createdAt: string` (no `Date`) es correcto porque es lo que realmente llega serializado por
++      HTTP — confirmado con curl real (ver abajo)
++- [x] `BroadcastForm.tsx`: Zod (`title`/`body` requeridos, no vacíos, espejo exacto de
++      `@IsString`/`@IsNotEmpty` del DTO real, sin límite de longitud inventado) + patrón de
++      confirmación explícita idéntico a `GenerateBulkCouponForm.tsx` (mismo mecanismo: `onValidated`
++      solo setea `pendingValues`, el panel de confirmación reemplaza por completo el `<form>`
++      mientras está activo, `mutateAsync` solo se llama desde `handleConfirm` tras el clic en "Sí,
++      enviar ahora"). **Verificado por @tester con mutación real**: inyecté una llamada a
++      `broadcastMutation.mutateAsync(values)` dentro de `onValidated` (bypaseando la confirmación) →
++      2 de 5 tests de `BroadcastForm.test.tsx` fallaron exactamente como se esperaba (`expected
++      "vi.fn()" to not be called at all, but actually been called 1 times`, con el payload real
++      capturado); restauré el archivo a su estado original y la suite volvió a 5/5 en verde
++- [x] `MarketingPage.tsx`: formulario arriba + tabla del historial debajo, 3 estados de UI
++      (`LoadingState`, `ErrorState` con retry → `refetch`, vacío "Todavía no enviaste ninguna
++      campaña"), columnas título/cuerpo/alcance (`sentCount / totalCount`)/fecha (`formatLima`)
++- [x] Hooks (`hooks.ts`): `useBroadcastHistory` (`GET /notifications/broadcast-history`) y
++      `useSendBroadcast` (`POST /notifications/broadcast`, invalida `['marketing',
++      'broadcast-history']` en `onSuccess`) — sin `any` ni casting forzado (grep de `any`/`as
++      [A-Za-z]` en todo el módulo = 0 resultados, solo `as const` en la query key, que no oculta
++      ningún mismatch de tipos)
++- [x] Verificación manual end-to-end **independiente** contra el backend local real
++      (`localhost:3000`, admin QA propio creado vía `POST /auth/register` + promovido a `admin` por
++      SQL, sesión aparte de la usada por la sesión principal): `POST /notifications/broadcast` sin
++      token → `401 {"success":false,"message":"Unauthorized","statusCode":401}`; con token admin →
++      `201 {"sent":0,"total":16}` (0 esperado: credenciales Firebase de prueba en el `.env` local);
++      `GET /notifications/broadcast-history` → `200`, primera fila exactamente `{id, title, body,
++      adminId, sentCount, totalCount, createdAt}` con los valores recién enviados
++- [x] `pnpm run type-check` (`tsc -b`), `pnpm run lint` (`eslint .`), `pnpm run build`: los tres sin
++      salida, cero errores/warnings — corridos de forma independiente, no solo de palabra
++- [x] `pnpm run test`: 23 archivos / 125 tests en verde (confirmado independientemente); los 2
++      archivos de `src/features/marketing/` (`hooks.test.tsx`, `BroadcastForm.test.tsx`) pasan 8/8
++      tanto aislados como dentro de la suite completa
++
++⚠️ **Riesgos / casos borde no cubiertos** (documentados, no bloqueantes):
++- No hay límite de longitud en `title`/`body` ni en el frontend ni en el DTO real del backend — un
++  título/cuerpo extremadamente largo se enviaría igual a FCM, que sí tiene límites propios (ej.
++  ~4KB por payload); no se probó ese caso límite
++- El envío es a TODOS los usuarios con `fcmToken`, sin segmentación ni preview de audiencia más
++  allá del número total mostrado tras el envío (`sent`/`total`) — el admin no puede saber de
++  antemano cuántos dispositivos recibirán la notificación antes de confirmar, solo después
++- No se verificó con Firebase real (credenciales de producción) que el push efectivamente llega al
++  dispositivo — la verificación de este módulo cubre el contrato HTTP y el guardado en historial,
++  no la entrega final de FCM (fuera del alcance de este panel, y el backend ya documenta que
++  `sendPushNotification`/`broadcastPushNotification` nunca lanzan aunque el envío real falle)
++- Gap de E2E real vía navegador: no se probó con Playwright el flujo completo (login real en el
++  navegador → clic en "Marketing" en el sidebar → completar el formulario → confirmar → ver la fila
++  nueva en la tabla) — la verificación de ruta/sidebar fue por lectura de código (diff de
++  `router.tsx`/`AdminLayout.tsx`, ambos compilando y buildeando sin error) más `build`/`test`
++  verdes, no por click real en un navegador
++
++Veredicto: LISTO PARA MARCAR COMPLETO
++
++---
++
+ ## Reporte de auditoría (formato esperado del @tester)
+ 
+ ```
+@@ -681,3 +754,62 @@ Veredicto: LISTO PARA MARCAR COMPLETO / PENDIENTE
+ 
+ Veredicto: LISTO PARA MARCAR COMPLETO
+ 
++---
++
++## Auditoría: Marketing (notificaciones de fidelización) — v1 manual
++
++✅ Pasó:
++- `pnpm run type-check` (`tsc -b`), `pnpm run lint` (`eslint .`), `pnpm run build`: los tres sin
++  salida, cero errores/warnings — corridos de forma independiente
++- `pnpm run test`: 23 archivos / 125 tests en verde (confirmado independientemente); los 2 archivos
++  nuevos de `src/features/marketing/` pasan 8/8 tanto aislados como en la suite completa
++- Contrato confirmado línea a línea contra el código fuente real de `backend-celtas`
++  (`notifications.controller.ts`, `notifications.service.ts`, `broadcast-notification.dto.ts`,
++  entidad `MarketingNotification`) — los tipos en `src/features/marketing/types.ts` coinciden campo
++  a campo con el DTO/entidad reales, incluido `adminId: string | null` (FK `SET NULL`) y
++  `createdAt: string` (no `Date`; confirmado que llega como string ISO por HTTP real, ver abajo).
++  `src/types/api.d.ts` regenerado y confirmado: ambos endpoints declaran `content?: never` (sin
++  `@ApiResponse({ type })` en el backend), así que los tipos a mano en `types.ts` son la única
++  fuente de verdad correcta — no había alternativa viable de usar solo tipos generados
++- Sin `any` ni casting forzado en el módulo (grep = 0 resultados; único `as const` es en la query
++  key de React Query, no oculta ningún mismatch de tipos)
++- **Mutación independiente (guard de confirmación)**: inyecté `broadcastMutation.mutateAsync(values)`
++  dentro de `onValidated` de `BroadcastForm.tsx` (bypaseando el panel de confirmación) → 2 de 5 tests
++  de `BroadcastForm.test.tsx` fallaron exactamente como se esperaba (`expected "vi.fn()" to not be
++  called at all, but actually been called 1 times`); restauré el archivo a su estado original y la
++  suite volvió a 5/5 en verde. El patrón de confirmación es idéntico al de `GenerateBulkCouponForm`
++  (Cupones), ya auditado
++- **Verificación end-to-end independiente contra el backend local real** (`localhost:3000`, admin QA
++  propio: `POST /auth/register` + `UPDATE users SET role='admin'` por SQL — sesión distinta de la
++  usada por la sesión principal):
++  - `POST /notifications/broadcast` sin token → `401 {"success":false,"message":"Unauthorized","statusCode":401}`
++  - `POST /notifications/broadcast` con token admin → `201 {"sent":0,"total":16}` (0 esperado:
++    credenciales Firebase del `.env` local son de prueba)
++  - `GET /notifications/broadcast-history` → `200`, primera fila con exactamente
++    `{id, title, body, adminId, sentCount, totalCount, createdAt}` y los valores recién enviados
++- Ítem de sidebar "Marketing" (ícono `Megaphone`) y ruta `/marketing` confirmados por diff real de
++  `AdminLayout.tsx`/`router.tsx`: posición correcta entre "Banners" y "Configuración", sección
++  propia (no mezclada con Configuración), lazy-loaded con `Suspense` igual que el resto de rutas
++- Estados de UI completos en `MarketingPage.tsx`: loading (`LoadingState`), error (`ErrorState` con
++  retry → `refetch`), vacío ("Todavía no enviaste ninguna campaña")
++- `useSendBroadcast` invalida `['marketing', 'broadcast-history']` en `onSuccess` — el historial se
++  refresca tras cada envío (confirmado por test y por la verificación manual: la fila del broadcast
++  de curl apareció en el `GET` inmediatamente después)
++
++❌ Falló:
++- Ninguno de los puntos críticos del checklist
++
++⚠️ Riesgos / casos borde no cubiertos:
++- Sin límite de longitud en `title`/`body` (ni en el frontend ni en el DTO real del backend); FCM sí
++  tiene límites propios de payload (~4KB) que no se probaron en el caso límite
++- Sin preview de audiencia antes de confirmar el envío — el admin solo ve `sent`/`total` después de
++  enviar, no una estimación previa de cuántos dispositivos lo recibirán
++- No se verificó con credenciales Firebase reales que el push llega de verdad al dispositivo — la
++  verificación cubre el contrato HTTP y el guardado en historial, no la entrega final de FCM (fuera
++  del alcance de este panel; el backend garantiza que nunca lanza aunque el envío real falle)
++- Gap de E2E real vía navegador: no se probó con Playwright el flujo completo por clic real (login →
++  sidebar → formulario → confirmación → fila nueva en la tabla). La verificación de ruta/sidebar fue
++  por lectura de código + `build`/`test` verdes, no por interacción real en un navegador
++
++Veredicto: LISTO PARA MARCAR COMPLETO
++
+diff --git a/src/features/marketing/BroadcastForm.test.tsx b/src/features/marketing/BroadcastForm.test.tsx
+new file mode 100644
+index 0000000..08dc4e4
+--- /dev/null
++++ b/src/features/marketing/BroadcastForm.test.tsx
+@@ -0,0 +1,141 @@
++import { beforeEach, describe, expect, it, vi } from 'vitest'
++import { render, screen, waitFor } from '@testing-library/react'
++import userEvent from '@testing-library/user-event'
++import { BroadcastForm } from './BroadcastForm'
++
++/**
++ * POST /notifications/broadcast manda un push a TODOS los usuarios con
++ * fcmToken — es una acción de impacto real e inmediata (sin scheduler, sin
++ * deshacer). Mismo riesgo de bug de clase que GenerateBulkCouponForm: el
++ * submit del form NO debe disparar la mutación directamente. Estos tests
++ * verifican que mutateAsync SOLO se llama tras el clic en "Sí, enviar
++ * ahora", nunca antes.
++ */
++
++const { mutateAsyncMock } = vi.hoisted(() => ({ mutateAsyncMock: vi.fn() }))
++
++vi.mock('./hooks', () => ({
++  useSendBroadcast: () => ({
++    mutateAsync: mutateAsyncMock,
++    isPending: false,
++  }),
++}))
++
++describe('BroadcastForm', () => {
++  beforeEach(() => {
++    mutateAsyncMock.mockReset()
++  })
++
++  it('exige título y cuerpo antes de mostrar la confirmación', async () => {
++    const user = userEvent.setup()
++    render(<BroadcastForm />)
++
++    await user.click(screen.getByRole('button', { name: 'Enviar ahora' }))
++
++    expect(
++      await screen.findByText('El título es obligatorio'),
++    ).toBeInTheDocument()
++    expect(screen.getByText('El cuerpo es obligatorio')).toBeInTheDocument()
++    expect(mutateAsyncMock).not.toHaveBeenCalled()
++  })
++
++  it('un formulario válido pasa a confirmación SIN llamar a la API todavía', async () => {
++    const user = userEvent.setup()
++    render(<BroadcastForm />)
++
++    await user.type(
++      screen.getByLabelText('Título'),
++      'A pocos días del día del padre y Celtas lo sabe',
++    )
++    await user.type(
++      screen.getByLabelText('Cuerpo'),
++      'Aprovecha nuestras promos especiales.',
++    )
++    await user.click(screen.getByRole('button', { name: 'Enviar ahora' }))
++
++    expect(
++      await screen.findByText(
++        '¿Confirmas enviar esta notificación a todos los clientes?',
++      ),
++    ).toBeInTheDocument()
++    expect(mutateAsyncMock).not.toHaveBeenCalled()
++  })
++
++  it('"Cancelar" en la confirmación descarta sin llamar a la API', async () => {
++    const user = userEvent.setup()
++    render(<BroadcastForm />)
++
++    await user.type(screen.getByLabelText('Título'), 'Título')
++    await user.type(screen.getByLabelText('Cuerpo'), 'Cuerpo')
++    await user.click(screen.getByRole('button', { name: 'Enviar ahora' }))
++    await screen.findByText(
++      '¿Confirmas enviar esta notificación a todos los clientes?',
++    )
++    await user.click(screen.getByRole('button', { name: 'Cancelar' }))
++
++    expect(
++      screen.queryByText(
++        '¿Confirmas enviar esta notificación a todos los clientes?',
++      ),
++    ).not.toBeInTheDocument()
++    expect(mutateAsyncMock).not.toHaveBeenCalled()
++    expect(
++      screen.getByRole('button', { name: 'Enviar ahora' }),
++    ).toBeInTheDocument()
++  })
++
++  it('"Sí, enviar ahora" llama a la API con el payload correcto y muestra sent/total', async () => {
++    const user = userEvent.setup()
++    mutateAsyncMock.mockResolvedValue({ sent: 8, total: 10 })
++    render(<BroadcastForm />)
++
++    await user.type(
++      screen.getByLabelText('Título'),
++      'A pocos días del día del padre y Celtas lo sabe',
++    )
++    await user.type(
++      screen.getByLabelText('Cuerpo'),
++      'Aprovecha nuestras promos especiales.',
++    )
++    await user.click(screen.getByRole('button', { name: 'Enviar ahora' }))
++    await screen.findByText(
++      '¿Confirmas enviar esta notificación a todos los clientes?',
++    )
++    await user.click(screen.getByRole('button', { name: 'Sí, enviar ahora' }))
++
++    await waitFor(() => {
++      expect(mutateAsyncMock).toHaveBeenCalledWith({
++        title: 'A pocos días del día del padre y Celtas lo sabe',
++        body: 'Aprovecha nuestras promos especiales.',
++      })
++    })
++
++    expect(await screen.findByText('Notificación enviada')).toBeInTheDocument()
++    expect(screen.getByText('8')).toBeInTheDocument()
++    expect(screen.getByText('10')).toBeInTheDocument()
++  })
++
++  it('un error del servidor se muestra y permite reintentar sin perder el formulario', async () => {
++    const user = userEvent.setup()
++    mutateAsyncMock.mockRejectedValue(new Error('fallo de red'))
++    render(<BroadcastForm />)
++
++    await user.type(screen.getByLabelText('Título'), 'Título')
++    await user.type(screen.getByLabelText('Cuerpo'), 'Cuerpo')
++    await user.click(screen.getByRole('button', { name: 'Enviar ahora' }))
++    await screen.findByText(
++      '¿Confirmas enviar esta notificación a todos los clientes?',
++    )
++    await user.click(screen.getByRole('button', { name: 'Sí, enviar ahora' }))
++
++    // El fallback de getApiMessage aparece como título Y descripción del
++    // alert (mismo patrón que GenerateBulkCouponForm) — dos nodos, no uno.
++    expect(
++      await screen.findAllByText('No se pudo enviar la notificación'),
++    ).toHaveLength(2)
++    // Vuelve al formulario (no se queda trabado en la confirmación).
++    expect(
++      screen.getByRole('button', { name: 'Enviar ahora' }),
++    ).toBeInTheDocument()
++  })
++})
+diff --git a/src/features/marketing/BroadcastForm.tsx b/src/features/marketing/BroadcastForm.tsx
+new file mode 100644
+index 0000000..1243d7d
+--- /dev/null
++++ b/src/features/marketing/BroadcastForm.tsx
+@@ -0,0 +1,188 @@
++import { useState } from 'react'
++import { useForm } from 'react-hook-form'
++import { zodResolver } from '@hookform/resolvers/zod'
++import { z } from 'zod'
++import { AlertTriangle, CheckCircle2, Send } from 'lucide-react'
++import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
++import { Button } from '@/components/ui/button'
++import { Input } from '@/components/ui/input'
++import { Label } from '@/components/ui/label'
++import { Textarea } from '@/components/ui/textarea'
++import { getApiMessage } from '@/lib/api-errors'
++import { useSendBroadcast } from './hooks'
++import type { BroadcastResult } from './types'
++
++/**
++ * Reglas espejo del BroadcastNotificationDto del backend: title/body
++ * requeridos y no vacíos (class-validator: @IsString + @IsNotEmpty, sin
++ * límite de longitud declarado — no inventamos uno acá).
++ */
++const broadcastSchema = z.object({
++  title: z.string().trim().min(1, 'El título es obligatorio'),
++  body: z.string().trim().min(1, 'El cuerpo es obligatorio'),
++})
++
++type BroadcastFormValues = z.infer<typeof broadcastSchema>
++
++/**
++ * Formulario de envío de notificación de marketing/fidelización — MÓDULO
++ * Marketing. Envía a TODOS los usuarios con fcmToken, sin segmentación
++ * (v1, ver plan). Acción de impacto real e inmediata (sin scheduler): el
++ * submit del formulario NO dispara la mutación directamente, primero
++ * muestra un panel de confirmación explícito con el título/cuerpo a enviar;
++ * solo el botón "Sí, enviar ahora" llama a la API. Mismo patrón que
++ * GenerateBulkCouponForm (features/coupons).
++ */
++export function BroadcastForm() {
++  const broadcastMutation = useSendBroadcast()
++  const [serverError, setServerError] = useState<string | null>(null)
++  const [pendingValues, setPendingValues] = useState<BroadcastFormValues | null>(
++    null,
++  )
++  const [result, setResult] = useState<BroadcastResult | null>(null)
++
++  const {
++    register,
++    handleSubmit,
++    reset,
++    formState: { errors },
++  } = useForm<BroadcastFormValues>({
++    resolver: zodResolver(broadcastSchema),
++    defaultValues: { title: '', body: '' },
++  })
++
++  // El submit del form solo pasa a modo confirmación — la API se llama desde
++  // handleConfirm, tras el clic explícito del admin.
++  function onValidated(values: BroadcastFormValues) {
++    setServerError(null)
++    setResult(null)
++    setPendingValues(values)
++  }
++
++  async function handleConfirm() {
++    if (!pendingValues) return
++    setServerError(null)
++    try {
++      const sent = await broadcastMutation.mutateAsync(pendingValues)
++      setResult(sent)
++      setPendingValues(null)
++      reset({ title: '', body: '' })
++    } catch (error) {
++      setServerError(getApiMessage(error, 'No se pudo enviar la notificación'))
++      setPendingValues(null)
++    }
++  }
++
++  const isSending = broadcastMutation.isPending
++
++  // ── Panel de confirmación explícita (reemplaza el formulario mientras está activo) ──
++  if (pendingValues) {
++    return (
++      <div className="space-y-4">
++        <Alert variant="destructive">
++          <AlertTriangle className="text-celtas-red" />
++          <AlertTitle>¿Confirmas enviar esta notificación a todos los clientes?</AlertTitle>
++          <AlertDescription className="space-y-2">
++            <p>
++              Se envía de inmediato a todos los usuarios con notificaciones
++              activadas — no hay forma de deshacerlo ni de programarlo.
++            </p>
++            <div className="bg-background/40 border-border mt-2 space-y-1 rounded-md border p-3">
++              <p className="text-foreground text-sm font-semibold">
++                {pendingValues.title}
++              </p>
++              <p className="text-muted-foreground text-sm">
++                {pendingValues.body}
++              </p>
++            </div>
++          </AlertDescription>
++        </Alert>
++
++        {serverError ? (
++          <Alert variant="destructive">
++            <AlertTitle>No se pudo enviar la notificación</AlertTitle>
++            <AlertDescription>{serverError}</AlertDescription>
++          </Alert>
++        ) : null}
++
++        <div className="flex justify-end gap-2 pt-2">
++          <Button
++            type="button"
++            variant="outline"
++            onClick={() => setPendingValues(null)}
++            disabled={isSending}
++          >
++            Cancelar
++          </Button>
++          <Button
++            type="button"
++            variant="destructive"
++            onClick={handleConfirm}
++            disabled={isSending}
++          >
++            {isSending ? 'Enviando…' : 'Sí, enviar ahora'}
++          </Button>
++        </div>
++      </div>
++    )
++  }
++
++  return (
++    <form onSubmit={handleSubmit(onValidated)} className="space-y-4">
++      {result ? (
++        <Alert className="border-emerald-400/40 bg-emerald-400/10">
++          <CheckCircle2 className="text-emerald-400" />
++          <AlertTitle>Notificación enviada</AlertTitle>
++          <AlertDescription>
++            La recibieron{' '}
++            <span className="font-semibold">{result.sent}</span> de{' '}
++            <span className="font-semibold">{result.total}</span>{' '}
++            dispositivo{result.total === 1 ? '' : 's'} con notificaciones
++            activadas.
++          </AlertDescription>
++        </Alert>
++      ) : null}
++
++      {serverError ? (
++        <Alert variant="destructive">
++          <AlertTitle>No se pudo enviar la notificación</AlertTitle>
++          <AlertDescription>{serverError}</AlertDescription>
++        </Alert>
++      ) : null}
++
++      <div className="space-y-1.5">
++        <Label htmlFor="broadcast-title">Título</Label>
++        <Input
++          id="broadcast-title"
++          placeholder="Ej. A pocos días del día del padre y Celtas lo sabe"
++          aria-invalid={Boolean(errors.title)}
++          {...register('title')}
++        />
++        {errors.title ? (
++          <p className="text-celtas-red-light text-xs">{errors.title.message}</p>
++        ) : null}
++      </div>
++
++      <div className="space-y-1.5">
++        <Label htmlFor="broadcast-body">Cuerpo</Label>
++        <Textarea
++          id="broadcast-body"
++          rows={3}
++          placeholder="Ej. Aprovecha nuestras promos especiales antes de que se acaben."
++          aria-invalid={Boolean(errors.body)}
++          {...register('body')}
++        />
++        {errors.body ? (
++          <p className="text-celtas-red-light text-xs">{errors.body.message}</p>
++        ) : null}
++      </div>
++
++      <div className="flex justify-end pt-2">
++        <Button type="submit">
++          <Send />
++          Enviar ahora
++        </Button>
++      </div>
++    </form>
++  )
++}
+diff --git a/src/features/marketing/MarketingPage.tsx b/src/features/marketing/MarketingPage.tsx
+new file mode 100644
+index 0000000..57f6ee7
+--- /dev/null
++++ b/src/features/marketing/MarketingPage.tsx
+@@ -0,0 +1,97 @@
++import { Inbox } from 'lucide-react'
++import { ErrorState } from '@/components/ui/ErrorState'
++import { LoadingState } from '@/components/ui/LoadingState'
++import {
++  Table,
++  TableBody,
++  TableCell,
++  TableHead,
++  TableHeader,
++  TableRow,
++} from '@/components/ui/table'
++import { formatLima } from '@/lib/dates'
++import { BroadcastForm } from './BroadcastForm'
++import { useBroadcastHistory } from './hooks'
++
++/**
++ * Marketing/fidelización — MÓDULO nuevo, sección propia (NO mezclada con
++ * Configuración). Formulario de envío inmediato arriba, historial de
++ * campañas ya enviadas debajo (GET /notifications/broadcast-history).
++ */
++export default function MarketingPage() {
++  const { data, isLoading, isError, refetch } = useBroadcastHistory()
++
++  return (
++    <div className="space-y-6">
++      <header>
++        <h1 className="text-2xl font-bold tracking-tight">Marketing</h1>
++        <p className="text-muted-foreground text-sm">
++          Envía una notificación push a todos los clientes con notificaciones
++          activadas. Envío manual e inmediato, sin segmentación ni
++          programación.
++        </p>
++      </header>
++
++      <div className="bg-card border-border rounded-xl border p-4 sm:p-6">
++        <BroadcastForm />
++      </div>
++
++      <div>
++        <h2 className="mb-3 text-lg font-semibold tracking-tight">
++          Historial de campañas
++        </h2>
++
++        {isLoading ? (
++          <LoadingState label="Cargando historial…" />
++        ) : isError ? (
++          <ErrorState
++            title="No se pudo cargar el historial"
++            description="Revisa tu conexión y vuelve a intentar."
++            onRetry={() => refetch()}
++          />
++        ) : data && data.length === 0 ? (
++          <div className="bg-card border-border flex flex-col items-center gap-3 rounded-xl border px-6 py-14 text-center">
++            <Inbox className="text-celtas-orange size-8" />
++            <div>
++              <p className="font-medium">Todavía no enviaste ninguna campaña</p>
++              <p className="text-muted-foreground mt-1 text-sm">
++                Usa el formulario de arriba para enviar la primera.
++              </p>
++            </div>
++          </div>
++        ) : data ? (
++          <div className="bg-card border-border overflow-hidden rounded-xl border">
++            <Table>
++              <TableHeader>
++                <TableRow>
++                  <TableHead>Título</TableHead>
++                  <TableHead>Cuerpo</TableHead>
++                  <TableHead>Alcance</TableHead>
++                  <TableHead>Enviada</TableHead>
++                </TableRow>
++              </TableHeader>
++              <TableBody>
++                {data.map((campaign) => (
++                  <TableRow key={campaign.id}>
++                    <TableCell className="font-medium">
++                      {campaign.title}
++                    </TableCell>
++                    <TableCell className="text-muted-foreground max-w-xs truncate text-sm">
++                      {campaign.body}
++                    </TableCell>
++                    <TableCell className="text-sm">
++                      {campaign.sentCount} / {campaign.totalCount}
++                    </TableCell>
++                    <TableCell className="text-sm">
++                      {formatLima(campaign.createdAt)}
++                    </TableCell>
++                  </TableRow>
++                ))}
++              </TableBody>
++            </Table>
++          </div>
++        ) : null}
++      </div>
++    </div>
++  )
++}
+diff --git a/src/features/marketing/hooks.test.tsx b/src/features/marketing/hooks.test.tsx
+new file mode 100644
+index 0000000..c035cf3
+--- /dev/null
++++ b/src/features/marketing/hooks.test.tsx
+@@ -0,0 +1,93 @@
++import { beforeEach, describe, expect, it, vi } from 'vitest'
++import { renderHook, waitFor } from '@testing-library/react'
++import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
++import type { ReactNode } from 'react'
++
++const { getMock, postMock } = vi.hoisted(() => ({
++  getMock: vi.fn(),
++  postMock: vi.fn(),
++}))
++
++vi.mock('@/lib/api-client', () => ({
++  get: getMock,
++  post: postMock,
++  patch: vi.fn(),
++  del: vi.fn(),
++}))
++
++import { useBroadcastHistory, useSendBroadcast } from './hooks'
++
++function makeWrapper() {
++  const queryClient = new QueryClient({
++    defaultOptions: { queries: { retry: false } },
++  })
++  return {
++    queryClient,
++    Wrapper({ children }: { children: ReactNode }) {
++      return (
++        <QueryClientProvider client={queryClient}>
++          {children}
++        </QueryClientProvider>
++      )
++    },
++  }
++}
++
++describe('useBroadcastHistory', () => {
++  beforeEach(() => {
++    getMock.mockReset()
++  })
++
++  it('pide GET /notifications/broadcast-history', async () => {
++    getMock.mockResolvedValue([])
++    const { Wrapper } = makeWrapper()
++    const { result } = renderHook(() => useBroadcastHistory(), {
++      wrapper: Wrapper,
++    })
++
++    await waitFor(() => expect(result.current.isSuccess).toBe(true))
++    expect(getMock).toHaveBeenCalledWith('/notifications/broadcast-history')
++  })
++})
++
++describe('useSendBroadcast', () => {
++  beforeEach(() => {
++    postMock.mockReset()
++  })
++
++  it('envía POST /notifications/broadcast con { title, body } exactos', async () => {
++    postMock.mockResolvedValue({ sent: 2, total: 3 })
++    const { Wrapper } = makeWrapper()
++    const { result } = renderHook(() => useSendBroadcast(), {
++      wrapper: Wrapper,
++    })
++
++    const response = await result.current.mutateAsync({
++      title: 'Título',
++      body: 'Cuerpo',
++    })
++
++    expect(postMock).toHaveBeenCalledWith('/notifications/broadcast', {
++      title: 'Título',
++      body: 'Cuerpo',
++    })
++    expect(response).toEqual({ sent: 2, total: 3 })
++  })
++
++  it('invalida el historial de campañas al enviar con éxito', async () => {
++    postMock.mockResolvedValue({ sent: 1, total: 1 })
++    const { Wrapper, queryClient } = makeWrapper()
++    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
++    const { result } = renderHook(() => useSendBroadcast(), {
++      wrapper: Wrapper,
++    })
++
++    await result.current.mutateAsync({ title: 'Título', body: 'Cuerpo' })
++
++    await waitFor(() => {
++      expect(invalidateSpy).toHaveBeenCalledWith({
++        queryKey: ['marketing', 'broadcast-history'],
++      })
++    })
++  })
++})
+diff --git a/src/features/marketing/hooks.ts b/src/features/marketing/hooks.ts
+new file mode 100644
+index 0000000..77a243a
+--- /dev/null
++++ b/src/features/marketing/hooks.ts
+@@ -0,0 +1,33 @@
++import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
++import { get, post } from '@/lib/api-client'
++import type {
++  BroadcastNotificationInput,
++  BroadcastResult,
++  MarketingBroadcast,
++} from './types'
++
++const BROADCAST_HISTORY_KEY = ['marketing', 'broadcast-history'] as const
++
++/** Historial de campañas enviadas (GET /notifications/broadcast-history). */
++export function useBroadcastHistory() {
++  return useQuery({
++    queryKey: BROADCAST_HISTORY_KEY,
++    queryFn: () =>
++      get<MarketingBroadcast[]>('/notifications/broadcast-history'),
++  })
++}
++
++/**
++ * Envío de campaña de marketing a TODOS los usuarios con fcmToken
++ * (POST /notifications/broadcast). Acción de impacto real — el componente
++ * que la usa exige confirmación explícita antes de llamar a mutateAsync.
++ */
++export function useSendBroadcast() {
++  const queryClient = useQueryClient()
++  return useMutation({
++    mutationFn: (input: BroadcastNotificationInput) =>
++      post<BroadcastResult>('/notifications/broadcast', input),
++    onSuccess: () =>
++      queryClient.invalidateQueries({ queryKey: BROADCAST_HISTORY_KEY }),
++  })
++}
+diff --git a/src/features/marketing/types.ts b/src/features/marketing/types.ts
+new file mode 100644
+index 0000000..d040c7d
+--- /dev/null
++++ b/src/features/marketing/types.ts
+@@ -0,0 +1,42 @@
++/**
++ * Tipos del módulo marketing — espejo del contrato real del backend.
++ * Confirmados contra la fuente (../backend-celtas/src/modules/notifications/),
++ * NO solo contra Swagger: `POST /notifications/broadcast` y
++ * `GET /notifications/broadcast-history` no tienen `@ApiResponse({ type })`
++ * en el controller, así que `src/types/api.d.ts` no documenta el schema de
++ * respuesta (queda como `content?: never`). El tipo real viene de leer
++ * `NotificationsService.sendMarketingBroadcast`/`getBroadcastHistory` y la
++ * entidad `MarketingNotification` directamente.
++ */
++
++/** Body de POST /notifications/broadcast (BroadcastNotificationDto). */
++export interface BroadcastNotificationInput {
++  title: string
++  body: string
++}
++
++/**
++ * Respuesta de POST /notifications/broadcast. Confirmado contra
++ * NotificationsService.sendMarketingBroadcast() (backend real): reenvía el
++ * mismo { sent, total } que ya devuelve broadcastPushNotification.
++ */
++export interface BroadcastResult {
++  sent: number
++  total: number
++}
++
++/**
++ * Fila del historial (GET /notifications/broadcast-history). Espejo de la
++ * entidad MarketingNotification del backend. `adminId` puede ser `null` (FK
++ * ON DELETE SET NULL si se borra la cuenta del admin que la envió). La
++ * relación `admin` no se serializa: getBroadcastHistory() no la carga.
++ */
++export interface MarketingBroadcast {
++  id: string
++  title: string
++  body: string
++  adminId: string | null
++  sentCount: number
++  totalCount: number
++  createdAt: string
++}
+diff --git a/src/layouts/AdminLayout.tsx b/src/layouts/AdminLayout.tsx
+index 662902e..40e5f6c 100644
+--- a/src/layouts/AdminLayout.tsx
++++ b/src/layouts/AdminLayout.tsx
+@@ -5,6 +5,7 @@ import {
+   Image as ImageIcon,
+   LayoutDashboard,
+   LogOut,
++  Megaphone,
+   Menu,
+   Settings,
+   ShoppingBag,
+@@ -24,6 +25,7 @@ const NAV_ITEMS = [
+   { to: '/orders', label: 'Pedidos', icon: ShoppingBag },
+   { to: '/coupons', label: 'Cupones', icon: TicketPercent },
+   { to: '/banners', label: 'Banners', icon: ImageIcon },
++  { to: '/marketing', label: 'Marketing', icon: Megaphone },
+   { to: '/settings', label: 'Configuración', icon: Settings },
+   { to: '/users', label: 'Usuarios', icon: Users },
+ ]
+diff --git a/src/routes/router.tsx b/src/routes/router.tsx
+index 64ea46c..8ac346c 100644
+--- a/src/routes/router.tsx
++++ b/src/routes/router.tsx
+@@ -17,6 +17,7 @@ const MenuPage = lazy(() => import('@/features/menu/MenuPage'))
+ const OrdersPage = lazy(() => import('@/features/orders/OrdersPage'))
+ const CouponsPage = lazy(() => import('@/features/coupons/CouponsPage'))
+ const BannersPage = lazy(() => import('@/features/banners/BannersPage'))
++const MarketingPage = lazy(() => import('@/features/marketing/MarketingPage'))
+ const SettingsPage = lazy(() => import('@/features/settings/SettingsPage'))
+ const UsersPage = lazy(() => import('@/features/users/UsersPage'))
+ 
+@@ -87,6 +88,14 @@ export const router = createBrowserRouter([
+           </Suspense>
+         ),
+       },
++      {
++        path: 'marketing',
++        element: (
++          <Suspense fallback={<PageFallback />}>
++            <MarketingPage />
++          </Suspense>
++        ),
++      },
+       {
+         path: 'settings',
+         element: (
+diff --git a/src/types/api.d.ts b/src/types/api.d.ts
+index 036b40a..975cb27 100644
+--- a/src/types/api.d.ts
++++ b/src/types/api.d.ts
+@@ -620,6 +620,46 @@ export interface paths {
+         patch?: never;
+         trace?: never;
+     };
++    "/notifications/broadcast": {
++        parameters: {
++            query?: never;
++            header?: never;
++            path?: never;
++            cookie?: never;
++        };
++        get?: never;
++        put?: never;
++        /**
++         * Enviar una notificación de marketing/fidelización a TODOS los usuarios con token (admin)
++         * @description Envío manual e inmediato (sin scheduler). Ej.: "A pocos días del día del padre y Celtas lo sabe". Reutiliza el mismo envío masivo por lotes de 500 tokens que ya usa el resto del sistema, y deja registro en el historial.
++         */
++        post: operations["NotificationsController_broadcast"];
++        delete?: never;
++        options?: never;
++        head?: never;
++        patch?: never;
++        trace?: never;
++    };
++    "/notifications/broadcast-history": {
++        parameters: {
++            query?: never;
++            header?: never;
++            path?: never;
++            cookie?: never;
++        };
++        /**
++         * Historial de campañas de marketing enviadas (admin)
++         * @description Más recientes primero.
++         */
++        get: operations["NotificationsController_broadcastHistory"];
++        put?: never;
++        post?: never;
++        delete?: never;
++        options?: never;
++        head?: never;
++        patch?: never;
++        trace?: never;
++    };
+     "/settings/public": {
+         parameters: {
+             query?: never;
+@@ -640,6 +680,26 @@ export interface paths {
+         patch?: never;
+         trace?: never;
+     };
++    "/settings/business-hours": {
++        parameters: {
++            query?: never;
++            header?: never;
++            path?: never;
++            cookie?: never;
++        };
++        /**
++         * Horario de atención y si el local está abierto ahora (sin auth)
++         * @description Fuente única de verdad de si el local está abierto: evalúa el interruptor manual "cerrado temporalmente" (con prioridad sobre el horario) y, si no aplica, el horario programado por día de la semana en hora de Lima. No bloquea nada por sí mismo (el bloqueo real ocurre en POST /orders) — centraliza la lógica para que el panel o la app puedan mostrarla. `nextChangeAt` (ISO 8601 UTC) es el próximo instante en que cambia el estado abierto/cerrado, para que la app se autoprograme en vez de hacer polling; es `null` si el cierre manual está activo (impredecible) o si el horario nunca abre.
++         */
++        get: operations["SettingsController_businessHours"];
++        put?: never;
++        post?: never;
++        delete?: never;
++        options?: never;
++        head?: never;
++        patch?: never;
++        trace?: never;
++    };
+     "/settings": {
+         parameters: {
+             query?: never;
+@@ -1106,7 +1166,7 @@ export interface components {
+              */
+             quantity: number;
+             /**
+-             * @description UUIDs de las salsas elegidas para este ítem (deben estar entre las que el producto ofrece; se aplican a las `quantity` unidades del ítem, no una selección por unidad individual). Omitido o vacío = sin salsas.
++             * @description UUIDs de las salsas elegidas para este ítem (deben estar entre las que el producto ofrece; se aplican a las `quantity` unidades del ítem, no una selección por unidad individual). Omitido (campo no enviado) = no aplica, el producto no ofrece salsas o el cliente nunca llegó al selector. Array vacío enviado explícitamente ([]) = el cliente vio el selector y eligió deliberadamente "Sin salsas"; se guarda y se muestra como una elección real, no como ausencia de dato.
+              * @example [
+              *       "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+              *     ]
+@@ -1223,6 +1283,18 @@ export interface components {
+              */
+             body: string;
+         };
++        BroadcastNotificationDto: {
++            /**
++             * @description Título de la notificación
++             * @example A pocos días del día del padre y Celtas lo sabe 🎉
++             */
++            title: string;
++            /**
++             * @description Cuerpo del mensaje
++             * @example Aprovecha nuestras promos especiales antes de que se acaben.
++             */
++            body: string;
++        };
+         UpdateSettingDto: {
+             /**
+              * @description Clave de la setting a crear/actualizar
+@@ -2743,6 +2815,13 @@ export interface operations {
+                 };
+                 content?: never;
+             };
++            /** @description El local está cerrado (horario programado o cierre manual temporal) o el cupón ya fue usado */
++            409: {
++                headers: {
++                    [name: string]: unknown;
++                };
++                content?: never;
++            };
+         };
+     };
+     OrdersController_listMine: {
+@@ -3105,6 +3184,81 @@ export interface operations {
+             };
+         };
+     };
++    NotificationsController_broadcast: {
++        parameters: {
++            query?: never;
++            header?: never;
++            path?: never;
++            cookie?: never;
++        };
++        requestBody: {
++            content: {
++                "application/json": components["schemas"]["BroadcastNotificationDto"];
++            };
++        };
++        responses: {
++            /** @description Envío procesado. sent/total: cuántos dispositivos lo recibieron de cuántos tenían token. */
++            201: {
++                headers: {
++                    [name: string]: unknown;
++                };
++                content?: never;
++            };
++            /** @description Payload inválido */
++            400: {
++                headers: {
++                    [name: string]: unknown;
++                };
++                content?: never;
++            };
++            /** @description Sin token o token inválido */
++            401: {
++                headers: {
++                    [name: string]: unknown;
++                };
++                content?: never;
++            };
++            /** @description Requiere rol admin */
++            403: {
++                headers: {
++                    [name: string]: unknown;
++                };
++                content?: never;
++            };
++        };
++    };
++    NotificationsController_broadcastHistory: {
++        parameters: {
++            query?: never;
++            header?: never;
++            path?: never;
++            cookie?: never;
++        };
++        requestBody?: never;
++        responses: {
++            /** @description Lista del historial de envíos */
++            200: {
++                headers: {
++                    [name: string]: unknown;
++                };
++                content?: never;
++            };
++            /** @description Sin token o token inválido */
++            401: {
++                headers: {
++                    [name: string]: unknown;
++                };
++                content?: never;
++            };
++            /** @description Requiere rol admin */
++            403: {
++                headers: {
++                    [name: string]: unknown;
++                };
++                content?: never;
++            };
++        };
++    };
+     SettingsController_findPublic: {
+         parameters: {
+             query?: never;
+@@ -3123,6 +3277,24 @@ export interface operations {
+             };
+         };
+     };
++    SettingsController_businessHours: {
++        parameters: {
++            query?: never;
++            header?: never;
++            path?: never;
++            cookie?: never;
++        };
++        requestBody?: never;
++        responses: {
++            /** @description { open, message, schedule, manualClosed, nextChangeAt } */
++            200: {
++                headers: {
++                    [name: string]: unknown;
++                };
++                content?: never;
++            };
++        };
++    };
+     SettingsController_findAll: {
+         parameters: {
+             query?: never;
+-- 
+2.43.0
+

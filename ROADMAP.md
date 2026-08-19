@@ -411,6 +411,32 @@ celtas-admin/
         con `@IsNotEmpty()` (no se puede vaciar `business_manual_closed_reason` a `''` real vía
         PATCH) se deja igual solo anotado — decisión explícita: no se toca `celtas-backend` desde
         este repo.
+      - **Flaky de `BannersPage.test.tsx` resuelto de raíz (2026-08-19)**: el test "banner sin
+        fechas + con días..." (mencionado como flaky pre-existente en las dos entradas de arriba)
+        NO era una condición de carrera real — fallaba consistentemente cerca o por encima del
+        límite de 5000ms (5.3s–8.6s en varias reproducciones), no de forma aleatoria. Causa raíz:
+        `BannersPage.test.tsx` era el único archivo de todo el repo que mockeaba su hook con
+        `vi.resetModules()` + `vi.doMock('./hooks', ...)` + `await import('./BannersPage')` dentro
+        de cada `it()`, en vez del patrón estándar (`vi.mock` hoisted a nivel de módulo + import
+        estático). `vi.resetModules()` limpia el registro de módulos en runtime pero no el caché de
+        *transform* de Vite/esbuild — así que el primer test del archivo pagaba, dentro de su propio
+        timeout de 5000ms, el costo de transformar por primera vez todo el grafo de dependencias de
+        `BannersPage` (`@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities`, los cientos de
+        íconos de `lucide-react`, Radix Dialog, etc.); los tests 2 y 3 del mismo archivo, con el
+        grafo ya transformado, corrían rápido. Bajo contención real de CPU (suite completa de 23
+        archivos en paralelo) esto reproducía el timeout 3/3 veces. **Fix**: se reescribió
+        `BannersPage.test.tsx` para seguir el patrón estándar del repo — `vi.mock('./hooks', ...)`
+        hoisted con `useBannersMock` vía `vi.hoisted()`, import estático de `BannersPage`, y cada
+        test cambia el mock con `useBannersMock.mockReturnValue(...)` en vez de re-mockear el
+        módulo completo. Las tres aserciones de negocio no cambiaron (carácter por carácter
+        idénticas al original). Solo se tocó el archivo de test — `BannersPage.tsx` y `hooks.ts`
+        quedaron intactos. **Verificado**: archivo aislado, 5/5 corridas en verde (~3s totales,
+        fase de tests en 107–133ms, vs 6.4s–8.6s solo para ese test antes); `type-check`, `lint`,
+        `test` (125/125, 23/23 archivos) y `build` en verde. **Verificado por @tester de forma
+        independiente**: reprodujo la causa raíz con un método más riguroso (suite completa bajo
+        contención de CPU real, no solo aislado) — 3/3 fallos con el archivo original, 3/3 en verde
+        con el fix, en 3 corridas con caché de Vite limpiada entre cada una. **Veredicto final de
+        @tester: LISTO**.
 
 ### 9. Usuarios (listado admin)
 - [x] Listado paginado de `GET /users` (filtro de búsqueda en cliente: el backend solo expone
