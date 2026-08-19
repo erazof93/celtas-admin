@@ -620,6 +620,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/notifications/broadcast": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enviar una notificación de marketing/fidelización a TODOS los usuarios con token (admin)
+         * @description Envío manual e inmediato (sin scheduler). Ej.: "A pocos días del día del padre y Celtas lo sabe". Reutiliza el mismo envío masivo por lotes de 500 tokens que ya usa el resto del sistema, y deja registro en el historial.
+         */
+        post: operations["NotificationsController_broadcast"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/notifications/broadcast-history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Historial de campañas de marketing enviadas (admin)
+         * @description Más recientes primero.
+         */
+        get: operations["NotificationsController_broadcastHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/settings/public": {
         parameters: {
             query?: never;
@@ -632,6 +672,26 @@ export interface paths {
          * @description Devuelve SOLO las keys de una whitelist explícita en el código (por ahora whatsapp_business_number). Nunca expone todo el key-value.
          */
         get: operations["SettingsController_findPublic"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/settings/business-hours": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Horario de atención y si el local está abierto ahora (sin auth)
+         * @description Fuente única de verdad de si el local está abierto: evalúa el interruptor manual "cerrado temporalmente" (con prioridad sobre el horario) y, si no aplica, el horario programado por día de la semana en hora de Lima. No bloquea nada por sí mismo (el bloqueo real ocurre en POST /orders) — centraliza la lógica para que el panel o la app puedan mostrarla. `nextChangeAt` (ISO 8601 UTC) es el próximo instante en que cambia el estado abierto/cerrado, para que la app se autoprograme en vez de hacer polling; es `null` si el cierre manual está activo (impredecible) o si el horario nunca abre.
+         */
+        get: operations["SettingsController_businessHours"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1106,7 +1166,7 @@ export interface components {
              */
             quantity: number;
             /**
-             * @description UUIDs de las salsas elegidas para este ítem (deben estar entre las que el producto ofrece; se aplican a las `quantity` unidades del ítem, no una selección por unidad individual). Omitido o vacío = sin salsas.
+             * @description UUIDs de las salsas elegidas para este ítem (deben estar entre las que el producto ofrece; se aplican a las `quantity` unidades del ítem, no una selección por unidad individual). Omitido (campo no enviado) = no aplica, el producto no ofrece salsas o el cliente nunca llegó al selector. Array vacío enviado explícitamente ([]) = el cliente vio el selector y eligió deliberadamente "Sin salsas"; se guarda y se muestra como una elección real, no como ausencia de dato.
              * @example [
              *       "3fa85f64-5717-4562-b3fc-2c963f66afa6"
              *     ]
@@ -1220,6 +1280,18 @@ export interface components {
             /**
              * @description Cuerpo del mensaje
              * @example Tu pedido #123 está en camino a tu dirección.
+             */
+            body: string;
+        };
+        BroadcastNotificationDto: {
+            /**
+             * @description Título de la notificación
+             * @example A pocos días del día del padre y Celtas lo sabe 🎉
+             */
+            title: string;
+            /**
+             * @description Cuerpo del mensaje
+             * @example Aprovecha nuestras promos especiales antes de que se acaben.
              */
             body: string;
         };
@@ -2743,6 +2815,13 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description El local está cerrado (horario programado o cierre manual temporal) o el cupón ya fue usado */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     OrdersController_listMine: {
@@ -3105,6 +3184,81 @@ export interface operations {
             };
         };
     };
+    NotificationsController_broadcast: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BroadcastNotificationDto"];
+            };
+        };
+        responses: {
+            /** @description Envío procesado. sent/total: cuántos dispositivos lo recibieron de cuántos tenían token. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Payload inválido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    NotificationsController_broadcastHistory: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lista del historial de envíos */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     SettingsController_findPublic: {
         parameters: {
             query?: never;
@@ -3115,6 +3269,24 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Settings públicas (solo keys de la whitelist) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    SettingsController_businessHours: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description { open, message, schedule, manualClosed, nextChangeAt } */
             200: {
                 headers: {
                     [name: string]: unknown;

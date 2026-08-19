@@ -468,6 +468,65 @@ celtas-admin/
 - [ ] Deploy en Vercel o Netlify (free tier), variables de entorno de producción — **parte 2**
 - [ ] Verificación end-to-end manual contra el backend real de producción — **parte 2**
 
+### 11. Marketing (notificaciones de fidelización) — v1 manual
+- [x] Sección propia en el sidebar (`/marketing`, ícono `Megaphone`), **no mezclada con
+      Configuración**. Contrato confirmado contra el código fuente real de `backend-celtas`
+      (`notifications.controller.ts`, `notifications.service.ts`, entidad
+      `MarketingNotification`), no solo Swagger — `POST /notifications/broadcast` y
+      `GET /notifications/broadcast-history` no declaran `@ApiResponse({ type })`, así que
+      `src/types/api.d.ts` no documenta el schema de respuesta; los tipos en
+      `src/features/marketing/types.ts` vienen de leer el backend real.
+      `src/types/api.d.ts` regenerado (`pnpm run generate:types`) contra el backend local
+      (`localhost:3000/docs-json`) para confirmar los dos endpoints nuevos ya existen en el
+      contrato antes de construir.
+- [x] `BroadcastForm.tsx`: título + cuerpo (Zod, espejo de `BroadcastNotificationDto`:
+      requeridos, no vacíos) + botón "Enviar ahora". Acción de impacto real e inmediata (sin
+      scheduler, sin deshacer) — mismo patrón de confirmación explícita que
+      `GenerateBulkCouponForm` (Cupones): el submit NO llama a la API directo, primero muestra
+      un panel de confirmación con el título/cuerpo a enviar; solo "Sí, enviar ahora" dispara
+      `POST /notifications/broadcast`. Al completar, muestra `sent`/`total` (cuántos
+      dispositivos lo recibieron de cuántos tenían token).
+- [x] `MarketingPage.tsx`: formulario arriba + tabla con el historial de campañas debajo
+      (`GET /notifications/broadcast-history`, más recientes primero, columnas
+      título/cuerpo/alcance sent-total/fecha en Lima).
+- [x] Hooks en `src/features/marketing/hooks.ts` (`useBroadcastHistory`, `useSendBroadcast`,
+      React Query, invalida el historial al enviar con éxito).
+- [x] Verificación manual end-to-end contra el backend **local** real (`localhost:3000`, admin
+      QA creado a mano en la BD): `POST /notifications/broadcast` devolvió
+      `{"sent":0,"total":16}` (0 porque las credenciales de Firebase del `.env` local son de
+      prueba — el contrato `{sent, total}` y el guardado en historial se confirmaron reales, no
+      simulados) y `GET /notifications/broadcast-history` devolvió la fila esperada
+      (`id, title, body, adminId, sentCount, totalCount, createdAt`); `401` sin token confirmado.
+- [x] Tests: `hooks.test.tsx` (payload exacto del POST, invalidación del historial) y
+      `BroadcastForm.test.tsx` (flujo de confirmación — el test crítico es que `mutateAsync`
+      NUNCA se llama antes del clic en "Sí, enviar ahora", igual que el test de regresión
+      equivalente en Cupones).
+- [x] `type-check`, `lint`, `build`, `test` verificados por la sesión antes de pedir auditoría.
+- [x] **Auditoría @tester (2026-08-19)**: repitió `type-check`/`lint`/`build`/`test` de forma
+      independiente — los tres primeros sin salida (0 errores/warnings), `test` en **23 archivos /
+      125 tests en verde** (incluidos los 2 archivos nuevos de `src/features/marketing/`, 8/8
+      aislados y dentro de la suite completa). Comparó `types.ts` línea a línea contra
+      `notifications.controller.ts`/`notifications.service.ts`/`broadcast-notification.dto.ts`/
+      `marketing-notification.entity.ts` reales — coincide campo a campo, incluido `adminId: string
+      | null` (FK `SET NULL`) y `createdAt: string` (confirmado que llega como string ISO por HTTP
+      real, no `Date`). **Mutación real del guard de confirmación**: inyectó una llamada directa a
+      `mutateAsync` dentro de `onValidated` (bypaseando el panel de confirmación) →
+      2 de 5 tests de `BroadcastForm.test.tsx` FALLARON exactamente como se esperaba; restauró el
+      archivo y la suite volvió a 5/5. **Verificación end-to-end independiente** contra el backend
+      local real, con un admin QA propio creado vía `POST /auth/register` + promoción a `admin` por
+      SQL (sesión distinta de la usada por la sesión principal): `401` sin token, `201
+      {"sent":0,"total":16}` con token admin, `GET /notifications/broadcast-history` con la fila
+      esperada exacta. Confirmó por diff real que el ítem de sidebar y la ruta quedaron entre
+      "Banners" y "Configuración", sección propia. Sin `any` ni casting forzado en el módulo (grep =
+      0 resultados relevantes). Agregó la sección "Marketing (notificaciones de fidelización)" a
+      `docs/testing-checklist.md` (no existía) con el reporte de auditoría completo, incluidos los
+      riesgos no bloqueantes (sin límite de longitud en título/cuerpo, sin preview de audiencia
+      antes de confirmar, sin verificación de entrega real de FCM con credenciales de producción, y
+      sin prueba E2E por navegador/Playwright). **Veredicto final de @tester: LISTO PARA MARCAR
+      COMPLETO**. Detalle completo en `docs/testing-checklist.md`, sección "Marketing
+      (notificaciones de fidelización) — v1 manual" + reporte de auditoría al final del archivo.
+      Pendiente: veredicto de `@tester`.
+
 ---
 
 ## Cómo trabajar con OpenCode

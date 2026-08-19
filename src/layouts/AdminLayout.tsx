@@ -5,6 +5,7 @@ import {
   Image as ImageIcon,
   LayoutDashboard,
   LogOut,
+  Megaphone,
   Menu,
   Settings,
   ShoppingBag,
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
   { to: '/orders', label: 'Pedidos', icon: ShoppingBag },
   { to: '/coupons', label: 'Cupones', icon: TicketPercent },
   { to: '/banners', label: 'Banners', icon: ImageIcon },
+  { to: '/marketing', label: 'Marketing', icon: Megaphone },
   { to: '/settings', label: 'Configuración', icon: Settings },
   { to: '/users', label: 'Usuarios', icon: Users },
 ]

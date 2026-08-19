@@ -587,6 +587,79 @@ cambio adicional en `celtas-admin` ni en `celtas-backend`.
 
 ---
 
+## Marketing (notificaciones de fidelización) — v1 manual
+
+- [x] Sección propia en el sidebar (`/marketing`, ícono `Megaphone`), ubicada entre "Banners" y
+      "Configuración" en `AdminLayout.tsx` — NO mezclada con Configuración (`NAV_ITEMS` confirmado
+      por diff real)
+- [x] Ruta `/marketing` registrada en `router.tsx` con `React.lazy` + `Suspense` (mismo patrón de
+      code-splitting que el resto de rutas)
+- [x] Contrato confirmado línea a línea contra el código fuente real de `backend-celtas` (no solo
+      Swagger): `notifications.controller.ts` (`POST /notifications/broadcast`,
+      `GET /notifications/broadcast-history`, ambos `@Roles(UserRole.ADMIN)` +
+      `JwtAuthGuard`/`RolesGuard`), `notifications.service.ts`
+      (`sendMarketingBroadcast`/`getBroadcastHistory`), `broadcast-notification.dto.ts` y la
+      entidad `MarketingNotification` — ninguno de los dos endpoints declara `@ApiResponse({ type
+      })`, así que `src/types/api.d.ts` documenta ambas respuestas como `content?: never`
+      (confirmado grep línea 3199-3213 y 3230+); los tipos de
+      `src/features/marketing/types.ts` (`BroadcastNotificationInput { title, body }`,
+      `BroadcastResult { sent, total }`, `MarketingBroadcast { id, title, body, adminId, sentCount,
+      totalCount, createdAt }`) coinciden campo a campo con el DTO/entidad reales. `adminId:
+      string | null` es correcto (columna `nullable: true`, FK `onDelete: 'SET NULL'`);
+      `createdAt: string` (no `Date`) es correcto porque es lo que realmente llega serializado por
+      HTTP — confirmado con curl real (ver abajo)
+- [x] `BroadcastForm.tsx`: Zod (`title`/`body` requeridos, no vacíos, espejo exacto de
+      `@IsString`/`@IsNotEmpty` del DTO real, sin límite de longitud inventado) + patrón de
+      confirmación explícita idéntico a `GenerateBulkCouponForm.tsx` (mismo mecanismo: `onValidated`
+      solo setea `pendingValues`, el panel de confirmación reemplaza por completo el `<form>`
+      mientras está activo, `mutateAsync` solo se llama desde `handleConfirm` tras el clic en "Sí,
+      enviar ahora"). **Verificado por @tester con mutación real**: inyecté una llamada a
+      `broadcastMutation.mutateAsync(values)` dentro de `onValidated` (bypaseando la confirmación) →
+      2 de 5 tests de `BroadcastForm.test.tsx` fallaron exactamente como se esperaba (`expected
+      "vi.fn()" to not be called at all, but actually been called 1 times`, con el payload real
+      capturado); restauré el archivo a su estado original y la suite volvió a 5/5 en verde
+- [x] `MarketingPage.tsx`: formulario arriba + tabla del historial debajo, 3 estados de UI
+      (`LoadingState`, `ErrorState` con retry → `refetch`, vacío "Todavía no enviaste ninguna
+      campaña"), columnas título/cuerpo/alcance (`sentCount / totalCount`)/fecha (`formatLima`)
+- [x] Hooks (`hooks.ts`): `useBroadcastHistory` (`GET /notifications/broadcast-history`) y
+      `useSendBroadcast` (`POST /notifications/broadcast`, invalida `['marketing',
+      'broadcast-history']` en `onSuccess`) — sin `any` ni casting forzado (grep de `any`/`as
+      [A-Za-z]` en todo el módulo = 0 resultados, solo `as const` en la query key, que no oculta
+      ningún mismatch de tipos)
+- [x] Verificación manual end-to-end **independiente** contra el backend local real
+      (`localhost:3000`, admin QA propio creado vía `POST /auth/register` + promovido a `admin` por
+      SQL, sesión aparte de la usada por la sesión principal): `POST /notifications/broadcast` sin
+      token → `401 {"success":false,"message":"Unauthorized","statusCode":401}`; con token admin →
+      `201 {"sent":0,"total":16}` (0 esperado: credenciales Firebase de prueba en el `.env` local);
+      `GET /notifications/broadcast-history` → `200`, primera fila exactamente `{id, title, body,
+      adminId, sentCount, totalCount, createdAt}` con los valores recién enviados
+- [x] `pnpm run type-check` (`tsc -b`), `pnpm run lint` (`eslint .`), `pnpm run build`: los tres sin
+      salida, cero errores/warnings — corridos de forma independiente, no solo de palabra
+- [x] `pnpm run test`: 23 archivos / 125 tests en verde (confirmado independientemente); los 2
+      archivos de `src/features/marketing/` (`hooks.test.tsx`, `BroadcastForm.test.tsx`) pasan 8/8
+      tanto aislados como dentro de la suite completa
+
+⚠️ **Riesgos / casos borde no cubiertos** (documentados, no bloqueantes):
+- No hay límite de longitud en `title`/`body` ni en el frontend ni en el DTO real del backend — un
+  título/cuerpo extremadamente largo se enviaría igual a FCM, que sí tiene límites propios (ej.
+  ~4KB por payload); no se probó ese caso límite
+- El envío es a TODOS los usuarios con `fcmToken`, sin segmentación ni preview de audiencia más
+  allá del número total mostrado tras el envío (`sent`/`total`) — el admin no puede saber de
+  antemano cuántos dispositivos recibirán la notificación antes de confirmar, solo después
+- No se verificó con Firebase real (credenciales de producción) que el push efectivamente llega al
+  dispositivo — la verificación de este módulo cubre el contrato HTTP y el guardado en historial,
+  no la entrega final de FCM (fuera del alcance de este panel, y el backend ya documenta que
+  `sendPushNotification`/`broadcastPushNotification` nunca lanzan aunque el envío real falle)
+- Gap de E2E real vía navegador: no se probó con Playwright el flujo completo (login real en el
+  navegador → clic en "Marketing" en el sidebar → completar el formulario → confirmar → ver la fila
+  nueva en la tabla) — la verificación de ruta/sidebar fue por lectura de código (diff de
+  `router.tsx`/`AdminLayout.tsx`, ambos compilando y buildeando sin error) más `build`/`test`
+  verdes, no por click real en un navegador
+
+Veredicto: LISTO PARA MARCAR COMPLETO
+
+---
+
 ## Reporte de auditoría (formato esperado del @tester)
 
 ```
@@ -678,6 +751,65 @@ Veredicto: LISTO PARA MARCAR COMPLETO / PENDIENTE
   separados en este documento (no fusionados) para no reescribir el bloque ya auditado
   anteriormente; si se agrega más funcionalidad a Top Usuarios más adelante, considerar
   fusionarlos en una sola sección "Users" para evitar fragmentación
+
+Veredicto: LISTO PARA MARCAR COMPLETO
+
+---
+
+## Auditoría: Marketing (notificaciones de fidelización) — v1 manual
+
+✅ Pasó:
+- `pnpm run type-check` (`tsc -b`), `pnpm run lint` (`eslint .`), `pnpm run build`: los tres sin
+  salida, cero errores/warnings — corridos de forma independiente
+- `pnpm run test`: 23 archivos / 125 tests en verde (confirmado independientemente); los 2 archivos
+  nuevos de `src/features/marketing/` pasan 8/8 tanto aislados como en la suite completa
+- Contrato confirmado línea a línea contra el código fuente real de `backend-celtas`
+  (`notifications.controller.ts`, `notifications.service.ts`, `broadcast-notification.dto.ts`,
+  entidad `MarketingNotification`) — los tipos en `src/features/marketing/types.ts` coinciden campo
+  a campo con el DTO/entidad reales, incluido `adminId: string | null` (FK `SET NULL`) y
+  `createdAt: string` (no `Date`; confirmado que llega como string ISO por HTTP real, ver abajo).
+  `src/types/api.d.ts` regenerado y confirmado: ambos endpoints declaran `content?: never` (sin
+  `@ApiResponse({ type })` en el backend), así que los tipos a mano en `types.ts` son la única
+  fuente de verdad correcta — no había alternativa viable de usar solo tipos generados
+- Sin `any` ni casting forzado en el módulo (grep = 0 resultados; único `as const` es en la query
+  key de React Query, no oculta ningún mismatch de tipos)
+- **Mutación independiente (guard de confirmación)**: inyecté `broadcastMutation.mutateAsync(values)`
+  dentro de `onValidated` de `BroadcastForm.tsx` (bypaseando el panel de confirmación) → 2 de 5 tests
+  de `BroadcastForm.test.tsx` fallaron exactamente como se esperaba (`expected "vi.fn()" to not be
+  called at all, but actually been called 1 times`); restauré el archivo a su estado original y la
+  suite volvió a 5/5 en verde. El patrón de confirmación es idéntico al de `GenerateBulkCouponForm`
+  (Cupones), ya auditado
+- **Verificación end-to-end independiente contra el backend local real** (`localhost:3000`, admin QA
+  propio: `POST /auth/register` + `UPDATE users SET role='admin'` por SQL — sesión distinta de la
+  usada por la sesión principal):
+  - `POST /notifications/broadcast` sin token → `401 {"success":false,"message":"Unauthorized","statusCode":401}`
+  - `POST /notifications/broadcast` con token admin → `201 {"sent":0,"total":16}` (0 esperado:
+    credenciales Firebase del `.env` local son de prueba)
+  - `GET /notifications/broadcast-history` → `200`, primera fila con exactamente
+    `{id, title, body, adminId, sentCount, totalCount, createdAt}` y los valores recién enviados
+- Ítem de sidebar "Marketing" (ícono `Megaphone`) y ruta `/marketing` confirmados por diff real de
+  `AdminLayout.tsx`/`router.tsx`: posición correcta entre "Banners" y "Configuración", sección
+  propia (no mezclada con Configuración), lazy-loaded con `Suspense` igual que el resto de rutas
+- Estados de UI completos en `MarketingPage.tsx`: loading (`LoadingState`), error (`ErrorState` con
+  retry → `refetch`), vacío ("Todavía no enviaste ninguna campaña")
+- `useSendBroadcast` invalida `['marketing', 'broadcast-history']` en `onSuccess` — el historial se
+  refresca tras cada envío (confirmado por test y por la verificación manual: la fila del broadcast
+  de curl apareció en el `GET` inmediatamente después)
+
+❌ Falló:
+- Ninguno de los puntos críticos del checklist
+
+⚠️ Riesgos / casos borde no cubiertos:
+- Sin límite de longitud en `title`/`body` (ni en el frontend ni en el DTO real del backend); FCM sí
+  tiene límites propios de payload (~4KB) que no se probaron en el caso límite
+- Sin preview de audiencia antes de confirmar el envío — el admin solo ve `sent`/`total` después de
+  enviar, no una estimación previa de cuántos dispositivos lo recibirán
+- No se verificó con credenciales Firebase reales que el push llega de verdad al dispositivo — la
+  verificación cubre el contrato HTTP y el guardado en historial, no la entrega final de FCM (fuera
+  del alcance de este panel; el backend garantiza que nunca lanza aunque el envío real falle)
+- Gap de E2E real vía navegador: no se probó con Playwright el flujo completo por clic real (login →
+  sidebar → formulario → confirmación → fila nueva en la tabla). La verificación de ruta/sidebar fue
+  por lectura de código + `build`/`test` verdes, no por interacción real en un navegador
 
 Veredicto: LISTO PARA MARCAR COMPLETO
 
