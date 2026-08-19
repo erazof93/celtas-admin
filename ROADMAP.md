@@ -385,15 +385,32 @@ celtas-admin/
       la mutación aplicada el test FALLÓ reproduciendo el 400 real; restauró el fix y volvió a
       pasar. `type-check`, `lint`, `build` limpios; `test` 114/115 (único fallo: `BannersPage.test.tsx`
       por timeout, flaky pre-existente ya documentado, confirmado 3/3 aislado); los 22 tests de
-      `src/features/settings/` (incluido el test nuevo) pasan 100%. **Gap explícito, no oculto**:
-      no se corrió Playwright/E2E real contra el backend (login real + guardar horario + recargar
-      + confirmar persistencia + revisar `GET /settings/business-hours`) — toda la verificación
-      fue de contrato (código fuente real), componente (mocks) y mutación real de los dos fixes
-      críticos. Se recomienda una pasada manual real antes de que el dueño del negocio dependa de
-      esta pantalla en producción. Detalle completo (incluidos los riesgos de las 3 mutaciones
-      secuenciales sin transacción) en `docs/testing-checklist.md`, sección "Configuración —
-      Horario de atención". **Veredicto final de @tester: LISTO** (con el gap de E2E documentado
-      explícitamente, no minimizado)
+      `src/features/settings/` (incluido el test nuevo) pasan 100%. Detalle completo (incluidos los
+      riesgos de las 3 mutaciones secuenciales sin transacción) en `docs/testing-checklist.md`,
+      sección "Configuración — Horario de atención". **Veredicto final de @tester: LISTO** (con el
+      gap de E2E documentado explícitamente, no minimizado)
+      - **Gap de E2E cerrado (2026-08-19)**: corrido contra el backend **local** real
+        (`localhost:3000`, admin QA creado a mano en la BD por el usuario vía DataGrip,
+        `qa-admin@local.test`) — nunca contra producción. Flujo completo por la UI real
+        (`claude-in-chrome`, sin mocks): login real → `GET /settings` baseline capturado antes de
+        tocar nada (horario ya variado por día, `manualClosed` ya en `false`) → editados los 7
+        días a 11:00–23:00 → clic real en "Guardar horario" → alert "Horario guardado" visible →
+        **navegación completa (no solo estado de formulario) y recarga de `/settings`** → los 7
+        días siguen en 11:00–23:00 en el DOM → verificación independiente por `curl` (no por la
+        misma UI que guardó) contra `GET /settings` y `GET /settings/business-hours`:
+        `business_hours_schedule` con los 7 días exactos, `business_manual_closed: "false"`, y
+        `business_manual_closed_reason: "Cerrado temporalmente"` — confirma en un flujo real (no
+        mockeado) que `resolveManualClosedReason` sigue evitando el 400 de `@IsNotEmpty()` en el
+        primer guardado real de un motivo nunca tocado. Las `description` de
+        `business_manual_closed`/`business_manual_closed_reason` en la BD (sembradas con texto de
+        prueba, ej. "QA nextChangeAt") quedaron corregidas al valor real tras el guardado, como
+        corresponde al upsert. **Hallazgo aparte, no de este módulo**: `GET /settings` devuelve
+        también la fila `secret_internal` (`value: "no-debe-salir"`) sin filtrar — no se tocó
+        (vive en `celtas-backend`, fuera de este repo y fuera de alcance de este módulo), queda
+        anotado para reportarlo por separado. El hallazgo ya conocido de `UpdateSettingDto.value`
+        con `@IsNotEmpty()` (no se puede vaciar `business_manual_closed_reason` a `''` real vía
+        PATCH) se deja igual solo anotado — decisión explícita: no se toca `celtas-backend` desde
+        este repo.
 
 ### 9. Usuarios (listado admin)
 - [x] Listado paginado de `GET /users` (filtro de búsqueda en cliente: el backend solo expone
