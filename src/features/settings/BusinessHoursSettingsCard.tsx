@@ -149,15 +149,20 @@ export function BusinessHoursSettingsCard() {
         value: serializeSchedule(daysToSchedule(values.days)),
         description: BUSINESS_HOURS_SCHEDULE_DESCRIPTION,
       })
-      await upsertMutation.mutateAsync({
-        key: BUSINESS_MANUAL_CLOSED_KEY,
-        value: values.manualClosed ? 'true' : 'false',
-        description: BUSINESS_MANUAL_CLOSED_DESCRIPTION,
-      })
+      // El motivo SIEMPRE se guarda antes que el toggle: el backend dispara
+      // una notificación push al cliente cuando business_manual_closed
+      // cambia de valor, leyendo business_manual_closed_reason de la BD en
+      // ese momento (no del mismo request) — si el toggle se guardara
+      // primero, la notificación saldría con el motivo viejo (o vacío).
       await upsertMutation.mutateAsync({
         key: BUSINESS_MANUAL_CLOSED_REASON_KEY,
         value: resolveManualClosedReason(values.manualClosedReason),
         description: BUSINESS_MANUAL_CLOSED_REASON_DESCRIPTION,
+      })
+      await upsertMutation.mutateAsync({
+        key: BUSINESS_MANUAL_CLOSED_KEY,
+        value: values.manualClosed ? 'true' : 'false',
+        description: BUSINESS_MANUAL_CLOSED_DESCRIPTION,
       })
       setSaved(true)
     } catch (error) {

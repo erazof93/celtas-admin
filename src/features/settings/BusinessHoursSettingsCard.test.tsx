@@ -9,7 +9,12 @@ import type { Setting } from './types'
  * guardado se precarga por día, activar el cierre manual muestra el campo de
  * motivo, y `open === close` (ventana de duración cero) bloquea el submit
  * con un mensaje de error visible — a diferencia de un cruce de medianoche
- * (close < open), que es válido y NO debe rechazarse.
+ * (close < open), que es válido y NO debe rechazarse. También cubre el orden
+ * real de los 3 PATCH secuenciales: el backend dispara una notificación push
+ * al cliente cuando `business_manual_closed` cambia de valor, leyendo
+ * `business_manual_closed_reason` de la BD en ese momento (no del mismo
+ * request) — si el toggle se guardara antes que el motivo, la notificación
+ * saldría con el motivo viejo o vacío.
  */
 
 const { upsertMock } = vi.hoisted(() => ({ upsertMock: vi.fn() }))
@@ -121,5 +126,28 @@ describe('BusinessHoursSettingsCard', () => {
     )
     expect(reasonCall?.[0].value).not.toBe('')
     expect(reasonCall?.[0].value).toBe('Cerrado temporalmente')
+  })
+
+  it('guarda el motivo ANTES que el toggle de cierre manual (evita que la notificación push del backend salga con el motivo viejo)', async () => {
+    const user = userEvent.setup()
+    render(<BusinessHoursSettingsCard />)
+
+    await user.click(
+      screen.getByRole('switch', {
+        name: 'Local cerrado temporalmente ahora',
+      }),
+    )
+    await user.type(screen.getByLabelText('Motivo'), 'Mantenimiento de cocina')
+
+    await user.click(screen.getByRole('button', { name: /guardar horario/i }))
+
+    await waitFor(() => expect(upsertMock).toHaveBeenCalledTimes(3))
+
+    const keys = upsertMock.mock.calls.map(([input]) => input.key)
+    const reasonIndex = keys.indexOf('business_manual_closed_reason')
+    const toggleIndex = keys.indexOf('business_manual_closed')
+    expect(reasonIndex).toBeGreaterThanOrEqual(0)
+    expect(toggleIndex).toBeGreaterThanOrEqual(0)
+    expect(reasonIndex).toBeLessThan(toggleIndex)
   })
 })
