@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { filterUsersByQuery, formatTotalSpent } from './users-utils'
+import {
+  buildAddressMapUrl,
+  filterUsersByQuery,
+  formatTotalSpent,
+} from './users-utils'
 import type { AdminUser } from './types'
 
 /**
@@ -57,5 +61,16 @@ describe('formatTotalSpent', () => {
     expect(formatTotalSpent(0)).toBe('S/ 0.00')
     expect(formatTotalSpent(24.9)).toBe('S/ 24.90')
     expect(formatTotalSpent(150)).toBe('S/ 150.00')
+  })
+})
+
+describe('buildAddressMapUrl', () => {
+  it('arma la URL de la Static Maps API de Geoapify con lon,lat (no lat,lon)', () => {
+    const url = buildAddressMapUrl(-12.164, -76.9721, 'my-key')
+    expect(url).toBe(
+      'https://maps.geoapify.com/v1/staticmap?style=osm-carto&width=400&height=200' +
+        '&center=lonlat:-76.9721,-12.164&zoom=15' +
+        '&marker=lonlat:-76.9721,-12.164;color:%23ff0000&apiKey=my-key',
+    )
   })
 })

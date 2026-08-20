@@ -16,6 +16,26 @@ export function formatTotalSpent(value: number): string {
 }
 
 /**
+ * URL de la Static Maps API de Geoapify para una dirección con coordenadas
+ * (formato confirmado contra la doc real, apidocs.geoapify.com/docs/maps —
+ * no asumido). Mapa de solo lectura, sin librería de mapas interactivo.
+ * `apiKey` se recibe como parámetro (no lee `import.meta.env` acá) para que
+ * la función sea pura y testeable sin depender del entorno de Vite/Vitest.
+ */
+export function buildAddressMapUrl(
+  latitude: number,
+  longitude: number,
+  apiKey: string,
+): string {
+  const coords = `lonlat:${longitude},${latitude}`
+  return (
+    'https://maps.geoapify.com/v1/staticmap' +
+    `?style=osm-carto&width=400&height=200&center=${coords}&zoom=15` +
+    `&marker=${coords};color:%23ff0000&apiKey=${encodeURIComponent(apiKey)}`
+  )
+}
+
+/**
  * Filtro de búsqueda en el CLIENTE sobre la página actual. El backend de
  * GET /users NO soporta búsqueda server-side (QueryUsersDto solo tiene
  * page/limit) — este filtro es un atajo visual, no una búsqueda global.

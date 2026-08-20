@@ -45,6 +45,16 @@ export interface UpdateUserRoleInput {
  * Dirección guardada de un usuario — GET /users/:id/addresses (admin).
  * Espejo de Address.entity.ts del backend: array plano (NO paginado),
  * ordenado principal primero (isDefault DESC, createdAt ASC).
+ *
+ * `latitude`/`longitude` no están en `api.d.ts` porque el endpoint no
+ * declara `@ApiResponse({ type })` en Swagger (mismo gap que el módulo de
+ * marketing) — tipados a mano confirmados contra el código fuente real de
+ * `celtas-backend` (`address.entity.ts`: columnas `double precision`
+ * nullable, sin `@Exclude()`; `addresses.service.ts` `findByUser()` y
+ * `users.controller.ts` `listUserAddresses()` devuelven la entidad completa
+ * sin mapear a un DTO que las omita). Direcciones creadas antes de esta
+ * columna, o guardadas sin que el cliente use el mapa/autocompletado,
+ * siguen siendo `null` — válido, no es un dato faltante por error.
  */
 export interface UserAddress {
   id: string
@@ -53,6 +63,8 @@ export interface UserAddress {
   reference: string | null
   district: string
   isDefault: boolean
+  latitude: number | null
+  longitude: number | null
   userId: string
   createdAt: string
   updatedAt: string

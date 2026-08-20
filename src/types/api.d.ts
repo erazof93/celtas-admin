@@ -907,6 +907,16 @@ export interface components {
              * @example false
              */
             isDefault?: boolean;
+            /**
+             * @description Latitud resuelta por la app (Geoapify, client-side). Opcional.
+             * @example -12.164
+             */
+            latitude?: number;
+            /**
+             * @description Longitud resuelta por la app (Geoapify, client-side). Opcional.
+             * @example -76.9721
+             */
+            longitude?: number;
         };
         UpdateAddressDto: {
             /**
@@ -934,6 +944,16 @@ export interface components {
              * @example true
              */
             isDefault?: boolean;
+            /**
+             * @description Latitud resuelta por la app (Geoapify, client-side). Opcional.
+             * @example -12.164
+             */
+            latitude?: number;
+            /**
+             * @description Longitud resuelta por la app (Geoapify, client-side). Opcional.
+             * @example -76.9721
+             */
+            longitude?: number;
         };
         UpdateUserRoleDto: {
             /**

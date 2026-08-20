@@ -3,6 +3,7 @@ import type { UseQueryResult } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { LoadingState } from '@/components/ui/LoadingState'
+import { buildAddressMapUrl } from './users-utils'
 import type { UserAddress } from './types'
 
 interface UserAddressesSectionProps {
@@ -13,9 +14,17 @@ interface UserAddressesSectionProps {
  * Direcciones del usuario (tab del detalle). Consume
  * GET /users/:id/addresses — array plano, no paginado, principal primero.
  * Maneja los 3 estados: loading, error y vacío ("Este cliente no tiene
- * direcciones guardadas").
+ * direcciones guardadas"). Debajo de cada tarjeta con coordenadas se
+ * renderiza un mapa de solo lectura (Geoapify Static Maps API, un <img>
+ * simple, sin librería de mapas interactivo). Muchas direcciones siguen sin
+ * lat/lng (creadas antes de esa columna, o editadas sin tocar el mapa) — es
+ * un estado válido, no se muestra ningún placeholder de "sin mapa" ahí.
  */
 export function UserAddressesSection({ query }: UserAddressesSectionProps) {
+  const geoapifyApiKey = import.meta.env.VITE_GEOAPIFY_API_KEY as
+    | string
+    | undefined
+
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-medium">Direcciones guardadas</h3>
@@ -63,6 +72,24 @@ export function UserAddressesSection({ query }: UserAddressesSectionProps) {
                 <p className="text-muted-foreground mt-0.5 text-xs">
                   Ref: {address.reference}
                 </p>
+              ) : null}
+              {address.latitude !== null &&
+              address.longitude !== null &&
+              geoapifyApiKey ? (
+                <div className="border-border mt-2 overflow-hidden rounded-lg border">
+                  <img
+                    src={buildAddressMapUrl(
+                      address.latitude,
+                      address.longitude,
+                      geoapifyApiKey,
+                    )}
+                    alt={`Mapa de ${address.alias}`}
+                    className="block w-full"
+                    width={400}
+                    height={200}
+                    loading="lazy"
+                  />
+                </div>
               ) : null}
             </li>
           ))}
