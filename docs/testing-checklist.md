@@ -112,6 +112,23 @@ solo cuando pasa lo aplicable de este checklist.
       = "(Salsas: Sin salsas)", con nombres = lista) — mismo criterio tri-state que el frontend;
       `orders.service.spec.ts` líneas 296-319 (3 tests del backend: sin `sauceIds` → `null`,
       `sauceIds: []` → `[]` explícito y `not.toBeNull()`, con `sauceIds` → nombres resueltos)
+- [x] `OrderItem.comment` (`string | null`, comentario libre del cliente por ítem, ej. "sin
+      cebolla") — confirmado contra el código fuente real de `backend-celtas`
+      (`order-item.entity.ts` línea 73-74, `@Column({ type: 'varchar', length: 140, nullable:
+      true })`; `orders.service.ts` `resolveComment()` trimea y normaliza vacío/solo-espacios a
+      `null` antes de guardar, mismo criterio documentado en el diff de `api.d.ts` regenerado
+      contra el backend local). NO es tri-state como `selectedSauces` — solo `null` (sin
+      comentario) o `string` con texto; se aplica a las `quantity` unidades del ítem, no por
+      unidad. `OrderDetailDialog.tsx` agrega la línea (`text-muted-foreground text-xs italic`,
+      mismo patrón visual que `selectedSauces`) con `item.comment !== null` (no truthy check).
+      **Verificado por @tester de forma independiente**: `type-check`, `lint`, `test` (23
+      archivos / 127 tests) y `build` repetidos y en verde; diff de `OrderDetailDialog.tsx` y
+      `api.d.ts` confirmado línea a línea contra `git diff`, coincide con lo reportado. **Mutación
+      real**: eliminé el bloque nuevo de `item.comment !== null` en `OrderDetailDialog.tsx` → el
+      test "comment con texto: muestra..." de `OrderDetailDialog.test.tsx` FALLÓ exactamente como
+      se esperaba (`Unable to find an element with the text: Comentario: Sin cebolla`); restauré
+      el archivo (`git diff` confirma 5 líneas agregadas, idéntico al estado original) y la suite
+      relevante volvió a 8/8 (`OrderDetailDialog.test.tsx` + `merge.test.ts`)
 
 ## Testing (5.1 Infraestructura)
 
@@ -810,6 +827,62 @@ Veredicto: LISTO PARA MARCAR COMPLETO
 - Gap de E2E real vía navegador: no se probó con Playwright el flujo completo por clic real (login →
   sidebar → formulario → confirmación → fila nueva en la tabla). La verificación de ruta/sidebar fue
   por lectura de código + `build`/`test` verdes, no por interacción real en un navegador
+
+Veredicto: LISTO PARA MARCAR COMPLETO
+
+---
+
+## Auditoría: `OrderItem.comment` en el detalle de pedido
+
+✅ Pasó:
+- `pnpm run type-check` (`tsc -b`), `pnpm run lint` (`eslint .`): ambos sin salida, cero errores —
+  corridos de forma independiente
+- `pnpm run test`: 23 archivos / 127 tests en verde (confirmado independientemente)
+- `pnpm run build`: sin errores, bundle genera sin warnings de tamaño
+- Contrato confirmado contra el código fuente real de `backend-celtas`
+  (`order-item.entity.ts` línea 73-74: `@Column({ type: 'varchar', length: 140, nullable: true })
+  comment: string | null`, con doc-comment que confirma snapshot y que aplica a toda la
+  `quantity`, no por unidad) — coincide exacto con `types.ts` del frontend. También confirmé
+  `orders.service.ts` (`resolveComment()`, líneas ~398-399): trimea y normaliza vacío/solo-espacios
+  a `null` antes de persistir — consistente con la descripción del `@example`/`@description` en el
+  diff de `api.d.ts` regenerado contra el backend local
+- `OrderDetailDialog.tsx`: el bloque nuevo (`item.comment !== null ? <p className="text-muted-foreground text-xs italic">Comentario: {item.comment}</p> : null`)
+  sigue exactamente el mismo patrón visual que el bloque de `selectedSauces` inmediatamente
+  anterior, y usa `!== null` (no truthy check), consistente con la regla de estilo del proyecto
+  para campos snapshot nullable
+- `types.ts`: `comment: string | null` con doc-comment explícito de que NO es tri-state (a
+  diferencia de `selectedSauces`) — solo `null` o texto
+- **Mutación real** (no solo inspección): eliminé el bloque nuevo de `OrderDetailDialog.tsx` → el
+  test "comment con texto: muestra..." de `OrderDetailDialog.test.tsx` FALLÓ exactamente como se
+  esperaba (`TestingLibraryElementError: Unable to find an element with the text: Comentario: Sin
+  cebolla`); los otros 4 tests del archivo (incluido "comment null: no muestra...") siguieron
+  pasando, como se espera de una eliminación que solo afecta el caso con texto. Restauré el archivo
+  desde backup y confirmé con `git diff` que el estado quedó idéntico al original (solo las 5
+  líneas del bloque agregadas, sin residuos); la suite relevante volvió a 8/8
+  (`OrderDetailDialog.test.tsx` + `merge.test.ts`)
+- `merge.test.ts` sigue compilando y pasando con `comment: null` agregado a su `makeItem()` base
+  (el tipo `OrderItem` ahora lo exige)
+
+❌ Falló:
+- Ninguno de los puntos críticos del checklist
+
+⚠️ Riesgos / casos borde no cubiertos:
+- No se probó la mutación complementaria de cambiar `!== null` a un truthy check (`if
+  (item.comment)`) porque el test actual usa `comment: 'Sin cebolla'` (truthy), que no distinguiría
+  ambas formas. El caso que sí distinguiría (`comment: ''`) no está cubierto por un test explícito
+  — bajo riesgo real porque el backend (`resolveComment`) nunca envía `''` (lo normaliza a `null`
+  antes de guardar), pero si se quiere blindar la regla de estilo del proyecto de forma explícita
+  en este archivo, valdría agregar un tercer caso `comment: ''` que documente que técnicamente
+  también se trataría como "hay comentario" con la implementación actual (edge case teórico, no
+  bug real dado el contrato del backend)
+- No se probó end-to-end contra el backend real (local ni producción) mostrando un pedido con
+  comentario real en el detalle — la verificación fue contrato (código fuente) + test de
+  componente con mocks, mismo nivel de rigor que el resto del checklist de Orders, pero sin una
+  pasada manual en navegador
+- El límite de 140 caracteres (`length: 140` en la columna) no tiene ninguna validación ni
+  truncamiento explícito en el frontend — no es necesario porque el admin panel solo LEE el
+  comentario (no lo crea ni edita), así que no hay riesgo de que el frontend intente guardar algo
+  que exceda el límite
 
 Veredicto: LISTO PARA MARCAR COMPLETO
 

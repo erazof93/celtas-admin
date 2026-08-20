@@ -25,6 +25,7 @@ function makeItem(overrides: Partial<OrderItem> = {}): OrderItem {
     unitPrice: 18.5,
     quantity: 2,
     selectedSauces: null,
+    comment: null,
     subtotal: 37,
     createdAt: '2026-08-08T10:00:00.000Z',
     updatedAt: '2026-08-08T10:00:00.000Z',
@@ -84,5 +85,21 @@ describe('OrderDetailDialog — tri-state de selectedSauces', () => {
     renderDialog(order)
 
     expect(screen.getByText('Salsas: Mayonesa, Ketchup')).toBeInTheDocument()
+  })
+})
+
+describe('OrderDetailDialog — item.comment', () => {
+  it('comment null: no muestra ninguna línea de comentario', () => {
+    const order = makeOrder([makeItem({ comment: null })])
+    renderDialog(order)
+
+    expect(screen.queryByText(/comentario/i)).not.toBeInTheDocument()
+  })
+
+  it('comment con texto: muestra "Comentario: <texto>"', () => {
+    const order = makeOrder([makeItem({ comment: 'Sin cebolla' })])
+    renderDialog(order)
+
+    expect(screen.getByText('Comentario: Sin cebolla')).toBeInTheDocument()
   })
 })

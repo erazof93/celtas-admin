@@ -220,6 +220,19 @@ celtas-admin/
       exactamente como se esperaba (1 failed | 2 passed, falla en
       `expect(screen.getByText('Sin salsas')).toBeInTheDocument()`); restauré el fix y volvió a
       3/3.
+- [x] **`OrderItem.comment` en el detalle de pedido**: el backend agregó `comment: string | null`
+      a cada item del pedido (comentario libre del cliente, ej. "sin cebolla", snapshot al crear
+      el pedido, aplica a las `quantity` unidades — NO es tri-state como `selectedSauces`, solo
+      `null`/texto). Confirmado contra el código fuente real de `backend-celtas`
+      (`order-item.entity.ts` línea 73-74, `orders.service.ts` `resolveComment()` que trimea y
+      normaliza vacío/solo-espacios a `null`). `types.ts` documenta el campo; `OrderDetailDialog.tsx`
+      agrega la línea (mismo patrón visual `text-muted-foreground text-xs italic` que
+      `selectedSauces`) con `item.comment !== null`, no truthy check. **Verificado por @tester**:
+      `type-check`, `lint`, `test` (23 archivos / 127 tests) y `build` en verde de forma
+      independiente; diff de `OrderDetailDialog.tsx` y `api.d.ts` confirmado contra `git diff`.
+      **Verificado con mutación**: eliminé el bloque nuevo de `OrderDetailDialog.tsx` y el test
+      "comment con texto..." de `OrderDetailDialog.test.tsx` FALLÓ exactamente como se esperaba;
+      restauré el archivo y la suite relevante volvió a 8/8.
 
 ### 5.1 Infraestructura de tests
 - [x] Vitest + React Testing Library + jsdom instalados y configurados (script `pnpm run test`,

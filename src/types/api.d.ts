@@ -1172,6 +1172,11 @@ export interface components {
              *     ]
              */
             sauceIds?: string[];
+            /**
+             * @description Comentario libre opcional para este ítem (se aplica a las `quantity` unidades del ítem, no una nota por unidad individual). Vacío o solo espacios se trata como ausente.
+             * @example Sin cebolla, bien cocida
+             */
+            comment?: string;
         };
         CreateOrderDto: {
             /**

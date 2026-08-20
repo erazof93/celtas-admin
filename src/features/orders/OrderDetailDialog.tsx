@@ -145,6 +145,11 @@ export function OrderDetailDialog({
                               : 'Sin salsas'}
                           </p>
                         ) : null}
+                        {item.comment !== null ? (
+                          <p className="text-muted-foreground text-xs italic">
+                            Comentario: {item.comment}
+                          </p>
+                        ) : null}
                       </div>
                       <span className="shrink-0 font-medium">
                         {CURRENCY.format(item.subtotal)}

@@ -30,6 +30,13 @@ export interface OrderItem {
    * - `string[]` con nombres: las salsas elegidas.
    */
   selectedSauces: string[] | null
+  /**
+   * Comentario libre del cliente para este ítem (ej. "sin cebolla", "bien
+   * cocida"), snapshot al crear el pedido. Se aplica a las `quantity`
+   * unidades del ítem, no una nota por unidad individual. `null` = sin
+   * comentario.
+   */
+  comment: string | null
   /** unitPrice * quantity, calculado en el backend. */
   subtotal: number
   createdAt: string
