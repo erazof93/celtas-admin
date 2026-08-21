@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { MessageCircle } from 'lucide-react'
+import { MessageCircle, TriangleAlert } from 'lucide-react'
 import {
   Alert,
   AlertDescription,
@@ -17,6 +17,15 @@ import {
 import { getApiMessage } from '@/lib/api-errors'
 import { formatLima } from '@/lib/dates'
 import { cn } from '@/lib/utils'
+import { useSettings } from '../settings/hooks'
+import {
+  DELIVERY_ALERT_RADIUS_METERS_KEY,
+  parseDeliveryAlertRadiusMeters,
+  parseStoreLocation,
+  STORE_LOCATION_KEY,
+} from '../settings/settings-utils'
+import { buildAddressMapUrl, buildGoogleMapsUrl } from '../users/users-utils'
+import { digitsOnly, isFarOrder, orderDistanceMeters, orderSubtotal } from './orders-utils'
 import {
   ORDER_STATUS_BADGE,
   ORDER_STATUS_LABELS,
@@ -62,7 +71,12 @@ export function OrderDetailDialog({
   onOrderUpdated,
 }: OrderDetailDialogProps) {
   const updateStatus = useUpdateOrderStatus()
+  const settingsQuery = useSettings()
   const [transitionError, setTransitionError] = useState<string | null>(null)
+
+  const geoapifyApiKey = import.meta.env.VITE_GEOAPIFY_API_KEY as
+    | string
+    | undefined
 
   async function handleTransition(next: OrderStatus) {
     if (!order) return
@@ -82,6 +96,27 @@ export function OrderDetailDialog({
 
   const transitions = order ? VALID_ORDER_TRANSITIONS[order.status] : []
   const address = order ? parseAddress(order.addressSnapshot) : null
+
+  // Distancia recalculada del lado del cliente (el backend no la expone en
+  // la respuesta del pedido, ver orders-utils.ts). Sin store_location
+  // configurado o sin coordenadas en la dirección del pedido → sin badge,
+  // nunca se inventa un estado "lejano".
+  const storeLocation = parseStoreLocation(
+    settingsQuery.data?.find((s) => s.key === STORE_LOCATION_KEY)?.value,
+  )
+  const alertRadiusMeters = settingsQuery.data
+    ? parseDeliveryAlertRadiusMeters(
+        settingsQuery.data.find((s) => s.key === DELIVERY_ALERT_RADIUS_METERS_KEY)
+          ?.value,
+      )
+    : null
+  const distanceMeters = orderDistanceMeters(address, storeLocation)
+  const showFarBadge = order ? isFarOrder(distanceMeters, alertRadiusMeters) : false
+
+  const addressLat = typeof address?.latitude === 'number' ? address.latitude : null
+  const addressLng = typeof address?.longitude === 'number' ? address.longitude : null
+  const customerPhoneDigits = order?.user.phone ? digitsOnly(order.user.phone) : null
+  const subtotal = order ? orderSubtotal(order) : 0
 
   return (
     <Dialog
@@ -107,6 +142,12 @@ export function OrderDetailDialog({
                 >
                   {ORDER_STATUS_LABELS[order.status]}
                 </Badge>
+                {showFarBadge ? (
+                  <Badge className="bg-celtas-red/15 text-celtas-red-light flex items-center gap-1 border border-transparent">
+                    <TriangleAlert className="size-3" />
+                    Fuera de zona habitual
+                  </Badge>
+                ) : null}
               </div>
               <DialogDescription>
                 Creado el {formatLima(order.createdAt)} · Cliente{' '}
@@ -157,11 +198,21 @@ export function OrderDetailDialog({
                     </li>
                   ))}
                 </ul>
-                <div className="border-border flex items-center justify-between border-t px-3 py-2 text-sm font-semibold">
-                  <span>Total</span>
-                  <span className="text-celtas-gold">
-                    {CURRENCY.format(order.total)}
-                  </span>
+                <div className="border-border space-y-1 border-t px-3 py-2 text-sm">
+                  <div className="text-muted-foreground flex items-center justify-between">
+                    <span>Subtotal</span>
+                    <span>{CURRENCY.format(subtotal)}</span>
+                  </div>
+                  <div className="text-muted-foreground flex items-center justify-between">
+                    <span>Envío</span>
+                    <span>{CURRENCY.format(order.deliveryFee)}</span>
+                  </div>
+                  <div className="flex items-center justify-between font-semibold">
+                    <span>Total</span>
+                    <span className="text-celtas-gold">
+                      {CURRENCY.format(order.total)}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -192,6 +243,25 @@ export function OrderDetailDialog({
                       {order.addressSnapshot}
                     </p>
                   )}
+                  {addressLat !== null && addressLng !== null && geoapifyApiKey ? (
+                    <a
+                      href={buildGoogleMapsUrl(addressLat, addressLng)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Abrir en Google Maps"
+                      aria-label="Abrir en Google Maps"
+                      className="border-border group mt-2 block overflow-hidden rounded-lg border"
+                    >
+                      <img
+                        src={buildAddressMapUrl(addressLat, addressLng, geoapifyApiKey)}
+                        alt="Mapa de la dirección de entrega"
+                        className="block w-full cursor-pointer transition-opacity group-hover:opacity-80"
+                        width={400}
+                        height={200}
+                        loading="lazy"
+                      />
+                    </a>
+                  ) : null}
                 </div>
 
                 <div className="border-border rounded-lg border p-3 text-sm">
@@ -221,6 +291,25 @@ export function OrderDetailDialog({
                     Abrir en WhatsApp
                   </a>
                 </Button>
+
+                {/*
+                  Distinto de "Abrir en WhatsApp" de arriba (order.whatsappUrl,
+                  el mensaje del PEDIDO hacia la tienda). Este es un chat
+                  directo con el cliente, sin mensaje prellenado — oculto si
+                  no tiene teléfono registrado (campo opcional).
+                */}
+                {customerPhoneDigits ? (
+                  <Button asChild variant="outline" className="w-full">
+                    <a
+                      href={`https://wa.me/${customerPhoneDigits}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <MessageCircle />
+                      Contactar al cliente por WhatsApp
+                    </a>
+                  </Button>
+                ) : null}
               </div>
             </div>
 

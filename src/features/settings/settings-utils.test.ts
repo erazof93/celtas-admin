@@ -3,15 +3,26 @@ import {
   BUSINESS_HOURS_SCHEDULE_KEY,
   BUSINESS_MANUAL_CLOSED_KEY,
   BUSINESS_MANUAL_CLOSED_REASON_KEY,
+  DEFAULT_DELIVERY_ALERT_RADIUS_METERS,
+  DEFAULT_DELIVERY_FEE_TIERS,
   DEFAULT_MANUAL_CLOSED_REASON,
+  DELIVERY_ALERT_RADIUS_METERS_KEY,
+  DELIVERY_FEE_TIERS_KEY,
   isValidWhatsappNumber,
   normalizeWhatsappNumber,
+  parseDeliveryAlertRadiusMeters,
+  parseDeliveryFeeTiers,
   parseSchedule,
+  parseStoreLocation,
   resolveManualClosedReason,
+  serializeDeliveryFeeTiers,
   serializeSchedule,
+  serializeStoreLocation,
+  STORE_LOCATION_KEY,
+  validateDeliveryFeeTiers,
   WHATSAPP_NUMBER_KEY,
 } from './settings-utils'
-import type { WeeklySchedule } from './types'
+import type { DeliveryFeeTier, WeeklySchedule } from './types'
 
 /**
  * Lógica pura del módulo Settings (regla de la skill react-celtas: se extrae
@@ -122,5 +133,142 @@ describe('resolveManualClosedReason', () => {
 
   it('devuelve el default no vacío si el motivo es solo espacios', () => {
     expect(resolveManualClosedReason('   ')).toBe(DEFAULT_MANUAL_CLOSED_REASON)
+  })
+})
+
+describe('delivery por distancia — claves', () => {
+  it('son las claves exactas que usa el backend (settings.service.ts)', () => {
+    expect(STORE_LOCATION_KEY).toBe('store_location')
+    expect(DELIVERY_FEE_TIERS_KEY).toBe('delivery_fee_tiers')
+    expect(DELIVERY_ALERT_RADIUS_METERS_KEY).toBe('delivery_alert_radius_meters')
+  })
+})
+
+describe('parseStoreLocation / serializeStoreLocation', () => {
+  it('round-trip: serializar y volver a parsear da la misma ubicación', () => {
+    const location = { latitude: -12.1631, longitude: -76.97 }
+    expect(parseStoreLocation(serializeStoreLocation(location))).toEqual(location)
+  })
+
+  it('value undefined (nunca configurado) → null, NUNCA inventa coordenadas', () => {
+    expect(parseStoreLocation(undefined)).toBeNull()
+  })
+
+  it('value vacío (sembrado del backend, sin configurar) → null', () => {
+    expect(parseStoreLocation('')).toBeNull()
+  })
+
+  it('JSON malformado → null', () => {
+    expect(parseStoreLocation('{not valid json')).toBeNull()
+  })
+
+  it('JSON válido pero incompleto (falta longitude) → null', () => {
+    expect(parseStoreLocation('{"latitude":-12.1631}')).toBeNull()
+  })
+})
+
+describe('parseDeliveryFeeTiers / serializeDeliveryFeeTiers', () => {
+  it('round-trip: serializar y volver a parsear da los mismos tramos', () => {
+    const tiers: DeliveryFeeTier[] = [
+      { maxMeters: 100, fee: 2 },
+      { maxMeters: null, fee: 8 },
+    ]
+    expect(parseDeliveryFeeTiers(serializeDeliveryFeeTiers(tiers))).toEqual(tiers)
+  })
+
+  it('value undefined/vacío cae al default', () => {
+    expect(parseDeliveryFeeTiers(undefined)).toEqual(DEFAULT_DELIVERY_FEE_TIERS)
+    expect(parseDeliveryFeeTiers('')).toEqual(DEFAULT_DELIVERY_FEE_TIERS)
+  })
+
+  it('JSON malformado cae al default', () => {
+    expect(parseDeliveryFeeTiers('{not valid json')).toEqual(DEFAULT_DELIVERY_FEE_TIERS)
+  })
+
+  it('array vacío cae al default (nunca deja al pedido sin tarifa)', () => {
+    expect(parseDeliveryFeeTiers('[]')).toEqual(DEFAULT_DELIVERY_FEE_TIERS)
+  })
+})
+
+describe('parseDeliveryAlertRadiusMeters', () => {
+  it('parsea un valor numérico válido', () => {
+    expect(parseDeliveryAlertRadiusMeters('3000')).toBe(3000)
+  })
+
+  it('value undefined/no numérico/<=0 cae al default', () => {
+    expect(parseDeliveryAlertRadiusMeters(undefined)).toBe(
+      DEFAULT_DELIVERY_ALERT_RADIUS_METERS,
+    )
+    expect(parseDeliveryAlertRadiusMeters('abc')).toBe(
+      DEFAULT_DELIVERY_ALERT_RADIUS_METERS,
+    )
+    expect(parseDeliveryAlertRadiusMeters('0')).toBe(
+      DEFAULT_DELIVERY_ALERT_RADIUS_METERS,
+    )
+    expect(parseDeliveryAlertRadiusMeters('-100')).toBe(
+      DEFAULT_DELIVERY_ALERT_RADIUS_METERS,
+    )
+  })
+})
+
+describe('validateDeliveryFeeTiers', () => {
+  it('acepta la tabla default (ascendente, último sin límite)', () => {
+    expect(validateDeliveryFeeTiers(DEFAULT_DELIVERY_FEE_TIERS)).toBeNull()
+  })
+
+  it('rechaza un array vacío', () => {
+    expect(validateDeliveryFeeTiers([])).toEqual({
+      index: -1,
+      message: 'Agrega al menos un tramo',
+    })
+  })
+
+  it('rechaza si el último tramo NO es null (falta la tarifa plana)', () => {
+    const result = validateDeliveryFeeTiers([{ maxMeters: 100, fee: 2 }])
+    expect(result?.index).toBe(0)
+    expect(result?.message).toMatch(/sin límite/)
+  })
+
+  it('rechaza si un tramo que no es el último tiene maxMeters null', () => {
+    const result = validateDeliveryFeeTiers([
+      { maxMeters: null, fee: 2 },
+      { maxMeters: null, fee: 8 },
+    ])
+    expect(result?.index).toBe(0)
+    expect(result?.message).toMatch(/Solo el último/)
+  })
+
+  it('rechaza tramos NO ascendentes (superposición)', () => {
+    const result = validateDeliveryFeeTiers([
+      { maxMeters: 400, fee: 4 },
+      { maxMeters: 100, fee: 2 },
+      { maxMeters: null, fee: 8 },
+    ])
+    expect(result?.index).toBe(1)
+    expect(result?.message).toMatch(/ascendente/)
+  })
+
+  it('rechaza tramos con el mismo maxMeters (huecos/superposición, no estrictamente ascendente)', () => {
+    const result = validateDeliveryFeeTiers([
+      { maxMeters: 100, fee: 2 },
+      { maxMeters: 100, fee: 4 },
+      { maxMeters: null, fee: 8 },
+    ])
+    expect(result?.index).toBe(1)
+  })
+
+  it('rechaza un maxMeters <= 0 en un tramo intermedio', () => {
+    const result = validateDeliveryFeeTiers([
+      { maxMeters: 0, fee: 2 },
+      { maxMeters: null, fee: 8 },
+    ])
+    expect(result?.index).toBe(0)
+    expect(result?.message).toMatch(/mayor a 0/)
+  })
+
+  it('rechaza una tarifa negativa', () => {
+    const result = validateDeliveryFeeTiers([{ maxMeters: null, fee: -1 }])
+    expect(result?.index).toBe(0)
+    expect(result?.message).toMatch(/negativa/)
   })
 })

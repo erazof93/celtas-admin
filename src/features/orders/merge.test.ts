@@ -45,9 +45,16 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     addressSnapshot:
       '{"fullAddress":"Av. Lima 123","district":"San Juan de Miraflores"}',
     total: 37,
+    deliveryFee: 0,
     whatsappUrl: 'https://wa.me/51999999999?text=hola',
     deliveredAt: null,
     items: [makeItem()],
+    user: {
+      id: 'user-1',
+      fullName: 'Cliente de Prueba',
+      email: 'cliente@test.com',
+      phone: '51999999999',
+    },
     createdAt: '2026-08-08T10:00:00.000Z',
     updatedAt: '2026-08-08T10:00:00.000Z',
     ...overrides,
@@ -97,5 +104,19 @@ describe('mergeOrderAfterUpdate', () => {
 
     expect(current.status).toBe('pendiente')
     expect(merged).not.toBe(current)
+  })
+
+  it('conserva el user del detalle cuando el PATCH responde sin la relación user (mismo bug de items, misma causa)', () => {
+    const current = makeOrder()
+    const updated: Partial<Order> = {
+      status: 'confirmado',
+      items: undefined,
+      user: undefined,
+    }
+
+    const merged = mergeOrderAfterUpdate(current, updated)
+
+    expect(merged.user).toEqual(current.user)
+    expect(merged.user.fullName).toBe('Cliente de Prueba')
   })
 })

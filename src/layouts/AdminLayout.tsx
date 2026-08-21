@@ -15,6 +15,7 @@ import {
   X,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { registerPushNotifications } from '@/lib/firebase'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/features/auth/store'
 import { logout } from '@/features/auth/hooks'
@@ -116,6 +117,15 @@ function Sidebar({
 export default function AdminLayout() {
   const user = useAuthStore((s) => s.user)
   const [drawerOpen, setDrawerOpen] = useState(false)
+
+  // AdminLayout solo se monta en rutas autenticadas (detrás de
+  // ProtectedRoute): es el punto temprano de la sesión donde pedir permiso
+  // de notificaciones y registrar el token FCM. Cubre login fresco y sesión
+  // restaurada al recargar. Best-effort, nunca bloquea el panel (ver
+  // src/lib/firebase.ts) — no necesita cleanup ni dependerse del resultado.
+  useEffect(() => {
+    void registerPushNotifications()
+  }, [])
 
   // Cierra con Escape, pensando en accesibilidad del drawer en mobile.
   useEffect(() => {

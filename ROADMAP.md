@@ -534,6 +534,16 @@ celtas-admin/
         con 0 errores y 0 warnings
 - [ ] Deploy en Vercel o Netlify (free tier), variables de entorno de producción — **parte 2**
 - [ ] Verificación end-to-end manual contra el backend real de producción — **parte 2**
+- [ ] **Pendientes a resolver el día del deploy real (no bloquean este entorno de desarrollo)**:
+  - [ ] `store_location` sin configurar en el backend de **producción** (sembrada vacía, ver
+        `settings.service.ts` de backend-celtas) — cargar la ubicación real del local desde
+        Configuración → Delivery por distancia. Hasta entonces, el backend de producción
+        rechaza el cálculo de delivery por distancia en pedidos nuevos.
+  - [ ] `VITE_FIREBASE_VAPID_KEY` sin configurar — el registro de Web Push queda deshabilitado
+        en silencio (ver `src/lib/firebase.ts`, warning en consola, nunca bloquea el panel)
+        hasta generar el certificado en Firebase Console (Configuración del proyecto → Cloud
+        Messaging → Web Push certificates, proyecto "celtas-b0bd5") y cargarlo en el `.env` de
+        producción.
 
 ### 11. Marketing (notificaciones de fidelización) — v1 manual
 - [x] Sección propia en el sidebar (`/marketing`, ícono `Megaphone`), **no mezclada con
