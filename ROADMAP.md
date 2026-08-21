@@ -233,6 +233,31 @@ celtas-admin/
       **Verificado con mutación**: eliminé el bloque nuevo de `OrderDetailDialog.tsx` y el test
       "comment con texto..." de `OrderDetailDialog.test.tsx` FALLÓ exactamente como se esperaba;
       restauré el archivo y la suite relevante volvió a 8/8.
+- [x] **Fila "Cupón" en el desglose de precios del detalle de pedido**: `Order` no expone el
+      descuento ni el código del cupón, así que `orderDiscount()` (nueva, `orders-utils.ts`) lo
+      deriva del mismo despeje algebraico que usa el backend para `total`
+      (`subtotal - total + deliveryFee`), redondeado a 2 decimales. `OrderDetailDialog.tsx` agrega
+      la fila entre "Subtotal" y "Envío", solo si `discount > 0.01` (umbral para no mostrarla por
+      ruido de redondeo cuando no hubo cupón), con signo negativo. Sin cambios de tipos ni de
+      backend. **Verificado por @tester contra el código fuente real de `backend-celtas`**
+      (`../backend-celtas`, sí es accesible desde este entorno): `orders.service.ts` líneas 98-121
+      (`subtotal = round2(...)`, `total = round2(discountedTotal + deliveryFee)`,
+      `discountAmount = round2(subtotal - discountedTotal)`) y `coupons.service.ts`
+      `applyDiscount()` (línea 492-499, NO redondea el `discountedTotal` intermedio) — el despeje
+      del frontend coincide algebraicamente con el cálculo real del backend, con una diferencia
+      teórica de hasta un centavo en casos límite de doble redondeo (riesgo menor, no bloqueante).
+      `type-check`, `lint`, `build` y suite de Orders (36/36) en verde. **Verificado con
+      mutación (2 mutaciones independientes)**: (1) quité el término `+ order.deliveryFee` de
+      `orderDiscount()` → 3 de 4 tests nuevos de `orderDiscount` en `orders-utils.test.ts`
+      FALLARON exactamente como se esperaba, y el fallo se propagó al test de la fila "Cupón" en
+      `OrderDetailDialog.test.tsx` (4 tests fallando en total); restauré el archivo, diff
+      confirmado idéntico al original (12 líneas agregadas). (2) forcé la condición del render a
+      `{false ? ... : null}` en `OrderDetailDialog.tsx` → el test "pedido CON cupón" FALLÓ como se
+      esperaba (no encontró el texto "Cupón"), el de "SIN cupón" siguió pasando; restauré el
+      archivo, diff confirmado idéntico al original (14 inserciones/1 eliminación). Tests nuevos:
+      4 en `orders-utils.test.ts` (sin cupón, con cupón, redondeo de punto flotante, sin cupón ni
+      envío) + 2 en `OrderDetailDialog.test.tsx` (fila oculta sin cupón, fila visible con monto
+      negativo en el orden Subtotal → Cupón → Envío → Total).
 
 ### 5.1 Infraestructura de tests
 - [x] Vitest + React Testing Library + jsdom instalados y configurados (script `pnpm run test`,

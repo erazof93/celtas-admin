@@ -158,6 +158,44 @@ solo cuando pasa lo aplicable de este checklist.
       casos `null` y "con nombres" no se ven afectados por esa rama y siguieron pasando. Restauré el
       fix y la suite volvió a 3/3. `merge.test.ts` sigue compilando y pasando 3/3 con
       `selectedSauces: null` agregado a `makeItem()`
+- [x] **Fila "Cupón" en el desglose de precios del detalle de pedido**: `orderDiscount(order)`
+      (nueva función pura en `orders-utils.ts`) deriva el descuento con el mismo despeje
+      algebraico que usa el backend para `total` (`subtotal - total + deliveryFee`), redondeado a
+      2 decimales (`Math.round(raw * 100) / 100`). `OrderDetailDialog.tsx` renderiza la fila
+      "Cupón" entre "Subtotal" y "Envío" solo si `discount > 0.01`, con signo negativo antepuesto
+      (`-{CURRENCY.format(discount)}`). Sin cambios de `api.d.ts` ni del contrato — el `Order` no
+      expone el descuento ni el código del cupón, todo se deriva de datos que ya viajaban en la
+      respuesta (`total`, `deliveryFee`, `items[].subtotal`).
+      **Contrato verificado contra el código fuente real de `../backend-celtas`** (accesible
+      desde este entorno, se comprobó con `ls` antes de asumir lo contrario):
+      `orders.service.ts` líneas 98-121 confirman `total = round2(discountedTotal + deliveryFee)`
+      y `discountAmount = round2(subtotal - discountedTotal)`; `coupons.service.ts`
+      `applyDiscount()` (líneas 492-499) confirma que `discountedTotal` NO se redondea antes de
+      esa resta. El despeje del frontend (`subtotal - total + deliveryFee`) coincide
+      algebraicamente con el cálculo real, con un riesgo teórico de discrepancia de hasta un
+      centavo por doble redondeo en casos límite — no se encontró ningún caso concreto que lo
+      dispare, se deja como riesgo menor documentado, no bloqueante.
+      **Verificado por @tester con dos mutaciones independientes**:
+      (1) en `orderDiscount()`, quité `+ order.deliveryFee` del cálculo → 3 de 4 tests nuevos de
+      `orders-utils.test.ts` (`describe('orderDiscount', ...)`) FALLARON exactamente como se
+      esperaba, y el fallo se propagó al test de la fila "Cupón" en `OrderDetailDialog.test.tsx`
+      (Test Files: 2 failed, 4 tests failed en total); restauré el archivo, `git diff --stat`
+      confirmó 12 líneas agregadas, idéntico al estado original.
+      (2) en `OrderDetailDialog.tsx`, forcé `{discount > 0.01 ? (...)` a `{false ? (...)` → el
+      test "pedido CON cupón" FALLÓ (`getByText('Cupón')` no encontró el elemento), el de "SIN
+      cupón" siguió pasando (comportamiento correcto para ese caso); restauré el archivo,
+      `git diff --stat` confirmó 14 inserciones/1 eliminación, idéntico al original.
+      Suite completa de Orders tras restaurar: 36/36 (`orders-utils.test.ts` con 4 tests nuevos:
+      sin cupón, con cupón, redondeo de punto flotante, sin cupón ni envío;
+      `OrderDetailDialog.test.tsx` con 2 tests nuevos: fila oculta sin cupón, fila visible con
+      `-S/ 5.25` en el orden Subtotal → Cupón → Envío → Total). `type-check`, `lint` y `build`
+      globales en verde. ⚠️ **Riesgo pre-existente detectado durante esta auditoría, no
+      relacionado a este cambio**: la suite completa (`pnpm run test`, 191 tests) tiene
+      flakiness — en una corrida falló `BroadcastForm.test.tsx` por timeout, en otra
+      `GenerateCouponForm.test.tsx`, ambos módulos ajenos a Orders; aislados (`vitest run
+      src/features/orders`) los 3 archivos de Orders pasan consistentemente. Vale la pena
+      investigar la flakiness general de la suite en una auditoría futura, no bloquea este
+      cambio.
 
 ## Coupons
 

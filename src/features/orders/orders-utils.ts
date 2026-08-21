@@ -8,6 +8,18 @@ export function orderSubtotal(order: Order): number {
 }
 
 /**
+ * Descuento aplicado por cupón, derivado del mismo despeje que usa el
+ * backend para calcular `total` (`total = (subtotal - descuento) +
+ * deliveryFee`) — el Order no expone el descuento ni el código del cupón
+ * directamente. Redondeado a 2 decimales para no arrastrar basura de punto
+ * flotante (mismo criterio que la validación de precios en ItemForm.tsx).
+ */
+export function orderDiscount(order: Order): number {
+  const raw = orderSubtotal(order) - order.total + order.deliveryFee
+  return Math.round(raw * 100) / 100
+}
+
+/**
  * wa.me solo acepta dígitos — mismo criterio de normalización que
  * `normalizeWhatsappNumber` en settings-utils, duplicado acá a propósito
  * para no acoplar el módulo orders al de settings por una función de una

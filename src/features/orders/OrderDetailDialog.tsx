@@ -25,7 +25,13 @@ import {
   STORE_LOCATION_KEY,
 } from '../settings/settings-utils'
 import { buildAddressMapUrl, buildGoogleMapsUrl } from '../users/users-utils'
-import { digitsOnly, isFarOrder, orderDistanceMeters, orderSubtotal } from './orders-utils'
+import {
+  digitsOnly,
+  isFarOrder,
+  orderDiscount,
+  orderDistanceMeters,
+  orderSubtotal,
+} from './orders-utils'
 import {
   ORDER_STATUS_BADGE,
   ORDER_STATUS_LABELS,
@@ -117,6 +123,7 @@ export function OrderDetailDialog({
   const addressLng = typeof address?.longitude === 'number' ? address.longitude : null
   const customerPhoneDigits = order?.user.phone ? digitsOnly(order.user.phone) : null
   const subtotal = order ? orderSubtotal(order) : 0
+  const discount = order ? orderDiscount(order) : 0
 
   return (
     <Dialog
@@ -203,6 +210,12 @@ export function OrderDetailDialog({
                     <span>Subtotal</span>
                     <span>{CURRENCY.format(subtotal)}</span>
                   </div>
+                  {discount > 0.01 ? (
+                    <div className="text-muted-foreground flex items-center justify-between">
+                      <span>Cupón</span>
+                      <span>-{CURRENCY.format(discount)}</span>
+                    </div>
+                  ) : null}
                   <div className="text-muted-foreground flex items-center justify-between">
                     <span>Envío</span>
                     <span>{CURRENCY.format(order.deliveryFee)}</span>

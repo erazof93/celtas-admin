@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { digitsOnly, isFarOrder, orderDistanceMeters, orderSubtotal } from './orders-utils'
+import {
+  digitsOnly,
+  isFarOrder,
+  orderDiscount,
+  orderDistanceMeters,
+  orderSubtotal,
+} from './orders-utils'
 import type { Order, OrderItem } from './types'
 
 function makeItem(overrides: Partial<OrderItem> = {}): OrderItem {
@@ -48,6 +54,40 @@ describe('orderSubtotal', () => {
 
   it('devuelve 0 sin items', () => {
     expect(orderSubtotal(makeOrder([]))).toBe(0)
+  })
+})
+
+describe('orderDiscount', () => {
+  it('sin cupón: total = subtotal + envío, descuento es 0', () => {
+    const order = makeOrder([makeItem({ subtotal: 37 })], {
+      total: 41,
+      deliveryFee: 4,
+    })
+    expect(orderDiscount(order)).toBe(0)
+  })
+
+  it('con cupón: deriva el descuento del mismo despeje que usa el backend (subtotal - total + envío)', () => {
+    // subtotal 52.50, envío 4, cupón de 10% sobre subtotal → descuento 5.25,
+    // total = (52.50 - 5.25) + 4 = 51.25
+    const order = makeOrder(
+      [makeItem({ subtotal: 37 }), makeItem({ id: 'item-2', subtotal: 15.5 })],
+      { total: 51.25, deliveryFee: 4 },
+    )
+    expect(orderDiscount(order)).toBe(5.25)
+  })
+
+  it('redondea a 2 decimales para no arrastrar basura de punto flotante', () => {
+    // 10 - 6.1 + 0.2 da 4.1000000000000005 en JS crudo (sin redondear,
+    // toBe(4.1) fallaría por la basura de punto flotante)
+    const order = makeOrder([makeItem({ subtotal: 10 })], {
+      total: 6.1,
+      deliveryFee: 0.2,
+    })
+    expect(orderDiscount(order)).toBe(4.1)
+  })
+
+  it('sin cupón y sin envío: descuento es 0 (caso más simple, total === subtotal)', () => {
+    expect(orderDiscount(makeOrder([makeItem({ subtotal: 37 })]))).toBe(0)
   })
 })
 

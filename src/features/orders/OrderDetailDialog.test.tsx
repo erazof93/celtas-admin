@@ -172,6 +172,38 @@ describe('OrderDetailDialog — desglose con envío', () => {
   })
 })
 
+describe('OrderDetailDialog — fila "Cupón" en el desglose', () => {
+  it('pedido SIN cupón (total = subtotal + envío): no muestra la fila "Cupón"', () => {
+    const order = makeOrder([makeItem({ subtotal: 37 })], {
+      total: 41,
+      deliveryFee: 4,
+    })
+    renderDialog(order)
+
+    expect(screen.queryByText('Cupón')).not.toBeInTheDocument()
+  })
+
+  it('pedido CON cupón: muestra la fila "Cupón" con el monto en negativo, en el orden Subtotal → Cupón → Envío → Total', () => {
+    // subtotal 52.50, envío 4, cupón 10% → descuento 5.25, total 51.25
+    const order = makeOrder(
+      [makeItem({ subtotal: 37 }), makeItem({ id: 'item-2', subtotal: 15.5 })],
+      { total: 51.25, deliveryFee: 4 },
+    )
+    renderDialog(order)
+
+    const rows = ['Subtotal', 'Cupón', 'Envío', 'Total']
+    const positions = rows.map((label) => {
+      const el = screen.getByText(label)
+      return Array.from(el.parentElement!.parentElement!.children).indexOf(
+        el.parentElement!,
+      )
+    })
+    expect(positions).toEqual([0, 1, 2, 3])
+
+    expect(screen.getByText('-S/ 5.25')).toBeInTheDocument()
+  })
+})
+
 describe('OrderDetailDialog — badge de "fuera de zona habitual"', () => {
   function stubSettings(storeLocation: string, alertRadiusMeters: string) {
     settingsData.current = [
