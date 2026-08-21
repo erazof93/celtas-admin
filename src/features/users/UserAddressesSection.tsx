@@ -3,7 +3,7 @@ import type { UseQueryResult } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { LoadingState } from '@/components/ui/LoadingState'
-import { buildAddressMapUrl } from './users-utils'
+import { buildAddressMapUrl, buildGoogleMapsUrl } from './users-utils'
 import type { UserAddress } from './types'
 
 interface UserAddressesSectionProps {
@@ -16,9 +16,11 @@ interface UserAddressesSectionProps {
  * Maneja los 3 estados: loading, error y vacío ("Este cliente no tiene
  * direcciones guardadas"). Debajo de cada tarjeta con coordenadas se
  * renderiza un mapa de solo lectura (Geoapify Static Maps API, un <img>
- * simple, sin librería de mapas interactivo). Muchas direcciones siguen sin
- * lat/lng (creadas antes de esa columna, o editadas sin tocar el mapa) — es
- * un estado válido, no se muestra ningún placeholder de "sin mapa" ahí.
+ * simple, sin librería de mapas interactivo), envuelto en un link que abre
+ * esa ubicación en Google Maps en pestaña nueva (mismo criterio que
+ * `order.whatsappUrl` en el detalle de pedido). Muchas direcciones siguen
+ * sin lat/lng (creadas antes de esa columna, o editadas sin tocar el mapa)
+ * — es un estado válido, no se muestra ningún placeholder de "sin mapa" ahí.
  */
 export function UserAddressesSection({ query }: UserAddressesSectionProps) {
   const geoapifyApiKey = import.meta.env.VITE_GEOAPIFY_API_KEY as
@@ -76,7 +78,14 @@ export function UserAddressesSection({ query }: UserAddressesSectionProps) {
               {address.latitude !== null &&
               address.longitude !== null &&
               geoapifyApiKey ? (
-                <div className="border-border mt-2 overflow-hidden rounded-lg border">
+                <a
+                  href={buildGoogleMapsUrl(address.latitude, address.longitude)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Abrir en Google Maps"
+                  aria-label="Abrir en Google Maps"
+                  className="border-border group mt-2 block overflow-hidden rounded-lg border"
+                >
                   <img
                     src={buildAddressMapUrl(
                       address.latitude,
@@ -84,12 +93,12 @@ export function UserAddressesSection({ query }: UserAddressesSectionProps) {
                       geoapifyApiKey,
                     )}
                     alt={`Mapa de ${address.alias}`}
-                    className="block w-full"
+                    className="block w-full cursor-pointer transition-opacity group-hover:opacity-80"
                     width={400}
                     height={200}
                     loading="lazy"
                   />
-                </div>
+                </a>
               ) : null}
             </li>
           ))}

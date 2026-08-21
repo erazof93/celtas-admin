@@ -36,6 +36,15 @@ export function buildAddressMapUrl(
 }
 
 /**
+ * URL de búsqueda de Google Maps para una dirección con coordenadas (mismo
+ * criterio que `order.whatsappUrl` en el detalle de pedido: un link externo
+ * que abre en pestaña nueva, `target="_blank" rel="noopener noreferrer"`).
+ */
+export function buildGoogleMapsUrl(latitude: number, longitude: number): string {
+  return `https://www.google.com/maps/search/?api=1&query=${latitude},${longitude}`
+}
+
+/**
  * Filtro de búsqueda en el CLIENTE sobre la página actual. El backend de
  * GET /users NO soporta búsqueda server-side (QueryUsersDto solo tiene
  * page/limit) — este filtro es un atajo visual, no una búsqueda global.

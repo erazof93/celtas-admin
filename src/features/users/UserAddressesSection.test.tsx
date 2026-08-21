@@ -72,4 +72,19 @@ describe('UserAddressesSection — mapa de solo lectura', () => {
     expect(screen.getByText('Av. Los Héroes 123')).toBeInTheDocument()
     expect(screen.getByText('San Juan de Miraflores')).toBeInTheDocument()
   })
+
+  it('el mapa es un link a Google Maps con las coordenadas correctas, en pestaña nueva', () => {
+    const address = makeAddress({ latitude: -12.164, longitude: -76.9721 })
+    render(<UserAddressesSection query={makeQuery([address])} />)
+
+    const link = screen.getByRole('link', { name: 'Abrir en Google Maps' })
+    expect(link).toHaveAttribute(
+      'href',
+      'https://www.google.com/maps/search/?api=1&query=-12.164,-76.9721',
+    )
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    // El <img> del mapa vive dentro del link (todo el mapa es clickeable).
+    expect(link).toContainElement(screen.getByRole('img', { name: 'Mapa de Casa' }))
+  })
 })

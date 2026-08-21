@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildAddressMapUrl,
+  buildGoogleMapsUrl,
   filterUsersByQuery,
   formatTotalSpent,
 } from './users-utils'
@@ -71,6 +72,15 @@ describe('buildAddressMapUrl', () => {
       'https://maps.geoapify.com/v1/staticmap?style=osm-carto&width=400&height=200' +
         '&center=lonlat:-76.9721,-12.164&zoom=15' +
         '&marker=lonlat:-76.9721,-12.164;color:%23ff0000&apiKey=my-key',
+    )
+  })
+})
+
+describe('buildGoogleMapsUrl', () => {
+  it('arma la URL de búsqueda de Google Maps con lat,lng (no lon,lat)', () => {
+    const url = buildGoogleMapsUrl(-12.164, -76.9721)
+    expect(url).toBe(
+      'https://www.google.com/maps/search/?api=1&query=-12.164,-76.9721',
     )
   })
 })
