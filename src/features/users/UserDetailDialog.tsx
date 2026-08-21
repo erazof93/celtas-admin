@@ -59,6 +59,27 @@ interface UserDetailDialogProps {
  * remonta todo y cada query arranca con el userId correcto — sin riesgo de
  * mostrar datos de otro usuario (mismo patrón que el fix de la paginación
  * de cupones).
+ *
+ * **Scroll interno (bug de clase, no exclusivo de este modal)**: `DialogContent`
+ * (`components/ui/dialog.tsx`) no define `max-height`/`overflow-y-auto` — pasaba
+ * desapercibido porque el contenido de las tabs era corto, pero con el mapa
+ * nuevo de Direcciones (~200px por tarjeta) 4+ direcciones exceden la altura
+ * del viewport. Confirmado con evidencia real (medición de
+ * `getBoundingClientRect()` en un navegador real, no jsdom): con 5 direcciones
+ * con mapa, el diálogo medía 2522px en un viewport de 855px — como
+ * `DialogContent` es `position: fixed` centrado con `translate(-50%,-50%)` y
+ * sin contenedor con overflow, ni el header ni el final del contenido eran
+ * alcanzables (no hay scroll real posible, a diferencia de lo que sugeriría
+ * simplemente "se corta abajo"). Cupones/Pedidos (5 ítems paginados, filas de
+ * tabla compactas) NO tienen este problema — confirmado con la misma medición
+ * (288.8px de diálogo, cabe entero). Fix acotado a este componente vía
+ * className (no se tocó `dialog.tsx` compartido): `DialogContent` con
+ * `flex max-h-[85vh] flex-col overflow-hidden`, `Tabs` con `flex-1 min-h-0`,
+ * y cada `TabsContent` con `min-h-0 overflow-y-auto` — el header y la lista de
+ * tabs quedan fijos arriba, solo el contenido de la tab activa scrollea. Sin
+ * test unitario: es un fix de layout/CSS puro (jsdom no calcula dimensiones
+ * reales de caja), verificado visualmente con capturas y mediciones reales de
+ * `getBoundingClientRect()` en un harness temporal (no commiteado).
  */
 export function UserDetailDialog({ user, onOpenChange }: UserDetailDialogProps) {
   return (
@@ -96,16 +117,16 @@ function UserDetailContent({
 
   return (
     <>
-      <DialogContent className="sm:max-w-3xl">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-3xl">
+        <DialogHeader className="shrink-0">
           <DialogTitle>{user.fullName}</DialogTitle>
           <DialogDescription className="font-mono text-xs">
             {user.id}
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="perfil">
-          <TabsList className="w-full">
+        <Tabs defaultValue="perfil" className="min-h-0 flex-1">
+          <TabsList className="w-full shrink-0">
             <TabsTrigger value="perfil" className="flex-1">
               Perfil
             </TabsTrigger>
@@ -121,7 +142,7 @@ function UserDetailContent({
           </TabsList>
 
           {/* Perfil */}
-          <TabsContent value="perfil" className="mt-4">
+          <TabsContent value="perfil" className="mt-4 min-h-0 overflow-y-auto">
             <section className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1">
                 <p className="text-muted-foreground text-xs">Email</p>
@@ -174,12 +195,12 @@ function UserDetailContent({
           </TabsContent>
 
           {/* Direcciones */}
-          <TabsContent value="direcciones" className="mt-4">
+          <TabsContent value="direcciones" className="mt-4 min-h-0 overflow-y-auto">
             <UserAddressesSection query={addressesQuery} />
           </TabsContent>
 
           {/* Cupones */}
-          <TabsContent value="cupones" className="mt-4">
+          <TabsContent value="cupones" className="mt-4 min-h-0 overflow-y-auto">
             <div className="space-y-3">
               <h3 className="text-sm font-medium">Cupones de este usuario</h3>
 
@@ -259,7 +280,7 @@ function UserDetailContent({
           </TabsContent>
 
           {/* Pedidos */}
-          <TabsContent value="pedidos" className="mt-4">
+          <TabsContent value="pedidos" className="mt-4 min-h-0 overflow-y-auto">
             <UserOrdersSection
               query={ordersQuery}
               onPageChange={setOrdersPage}
