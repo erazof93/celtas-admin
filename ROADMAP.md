@@ -482,6 +482,34 @@ celtas-admin/
       `lint`, `test` 95/95 en 18 archivos, `build`, todo repetido de forma independiente, incluida
       la confirmación del contrato contra el código fuente real del backend). Detalle completo en
       `docs/testing-checklist.md` (sección "Users — Top usuarios" + reporte de auditoría).
+- [x] **Mapa de solo lectura en direcciones del usuario** (Static Maps API de Geoapify — misma key
+      que `celtas-mobile`, un `<img>` simple armado con una URL, sin librería de mapas interactivo):
+      `UserAddress` gana `latitude: number | null` / `longitude: number | null` en `types.ts`, no
+      documentados en `api.d.ts` porque `GET /users/:id/addresses` no declara
+      `@ApiResponse({ type })` en Swagger (mismo gap que Marketing) — confirmado contra el código
+      fuente real de `backend-celtas` (`address.entity.ts`: columnas `double precision` nullable,
+      sin `@Exclude()`; `addresses.service.ts` `findByUser()` y `users.controller.ts`
+      `listUserAddresses()`: entidad completa sin `select`/DTO que las omita). `buildAddressMapUrl`
+      (`users-utils.ts`) es función pura (recibe `apiKey` como parámetro) que arma la URL con
+      `lonlat:{longitude},{latitude}` (orden lon,lat) para `center`/`marker`, key vía
+      `encodeURIComponent`. `UserAddressesSection.tsx` renderiza el `<img>` debajo de cada tarjeta
+      SOLO cuando `latitude !== null && longitude !== null && geoapifyApiKey` (comparación estricta,
+      no truthy check) — sin `VITE_GEOAPIFY_API_KEY` configurada, no se renderiza ningún `<img>`
+      roto aunque haya coordenadas; direcciones sin coordenadas (la mayoría) no muestran ningún
+      placeholder, comportamiento intencional. **Verificado por @tester con mutación real**: quitó
+      la condición de coordenadas nulas → el test "dirección SIN coordenadas..." de
+      `UserAddressesSection.test.tsx` FALLÓ exactamente como se esperaba; restauró el archivo con
+      `git checkout --` y la suite volvió a 2/2. `type-check`, `lint`, `build` en verde; `test`:
+      24 archivos / 130 tests. Confirmó también con Node real que `encodeURIComponent('my-key') ===
+      'my-key'`, así que el test existente de `buildAddressMapUrl` seguía siendo válido tras ese
+      cambio detectado en disco. Sin key/URL hardcodeada (`VITE_GEOAPIFY_API_KEY` vía
+      `import.meta.env`, único punto de lectura en todo `src/`); `.env` nunca trackeado en git,
+      `.env.example` solo con placeholder. **Veredicto final de @tester: LISTO** (con riesgos no
+      bloqueantes documentados: sin `onError` en el `<img>`, sin reconfirmación en vivo del formato
+      de la API de Geoapify contra su documentación real —el entorno de @tester no tuvo herramienta
+      de fetch web disponible—, y sin prueba E2E/Playwright con coordenadas reales en el navegador).
+      Detalle completo en `docs/testing-checklist.md` (sección "Users" + reporte de auditoría
+      "Mapa de solo lectura en direcciones del usuario").
 
 ### 10. Deploy y Calidad
 - [x] Pase de auditoría general (parte 1 — código):

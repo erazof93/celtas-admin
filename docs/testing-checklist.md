@@ -578,6 +578,68 @@ cambio adicional en `celtas-admin` ni en `celtas-backend`.
       cambiar de usuario con el modal abierto, direcciones y pedidos se consultan con el userId
       NUEVO. **Verificado por @tester: FALLA si se revierte el fix** (sin `key={user.id}`, el test
       "al cambiar de usuario, la página de cupones vuelve a 1" falla con `page=2` para userB)
+- [x] **Mapa de solo lectura en direcciones** (Geoapify Static Maps API): `latitude`/`longitude`
+      (`number | null`) agregados a `UserAddress` en `types.ts` — no están en `api.d.ts` porque
+      `GET /users/:id/addresses` no declara `@ApiResponse({ type })` en Swagger (mismo gap que
+      Marketing); confirmado de forma independiente contra el código fuente real de
+      `backend-celtas` (`address.entity.ts` líneas 38-43: columnas `double precision` nullable,
+      sin `@Exclude()`; `addresses.service.ts` `findByUser()` líneas 24-29: `find({ where:
+      { userId }, order: {...} })` sin `select` que las omita; `users.controller.ts`
+      `listUserAddresses()` líneas 165-168: `return this.addressesService.findByUser(id)` directo,
+      sin DTO que mapee/oculte campos). `buildAddressMapUrl` (`users-utils.ts`) es función pura
+      (recibe `apiKey` como parámetro, no lee `import.meta.env` internamente) que arma la URL de
+      Geoapify Static Maps con `lonlat:{longitude},{latitude}` (orden lon,lat, no lat,lon) para
+      `center` y `marker`, `apiKey` pasado por `encodeURIComponent`. `UserAddressesSection.tsx`
+      renderiza el `<img>` SOLO cuando `latitude !== null && longitude !== null && geoapifyApiKey`
+      (comparación estricta contra `null`, no truthy check) — si `VITE_GEOAPIFY_API_KEY` no está
+      configurada, NO se renderiza ningún `<img>` con `apiKey=undefined` roto, incluso con
+      coordenadas presentes (verificado con un test temporal ad hoc: `vi.stubEnv(...,'')` + coords
+      reales → `queryByRole('img')` no encuentra nada; test descartado tras confirmar, no forma
+      parte de la suite permanente). Direcciones sin coordenadas (la mayoría, creadas antes de la
+      columna o sin usar el mapa/autocompletado) no muestran ningún placeholder — comportamiento
+      intencional documentado en el doc-comment del componente.
+      **Verificado por @tester con mutación real**: eliminé la condición
+      `address.latitude !== null && address.longitude !== null` de
+      `UserAddressesSection.tsx` (dejando solo el chequeo de `geoapifyApiKey`) → el test "dirección
+      SIN coordenadas: no renderiza ningún mapa..." de `UserAddressesSection.test.tsx` FALLÓ
+      exactamente como se esperaba (`expected document not to contain element, found <img ...
+      src="...center=lonlat:null,null...">`); restauré el archivo con `git checkout --` y `git
+      diff` confirmó que quedó idéntico al commit original; la suite volvió a 2/2 en ese archivo.
+      **Revisión del cambio `encodeURIComponent(apiKey)`** (detectado en disco después de la
+      última edición de la sesión principal, no estaba en el reporte original): es correcto y
+      defensivo (protege contra una key con caracteres especiales en la URL), y NO rompe el test
+      existente — confirmado con Node real: `encodeURIComponent('my-key') === 'my-key'` (el guion
+      es un carácter "unreserved" para `encodeURIComponent`, no se altera), así que
+      `users-utils.test.ts` (`buildAddressMapUrl` con `'my-key'`) sigue siendo válido sin cambios.
+      Ningún test cubre explícitamente una key con caracteres que sí cambien con el encoding (bajo
+      riesgo, ver más abajo).
+      **Regla del id-en-el-body**: no aplica (el endpoint es `GET`, no `PATCH`) — `useUserAddresses`
+      ya auditado arriba, sin regresión.
+      **Sin URL/key hardcodeada**: la key viene únicamente de `import.meta.env.VITE_GEOAPIFY_API_KEY`
+      (grep confirma un solo punto de lectura del env en todo el módulo, en
+      `UserAddressesSection.tsx`); `.env.example` documenta la variable con un placeholder
+      (`tu_api_key_de_geoapify`), sin la key real. La key real vive en `.env` local — confirmado con
+      `git ls-files`/`git log --all -- .env` que `.env` nunca estuvo trackeado (el `.gitignore` ya
+      tenía `.env`/`.env.*` con excepción explícita `!.env.example`) y `git status`/`git diff HEAD --
+      .env.example` sin cambios pendientes (el commit `984fa62` ya incluye todo el trabajo).
+      `type-check` (`tsc -b`), `lint` (`eslint .`) y `build` sin salida (0 errores); `test`: 24
+      archivos / 130 tests en verde (incluye el archivo nuevo `UserAddressesSection.test.tsx`, 2/2,
+      y el caso nuevo agregado a `users-utils.test.ts`).
+      ⚠️ **Riesgos/casos borde no cubiertos**: (1) no hay manejo de `onError` en el `<img>` si la
+      URL de Geoapify falla en runtime (rate limit del plan gratis, key inválida, red) — el
+      navegador mostraría el ícono de imagen rota sin mensaje contextual, no es crítico porque es
+      un elemento puramente informativo dentro de una tarjeta que ya muestra el resto de los datos
+      de la dirección; (2) no se verificó contra la doc real de Geoapify con una herramienta de
+      fetch web en esta auditoría (no disponible en el entorno de @tester) — el formato de la URL
+      (`style=osm-carto`, `center=lonlat:lon,lat`, `marker=lonlat:lon,lat;color:%23hex`,
+      `zoom`, `width`/`height`, `apiKey`) es consistente con el conocimiento general de la Static
+      Maps API de Geoapify y con lo ya usado en `celtas-mobile` (misma key compartida), pero no se
+      pudo re-confirmar en vivo contra `apidocs.geoapify.com` de forma independiente en esta pasada
+      — pendiente de una prueba visual real (cargar la pantalla con una key válida y confirmar que
+      el mapa se ve, no solo que la URL tiene el formato esperado); (3) no hay prueba E2E/Playwright
+      contra el backend real mostrando una dirección con coordenadas reales — la verificación fue
+      contrato (código fuente) + test de componente + mutación, mismo nivel que el resto del
+      checklist de Users, sin pasada manual en navegador.
 
 
 ## Módulo 10 — Auditoría global (parte 1: código)
@@ -885,4 +947,85 @@ Veredicto: LISTO PARA MARCAR COMPLETO
   que exceda el límite
 
 Veredicto: LISTO PARA MARCAR COMPLETO
+
+---
+
+## Auditoría: Mapa de solo lectura en direcciones del usuario (Geoapify Static Maps API)
+
+✅ Pasó:
+- `pnpm run type-check` (`tsc -b`), `pnpm run lint` (`eslint .`), `pnpm run build`: los tres sin
+  salida, cero errores/warnings — corridos de forma independiente
+- `pnpm run test`: 24 archivos / 130 tests en verde (confirmado independientemente); los 2 tests de
+  `UserAddressesSection.test.tsx` y el caso nuevo de `users-utils.test.ts` pasan tanto aislados
+  como dentro de la suite completa
+- Contrato de `latitude`/`longitude` confirmado de forma independiente contra el código fuente real
+  de `backend-celtas` (no solo el resumen de la sesión principal): `address.entity.ts` (columnas
+  `double precision` nullable, sin `@Exclude()`), `addresses.service.ts` `findByUser()` (`find({
+  where: { userId }, order: {...} })`, sin `select` que las omita) y `users.controller.ts`
+  `listUserAddresses()` (`return this.addressesService.findByUser(id)` directo, sin DTO mapeador) —
+  coincide exacto con lo reportado. `api.d.ts` sí documenta `latitude`/`longitude` en
+  `CreateAddressDto`/`UpdateAddressDto` (input del cliente móvil), confirmando indirectamente que la
+  columna existe, pero el endpoint admin `GET /users/:id/addresses` no declara `@ApiResponse({ type
+  })`, así que el tipo a mano en `types.ts` sigue siendo la única fuente de verdad correcta para la
+  respuesta
+- Revisé el cambio de `encodeURIComponent(apiKey)` en `buildAddressMapUrl` (`users-utils.ts`),
+  detectado en disco después de la última edición de la sesión principal: es correcto y defensivo
+  (protege ante una key con caracteres especiales), y NO invalida el test existente — confirmado con
+  Node real: `encodeURIComponent('my-key') === 'my-key'` (el guion no se altera), así que
+  `users-utils.test.ts` sigue siendo válido sin necesidad de actualizarlo
+- **Mutación real e independiente**: eliminé la condición `address.latitude !== null &&
+  address.longitude !== null` de `UserAddressesSection.tsx` (dejando solo el chequeo de
+  `geoapifyApiKey`) → el test "dirección SIN coordenadas: no renderiza ningún mapa..." de
+  `UserAddressesSection.test.tsx` FALLÓ exactamente como se esperaba (`expected document not to
+  contain element, found <img ... src="...center=lonlat:null,null...">`); restauré el archivo con
+  `git checkout --` y confirmé con `git diff`/`git status` que quedó idéntico al commit `984fa62`;
+  la suite de ese archivo volvió a 2/2
+- **Verificación ad hoc del guard de la API key faltante** (no en la suite permanente, descartada
+  tras confirmar): con `vi.stubEnv('VITE_GEOAPIFY_API_KEY', '')` y coordenadas reales presentes, el
+  componente NO renderiza ningún `<img>` — evita un `<img src="...apiKey=undefined">` roto si la
+  variable de entorno no está configurada
+- Sin URL/key hardcodeada: único punto de lectura de `import.meta.env.VITE_GEOAPIFY_API_KEY` en todo
+  `src/` es `UserAddressesSection.tsx` (grep confirmado); `.env.example` documenta la variable con
+  placeholder (`tu_api_key_de_geoapify`), sin la key real
+- `.env` nunca estuvo trackeado en git (`git ls-files`/`git log --all -- .env` = vacío), el
+  `.gitignore` ya tenía `.env`/`.env.*` con excepción explícita `!.env.example` antes de este
+  cambio; `git status`/`git diff HEAD -- .env.example` sin pendientes — el commit `984fa62` ya
+  contiene todo el trabajo de esta mejora
+- El `id` no aplica a esta feature (endpoint `GET`, no `PATCH`) — `useUserAddresses` ya auditado
+  previamente en la sección "Users" de este mismo archivo, sin regresión
+- Estados de UI: la sección ya maneja loading/error/vacío desde la auditoría previa de "Users"; el
+  mapa es un elemento adicional condicional dentro del estado "con datos", no introduce un cuarto
+  estado nuevo que requiera manejo explícito
+
+❌ Falló:
+- Ninguno de los puntos críticos del checklist
+
+⚠️ Riesgos / casos borde no cubiertos:
+- No hay manejo de `onError` en el `<img>` si la URL de Geoapify falla en runtime (rate limit del
+  plan gratis, key inválida/revocada, sin red) — el navegador mostraría el ícono de imagen rota sin
+  ningún mensaje contextual. Bajo riesgo: es un elemento puramente informativo dentro de una tarjeta
+  que igual muestra el resto de los datos de la dirección, no bloquea ningún flujo
+- No pude re-verificar el formato de la URL de la Static Maps API de Geoapify contra la
+  documentación real (`apidocs.geoapify.com`) de forma independiente en esta auditoría — el entorno
+  de @tester no tiene una herramienta de fetch web disponible. El formato usado
+  (`style=osm-carto&center=lonlat:lon,lat&marker=lonlat:lon,lat;color:%23hex&zoom&width&height&apiKey`)
+  es consistente con el conocimiento general de esa API y con el uso ya existente en
+  `celtas-mobile` (misma key compartida), pero queda como un punto de la verificación de contrato
+  que se apoyó en el reporte de la sesión principal en vez de una reconfirmación independiente. Se
+  recomienda una prueba visual real (cargar el detalle de un usuario con una dirección con
+  coordenadas y una key válida, confirmar que el mapa se ve) antes de dar esto por 100% verificado
+  end-to-end
+- Ningún test cubre explícitamente una API key con caracteres que `encodeURIComponent` sí altere
+  (ej. con espacios o `&`) — bajo riesgo real porque las keys de Geoapify son alfanuméricas simples,
+  pero es un hueco de cobertura explícita del cambio nuevo
+- No hay prueba E2E/Playwright ni verificación manual contra el backend real (local ni producción)
+  mostrando el mapa de una dirección con coordenadas reales en el navegador — la verificación de
+  este módulo fue: contrato (código fuente real), test de componente con mocks, y mutación real con
+  reversión confirmada. Mismo nivel de rigor que el resto del checklist de Users, pero sin pasada
+  manual en navegador
+
+Veredicto: LISTO PARA MARCAR COMPLETO (con los riesgos no bloqueantes documentados arriba, en
+particular la falta de reconfirmación en vivo del formato de la API de Geoapify y de una pasada
+visual real — se recomienda antes de que el dueño del negocio dependa de esta pantalla en
+producción)
 
