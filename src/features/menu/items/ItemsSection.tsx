@@ -128,7 +128,11 @@ export function ItemsSection() {
         <div>
           <h2 className="text-xl font-semibold tracking-tight">Productos</h2>
           <p className="text-muted-foreground text-sm">
-            Los productos que se ofrecen en la app, con su categoría.
+            Los productos que se ofrecen en la app, con su categoría. Apagar
+            "Disponible" lo saca del menú normal, pero si tiene "Canjeable" o
+            "Especial" activado seguirá apareciendo en el catálogo de premios
+            para canjearse con estrellas — así puedes tener productos
+            exclusivos del programa que nunca se venden sueltos.
           </p>
         </div>
         <Button
