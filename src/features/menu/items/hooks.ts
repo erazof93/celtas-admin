@@ -70,6 +70,23 @@ export function useToggleItemAvailable() {
 }
 
 /**
+ * Toggle de "canjeable con estrellas" desde la lista (PATCH con
+ * { redeemableWithStars }). Mismo criterio que useToggleItemAvailable: no
+ * optimista, el switch queda deshabilitado mientras corre y el valor real
+ * llega del refetch.
+ */
+export function useToggleItemRedeemableWithStars() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { id: string; redeemableWithStars: boolean }) =>
+      patch<MenuItem>(`/menu/items/${input.id}`, {
+        redeemableWithStars: input.redeemableWithStars,
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ITEMS_KEY }),
+  })
+}
+
+/**
  * Subida de imagen de un producto. Flujo real del backend: primero se crea el
  * item y luego se sube la imagen a POST /menu/items/:id/image (multipart,
  * campo "image", JPG/PNG/WEBP/GIF máx 5 MB).

@@ -24,7 +24,12 @@ import { Switch } from '@/components/ui/switch'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { getApiMessage } from '@/lib/api-errors'
-import { useDeleteItem, useMenuItems, useToggleItemAvailable } from './hooks'
+import {
+  useDeleteItem,
+  useMenuItems,
+  useToggleItemAvailable,
+  useToggleItemRedeemableWithStars,
+} from './hooks'
 import { ItemForm } from './ItemForm'
 import type { MenuItem } from '../types'
 
@@ -38,6 +43,7 @@ const CURRENCY = new Intl.NumberFormat('es-PE', {
 export function ItemsSection() {
   const itemsQuery = useMenuItems()
   const toggleMutation = useToggleItemAvailable()
+  const toggleRedeemableMutation = useToggleItemRedeemableWithStars()
   const deleteMutation = useDeleteItem()
 
   const [formOpen, setFormOpen] = useState(false)
@@ -45,6 +51,9 @@ export function ItemsSection() {
   const [deleteTarget, setDeleteTarget] = useState<MenuItem | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [toggleError, setToggleError] = useState<string | null>(null)
+  const [toggleRedeemableError, setToggleRedeemableError] = useState<
+    string | null
+  >(null)
 
   const items = itemsQuery.data
 
@@ -55,6 +64,23 @@ export function ItemsSection() {
     } catch (error) {
       setToggleError(
         getApiMessage(error, 'No se pudo cambiar la disponibilidad'),
+      )
+    }
+  }
+
+  async function handleToggleRedeemable(
+    item: MenuItem,
+    redeemableWithStars: boolean,
+  ) {
+    setToggleRedeemableError(null)
+    try {
+      await toggleRedeemableMutation.mutateAsync({
+        id: item.id,
+        redeemableWithStars,
+      })
+    } catch (error) {
+      setToggleRedeemableError(
+        getApiMessage(error, 'No se pudo cambiar el canje con estrellas'),
       )
     }
   }
@@ -72,6 +98,9 @@ export function ItemsSection() {
 
   const togglingId = toggleMutation.isPending
     ? toggleMutation.variables?.id
+    : null
+  const togglingRedeemableId = toggleRedeemableMutation.isPending
+    ? toggleRedeemableMutation.variables?.id
     : null
 
   return (
@@ -101,6 +130,13 @@ export function ItemsSection() {
         </Alert>
       ) : null}
 
+      {toggleRedeemableError ? (
+        <Alert variant="destructive">
+          <AlertTitle>No se pudo cambiar el canje con estrellas</AlertTitle>
+          <AlertDescription>{toggleRedeemableError}</AlertDescription>
+        </Alert>
+      ) : null}
+
       {itemsQuery.isLoading ? (
         <LoadingState label="Cargando productos…" />
       ) : itemsQuery.isError ? (
@@ -122,6 +158,7 @@ export function ItemsSection() {
                 <TableHead>Categoría</TableHead>
                 <TableHead>Precio</TableHead>
                 <TableHead>Disponible</TableHead>
+                <TableHead>Canjeable</TableHead>
                 <TableHead className="text-center">ID</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
@@ -162,6 +199,16 @@ export function ItemsSection() {
                       onCheckedChange={(next) => handleToggle(item, next)}
                       disabled={togglingId === item.id}
                       aria-label={`Cambiar disponibilidad de ${item.name}`}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={item.redeemableWithStars}
+                      onCheckedChange={(next) =>
+                        handleToggleRedeemable(item, next)
+                      }
+                      disabled={togglingRedeemableId === item.id}
+                      aria-label={`Cambiar canje con estrellas de ${item.name}`}
                     />
                   </TableCell>
                   <TableCell className="text-center">

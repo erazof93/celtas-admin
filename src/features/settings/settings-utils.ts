@@ -178,6 +178,30 @@ export function parseDeliveryAlertRadiusMeters(value: string | undefined): numbe
 }
 
 /**
+ * Umbrales del programa de estrellas — claves sembradas por el backend con
+ * default `"10"`/`"10"` (mismo patrón genérico GET/PATCH /settings que
+ * `DELIVERY_ALERT_RADIUS_METERS_KEY`, confirmado contra rewards.service.ts).
+ */
+export const SOLES_POR_ESTRELLA_KEY = 'soles_por_estrella'
+export const SOLES_POR_ESTRELLA_DESCRIPTION =
+  'Soles gastados (subtotal sin envío) necesarios para ganar 1 estrella'
+export const ESTRELLAS_POR_PREMIO_KEY = 'estrellas_por_premio'
+export const ESTRELLAS_POR_PREMIO_DESCRIPTION =
+  'Estrellas necesarias para ganar un premio (ítem gratis)'
+
+/** value ausente/no numérico/<=0 cae al default (10, mismo que el seed real). */
+export function parseSolesPorEstrella(value: string | undefined): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 10
+}
+
+/** value ausente/no numérico/<=0 cae al default (10, mismo que el seed real). */
+export function parseEstrellasPorPremio(value: string | undefined): number {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 10
+}
+
+/**
  * Valida que los tramos de tarifa queden en orden ascendente estricto, sin
  * huecos ni superposiciones, y que SOLO el último tramo tenga `maxMeters:
  * null` (tarifa plana sin techo). El backend recorre el array en orden y

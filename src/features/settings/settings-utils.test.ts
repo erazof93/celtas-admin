@@ -12,7 +12,9 @@ import {
   normalizeWhatsappNumber,
   parseDeliveryAlertRadiusMeters,
   parseDeliveryFeeTiers,
+  parseEstrellasPorPremio,
   parseSchedule,
+  parseSolesPorEstrella,
   parseStoreLocation,
   resolveManualClosedReason,
   serializeDeliveryFeeTiers,
@@ -208,6 +210,32 @@ describe('parseDeliveryAlertRadiusMeters', () => {
     expect(parseDeliveryAlertRadiusMeters('-100')).toBe(
       DEFAULT_DELIVERY_ALERT_RADIUS_METERS,
     )
+  })
+})
+
+describe('parseSolesPorEstrella', () => {
+  it('parsea un valor numérico válido', () => {
+    expect(parseSolesPorEstrella('15')).toBe(15)
+  })
+
+  it('value undefined/no numérico/<=0 cae al default (10, mismo que el seed real)', () => {
+    expect(parseSolesPorEstrella(undefined)).toBe(10)
+    expect(parseSolesPorEstrella('abc')).toBe(10)
+    expect(parseSolesPorEstrella('0')).toBe(10)
+    expect(parseSolesPorEstrella('-5')).toBe(10)
+  })
+})
+
+describe('parseEstrellasPorPremio', () => {
+  it('parsea un valor numérico válido', () => {
+    expect(parseEstrellasPorPremio('20')).toBe(20)
+  })
+
+  it('value undefined/no numérico/<=0 cae al default (10, mismo que el seed real)', () => {
+    expect(parseEstrellasPorPremio(undefined)).toBe(10)
+    expect(parseEstrellasPorPremio('abc')).toBe(10)
+    expect(parseEstrellasPorPremio('0')).toBe(10)
+    expect(parseEstrellasPorPremio('-5')).toBe(10)
   })
 })
 

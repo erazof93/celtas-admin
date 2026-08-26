@@ -1,5 +1,6 @@
 import { BusinessHoursSettingsCard } from './BusinessHoursSettingsCard'
 import { DeliverySettingsCard } from './DeliverySettingsCard'
+import { EstrellasSettingsCard } from './EstrellasSettingsCard'
 import { RoleManagerCard } from './RoleManagerCard'
 import { WhatsappSettingsCard } from './WhatsappSettingsCard'
 
@@ -24,6 +25,7 @@ export default function SettingsPage() {
         <RoleManagerCard />
         <BusinessHoursSettingsCard />
         <DeliverySettingsCard />
+        <EstrellasSettingsCard />
       </div>
     </div>
   )

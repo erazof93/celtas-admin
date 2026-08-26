@@ -25,6 +25,12 @@ export interface MenuItem {
   price: number
   image: string | null
   available: boolean
+  /**
+   * Si el producto puede canjearse con estrellas del programa de fidelización.
+   * El catálogo de canje del cliente es `redeemableWithStars = true AND
+   * available = true` (confirmado contra menu-item.entity.ts del backend).
+   */
+  redeemableWithStars: boolean
   categoryId: string
   /** Relación cargada por GET /menu/items. */
   category: Category

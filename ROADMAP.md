@@ -192,6 +192,22 @@ celtas-admin/
       confirmadas visualmente, sin errores de consola. **Pendiente antes de marcar completo**:
       pase real del subagente `@tester` (lo de arriba lo verifiqué yo directamente, no es el pase
       habitual de `@tester` del proyecto).
+- [x] **Toggle "canjeable con estrellas" en la lista de productos** (`MenuItem.redeemableWithStars:
+      boolean`, backend deployado): confirmado contra el código fuente real de `backend-celtas`
+      (`menu-item.entity.ts` línea 54-55, `@Column({ type: 'boolean', default: false })` — el
+      catálogo de canje del cliente es `redeemableWithStars = true AND available = true`, sin
+      entidad aparte). `useToggleItemRedeemableWithStars` es un hook hermano de
+      `useToggleItemAvailable` (mismo `PATCH /menu/items/:id`, no optimista); `ItemsSection.tsx`
+      gana una columna "Canjeable" con su propio `Switch` y su propio estado de "toggling"
+      (`togglingRedeemableId`), independiente del de "Disponible" — las dos mutaciones no se
+      bloquean entre sí. Fuera de alcance a propósito: `ItemForm.tsx` (el diálogo de crear/editar)
+      no tiene este campo, mismo criterio que `available`, que tampoco está ahí — el switch es solo
+      desde la lista, después de creado el producto. **Veredicto de @tester: LISTO** (`type-check`,
+      `lint`, `build`, `test` 212/212 en 31 archivos, todo repetido de forma independiente; confirmó
+      leyendo el código que `togglingId`/`togglingRedeemableId` son mutaciones y estados totalmente
+      separados, y que `menu.service.ts updateItem()` usa `repository.merge()` — un PATCH parcial
+      nunca pisa otros campos). Riesgo no bloqueante señalado por @tester: sin test de componente de
+      `ItemsSection.tsx` para esta columna (tampoco lo tenía la de "Disponible").
 
 ### 5. Pedidos
 - [x] Listado paginado, filtro por estado
@@ -398,6 +414,46 @@ celtas-admin/
       la regla del proyecto es no marcar completo hasta el veredicto, no en anticipación. Queda
       registrado para no repetir el orden en el próximo módulo.
 
+### 7.1 Programa de Estrellas — promociones ("estrellas dobles")
+- [x] CRUD admin de `StarPromotion` (`src/features/star-promotions/`), sin `DELETE`, sin reorder y
+      sin imagen (más simple que Banners): `GET/POST /star-promotions`, `GET/PATCH /star-promotions/:id`.
+      Contrato confirmado línea por línea contra el código fuente real de `backend-celtas`
+      (`rewards/entities/star-promotion.entity.ts`: columna `date` con transformer que expone/recibe
+      siempre string plano `YYYY-MM-DD`, nunca `Date` — a diferencia de Banners, que sí guarda
+      timestamps; `rewards/dto/create-star-promotion.dto.ts`/`update-star-promotion.dto.ts`: `label`,
+      `multiplier` 0.01-99.99 con hasta 2 decimales, `startDate`/`endDate` OBLIGATORIAS (a diferencia
+      de Banners, donde son opcionales) con `@IsDateString`, `active` opcional default `true`;
+      `rewards/dto/is-star-promotion-date-range-valid.ts`: `startDate <= endDate`, comparación
+      lexicográfica directa; `rewards/star-promotions.controller.ts`: solo GET/GET:id/POST/PATCH:id,
+      rol admin; `rewards/star-promotions.service.ts`: mensaje EXACTO del 400 de solapamiento con
+      otra promoción activa, `"Ya existe una promoción activa en ese rango de fechas"`).
+      `StarPromotionForm.tsx` mapea cualquier 400 que contenga la palabra "fechas" (case-insensitive)
+      al campo `endDate` con `setError`, el resto cae a error general del form. Página
+      `StarPromotionsPage.tsx`: tabla sin paginar (Etiqueta, Multiplicador, Vigencia formateada,
+      Estado con `Badge` activa/inactiva, solo botón "Editar" — no existe DELETE). Ruta
+      `/star-promotions` y nav item "Estrellas" (ícono `Star`) registrados junto a Banners.
+      **Verificado por @tester con mutación real (dos fixes)**: (a) `useUpdateStarPromotion` — id
+      solo en el path — revirtió a incluir `id` en el body y los 2/2 tests de `hooks.test.tsx`
+      FALLARON como se esperaba; restauró y quedaron en verde. (b) mapeo de error "fechas" →
+      `endDate` — no tenía test, @tester creó `StarPromotionForm.test.tsx` (3 tests) y confirmó que
+      FALLA si se rompe el regex; restauró y 3/3 en verde. `type-check`, `lint`, `build`, `test`
+      (212/212 en 31 archivos) todo repetido de forma independiente. **Veredicto final de @tester:
+      LISTO**. Riesgos no bloqueantes documentados en `docs/testing-checklist.md`: el mensaje real
+      de `assertValidDates` (defensa en profundidad del backend,
+      `"startDate debe ser anterior o igual a endDate"`) no contiene "fechas" y caería a error
+      general si llegara a la API (inalcanzable en el flujo normal porque el `superRefine` del
+      cliente ya bloquea ese caso antes del submit); sin test de componente de
+      `StarPromotionsPage.tsx`; sin prueba E2E contra el backend real desplegado; sin validación
+      explícita en cliente del límite de 2 decimales de `multiplier`.
+- [x] **Nota de proceso**: @tester detectó que `src/types/api.d.ts` había quedado desactualizado
+      respecto a producción — `redeemableWithStars` y `/star-promotions` ya estaban en el Swagger
+      real (`https://backend-celtas.onrender.com/docs-json`) pero no en el archivo generado,
+      incumpliendo la regla del proyecto de correr `pnpm run generate:types` antes de tocar
+      componentes. No causó ningún bug (los tipos escritos a mano en `types.ts` coinciden con el
+      backend real, verificado línea por línea), pero se corrigió corriendo `generate:types` (diff
+      de 420 líneas, solo adiciones) y repitiendo `type-check`/`lint`/`test` (212/212)/`build` en
+      verde después del cambio.
+
 ### 8. Configuración (Settings)
 - [x] Editor del número de WhatsApp (`GET`/`PATCH /settings`)
 - [x] Gestión de roles de usuario (`PATCH /users/:id/role`) — con confirmación antes de degradar
@@ -475,6 +531,20 @@ celtas-admin/
         contención de CPU real, no solo aislado) — 3/3 fallos con el archivo original, 3/3 en verde
         con el fix, en 3 corridas con caché de Vite limpiada entre cada una. **Veredicto final de
         @tester: LISTO**.
+- [x] **Umbrales del programa de estrellas** (`soles_por_estrella`/`estrellas_por_premio`, mismo
+      patrón genérico `GET`/`PATCH /settings` que `DELIVERY_ALERT_RADIUS_METERS_KEY`, sembradas por
+      el backend con default `"10"`/`"10"`): claves confirmadas carácter a carácter contra
+      `settings.service.ts` real de `backend-celtas` (no contra `rewards.service.ts`, que solo las
+      menciona en un doc-comment — precisión encontrada por @tester), `parseSolesPorEstrella`/
+      `parseEstrellasPorPremio` caen al default `10` si el value falta o no es numérico positivo,
+      igual al seed real. `EstrellasSettingsCard.tsx` — mismo esqueleto que `WhatsappSettingsCard.tsx`
+      pero con dos campos numéricos, dos `upsertMutation.mutateAsync` secuenciales (uno por key).
+      **Verificado por @tester**: `parseSolesPorEstrella`/`parseEstrellasPorPremio` no tenían ningún
+      test (gap real no señalado inicialmente) — agregó 4 tests a `settings-utils.test.ts` y
+      confirmó con mutación real que fallan si se rompe la condición del default (`&& parsed > 0`).
+      `type-check`, `lint`, `build`, `test` (212/212 en 31 archivos) en verde de forma independiente.
+      **Veredicto final de @tester: LISTO**. Riesgo no bloqueante: sin test de componente de
+      `EstrellasSettingsCard.tsx` (mismo nivel de rigor que otras cards de Configuración).
 
 ### 9. Usuarios (listado admin)
 - [x] Listado paginado de `GET /users` (filtro de búsqueda en cliente: el backend solo expone

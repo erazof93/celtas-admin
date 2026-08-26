@@ -452,6 +452,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orders/estimate-delivery-fee": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Estimar el costo de delivery de una dirección guardada (cliente)
+         * @description Mismo cálculo que POST /orders (Haversine contra store_location + tramo de delivery_fee_tiers), sin crear un pedido. Si la dirección no tiene coordenadas: deliveryFee 0, isFarOrder false, distanceMeters null (no bloquea).
+         */
+        post: operations["OrdersController_estimateDeliveryFee"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orders/me": {
         parameters: {
             query?: never;
@@ -658,6 +678,88 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/rewards/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Progreso del programa de estrellas (cliente)
+         * @description Estrellas hacia el próximo premio (recalculadas en caliente, no persistidas), premios disponibles sin usar/sin vencer, y la promoción de estrellas dobles vigente hoy, si hay alguna.
+         */
+        get: operations["RewardsController_getProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rewards/catalog": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Catálogo de productos canjeables con estrellas (cliente)
+         * @description Productos con redeemableWithStars=true y available=true, el mismo criterio de disponibilidad que el menú público.
+         */
+        get: operations["RewardsController_getCatalog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/star-promotions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar promociones de estrellas (admin) */
+        get: operations["StarPromotionsController_findAll"];
+        put?: never;
+        /**
+         * Crear una promoción de estrellas (admin)
+         * @description Rechaza con 400 si otra promoción activa se solapa con el rango de fechas.
+         */
+        post: operations["StarPromotionsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/star-promotions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Obtener una promoción de estrellas (admin) */
+        get: operations["StarPromotionsController_findOne"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Editar una promoción de estrellas (admin)
+         * @description Sin DELETE: para desactivar, enviar active: false. Rechaza con 400 si el rango de fechas resultante se solapa con otra promoción activa.
+         */
+        patch: operations["StarPromotionsController_update"];
         trace?: never;
     };
     "/settings/public": {
@@ -1089,6 +1191,11 @@ export interface components {
              */
             available?: boolean;
             /**
+             * @description Si el producto puede canjearse con estrellas del programa de fidelización (default false)
+             * @example false
+             */
+            redeemableWithStars?: boolean;
+            /**
              * @description UUID de la categoría a la que pertenece
              * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
              */
@@ -1127,6 +1234,11 @@ export interface components {
              * @example true
              */
             available?: boolean;
+            /**
+             * @description Si el producto puede canjearse con estrellas del programa de fidelización (default false)
+             * @example false
+             */
+            redeemableWithStars?: boolean;
             /**
              * @description UUID de la categoría a la que pertenece
              * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
@@ -1197,6 +1309,11 @@ export interface components {
              * @example Sin cebolla, bien cocida
              */
             comment?: string;
+            /**
+             * @description Si este ítem es un premio canjeado del programa de estrellas, el id del RewardRedemption que lo habilita. El backend fuerza el precio de este ítem a 0, sin importar el precio real del producto; quantity debe ser 1.
+             * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+             */
+            rewardRedemptionId?: string;
         };
         CreateOrderDto: {
             /**
@@ -1216,6 +1333,13 @@ export interface components {
              * @example A1B2C3D4
              */
             couponCode?: string;
+        };
+        EstimateDeliveryFeeDto: {
+            /**
+             * @description UUID de una dirección guardada del usuario autenticado
+             * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+             */
+            addressId: string;
         };
         UpdateOrderStatusDto: {
             /**
@@ -1319,6 +1443,46 @@ export interface components {
              * @example Aprovecha nuestras promos especiales antes de que se acaben.
              */
             body: string;
+        };
+        CreateStarPromotionDto: {
+            /**
+             * @description Texto interno para identificar la promoción (no se muestra al cliente)
+             * @example Navidad 2026
+             */
+            label: string;
+            /**
+             * @description Multiplicador de estrellas durante la promoción (ej. 2 = estrellas dobles)
+             * @example 2
+             */
+            multiplier: number;
+            /**
+             * @description Fecha de inicio de vigencia (YYYY-MM-DD, calendario, sin hora)
+             * @example 2026-12-20
+             */
+            startDate: string;
+            /**
+             * @description Fecha de fin de vigencia (YYYY-MM-DD, calendario, sin hora, inclusive)
+             * @example 2026-12-31
+             */
+            endDate: string;
+            /**
+             * @description Si la promoción está habilitada
+             * @default true
+             * @example true
+             */
+            active: boolean;
+        };
+        UpdateStarPromotionDto: {
+            /** @example Navidad 2026 */
+            label?: string;
+            /** @example 2 */
+            multiplier?: number;
+            /** @example 2026-12-20 */
+            startDate?: string;
+            /** @example 2026-12-31 */
+            endDate?: string;
+            /** @example true */
+            active?: boolean;
         };
         UpdateSettingDto: {
             /**
@@ -2849,6 +3013,42 @@ export interface operations {
             };
         };
     };
+    OrdersController_estimateDeliveryFee: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EstimateDeliveryFeeDto"];
+            };
+        };
+        responses: {
+            /** @description deliveryFee, isFarOrder y distanceMeters calculados */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La dirección no existe, no pertenece al usuario, o store_location no está configurada */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     OrdersController_listMine: {
         parameters: {
             query?: never;
@@ -3277,6 +3477,226 @@ export interface operations {
             };
             /** @description Requiere rol admin */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RewardsController_getProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Progreso del programa de estrellas */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RewardsController_getCatalog: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lista de productos canjeables */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StarPromotionsController_findAll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lista de promociones */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StarPromotionsController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateStarPromotionDto"];
+            };
+        };
+        responses: {
+            /** @description Promoción creada */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Payload inválido o fechas solapadas con otra promoción activa */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StarPromotionsController_findOne: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID de la promoción */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Promoción encontrada */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La promoción no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    StarPromotionsController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID de la promoción */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateStarPromotionDto"];
+            };
+        };
+        responses: {
+            /** @description Promoción actualizada */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Payload inválido o fechas solapadas con otra promoción activa */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La promoción no existe */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
