@@ -31,6 +31,15 @@ export interface MenuItem {
    * available = true` (confirmado contra menu-item.entity.ts del backend).
    */
   redeemableWithStars: boolean
+  /**
+   * Si el producto es parte del catálogo de premio especial —
+   * INDEPENDIENTE de `redeemableWithStars`, no excluyente: un producto
+   * puede tener cualquier combinación de los dos switches (confirmado
+   * contra menu-item.entity.ts y create-menu-item.dto.ts del backend). Lo
+   * que sí es exclusivo es el CANJE: un `RewardRedemption` valida contra un
+   * solo catálogo a la vez (normal o especial), nunca la unión de ambos.
+   */
+  specialReward: boolean
   categoryId: string
   /** Relación cargada por GET /menu/items. */
   category: Category
@@ -77,6 +86,7 @@ export interface CreateMenuItemInput {
    * = sin selector de salsas en la app (ej. arroz chaufa).
    */
   sauceIds?: string[]
+  specialReward?: boolean
 }
 
 export type UpdateMenuItemInput = Partial<CreateMenuItemInput>

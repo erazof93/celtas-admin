@@ -453,6 +453,50 @@ celtas-admin/
       backend real, verificado línea por línea), pero se corrigió corriendo `generate:types` (diff
       de 420 líneas, solo adiciones) y repitiendo `type-check`/`lint`/`test` (212/212)/`build` en
       verde después del cambio.
+- [x] **Hitos configurables del tablero (`RewardMilestone`) + premio especial
+      (`MenuItem.specialReward`)**: el backend reemplazó el setting fijo `estrellas_por_premio`
+      (eliminado de `settings.service.ts`) por hitos configurables con DELETE real —
+      `RewardRedemption` guarda su propio snapshot del umbral (`milestoneStars`/`isSpecial`), no
+      una FK, así que borrar/editar un hito nunca corrompe premios ya otorgados. Contrato
+      confirmado línea por línea contra el código fuente real de `backend-celtas`
+      (`rewards/entities/reward-milestone.entity.ts`, `dto/create-reward-milestone.dto.ts`,
+      `dto/update-reward-milestone.dto.ts`, `reward-milestones.controller.ts/.service.ts`;
+      `menu/entities/menu-item.entity.ts` para `specialReward`). Nuevo feature
+      `src/features/reward-milestones/` (mismo patrón que `star-promotions/`, con
+      `useDeleteRewardMilestone` real): `GET/POST/PATCH/DELETE /reward-milestones`, `starsRequired`
+      entero único, `isSpecial` boolean. `RewardMilestoneForm.tsx` mapea el 400 exacto de colisión
+      (`"Ya existe un premio configurado para esa cantidad de estrellas"`, regex `/premio
+      configurado/i`) al campo `starsRequired`. `StarPromotionsPage.tsx` convertida en shell de
+      tabs (mismo patrón que `MenuPage.tsx`: "Promociones"/"Hitos"), ruta y nav item sin cambios;
+      el contenido original se extrajo tal cual a `PromotionsSection.tsx`. `ItemsSection.tsx` gana
+      columna "Especial" con `useToggleItemSpecialReward` (hermano de
+      `useToggleItemRedeemableWithStars`, mismo patrón no optimista, estado de toggling
+      independiente) — confirmado que los dos switches del producto NO son mutuamente excluyentes
+      (`menu-item.entity.ts`: "un producto puede tener cualquier combinación de los dos
+      switches"; lo excluyente es el catálogo devuelto por una sola consulta `GET
+      /rewards/catalog`, no los dos campos del producto). `estrellas_por_premio` eliminado de
+      `settings-utils.ts`/`EstrellasSettingsCard.tsx`/sus tests; la tarjeta ahora solo tiene "Soles
+      por estrella" y una nota indicando que los premios se configuran en Estrellas → Hitos.
+      `ItemForm.tsx` NO se tocó (mismo criterio que `redeemableWithStars`, fuera de alcance a
+      propósito). **Verificado por @tester con mutación real (dos fixes)**: (a)
+      `useUpdateRewardMilestone` — id solo en el path — revirtió a incluir `id` en el body y 2/2
+      tests de `hooks.test.tsx` FALLARON como se esperaba; restauró y volvieron a pasar (`git diff
+      --stat` = 0 líneas). (b) mapeo de error de colisión → `starsRequired`: rompió el regex y el
+      test correspondiente de `RewardMilestoneForm.test.tsx` FALLÓ como se esperaba; restauró y
+      volvió a pasar. `type-check`, `lint`, `build` y `test` (33 archivos/216 tests) repetidos en 3
+      corridas completas independientes, sin ningún timeout — no reprodujo el flakiness
+      intermitente por contención de CPU que había visto la sesión principal en 4 archivos
+      preexistentes no relacionados a este cambio (mismo patrón ya root-causado para
+      `BannersPage.test.tsx` en el módulo 7). **Veredicto final de @tester: LISTO PARA MARCAR
+      COMPLETO**, con un hallazgo de documentación (no de lógica): el wording "catálogo
+      exclusivo/EXCLUYENTE" heredado de los comentarios del backend describía la consulta `GET
+      /rewards/catalog` (nunca devuelve la unión de ambos catálogos), no los dos campos del
+      producto — corregido el wording de los doc-comments en `menu/types.ts` y
+      `reward-milestones/types.ts` tras el reporte para que quede inequívoco. Riesgos no
+      bloqueantes documentados en `docs/testing-checklist.md`: sin test de componente de la columna
+      "Especial" (mismo hueco ya aceptado para "Canjeable"/"Disponible"); sin test de componente de
+      `StarPromotionsPage.tsx`/`MilestonesSection.tsx` como interacción end-to-end de RTL; sin
+      prueba E2E/Playwright contra backend real de este módulo.
 
 ### 8. Configuración (Settings)
 - [x] Editor del número de WhatsApp (`GET`/`PATCH /settings`)

@@ -709,7 +709,7 @@ export interface paths {
         };
         /**
          * Catálogo de productos canjeables con estrellas (cliente)
-         * @description Productos con redeemableWithStars=true y available=true, el mismo criterio de disponibilidad que el menú público.
+         * @description Sin especial=true: productos redeemableWithStars=true y available=true. Con especial=true: productos specialReward=true y available=true — lista EXCLUYENTE, no una unión de ambas.
          */
         get: operations["RewardsController_getCatalog"];
         put?: never;
@@ -760,6 +760,52 @@ export interface paths {
          * @description Sin DELETE: para desactivar, enviar active: false. Rechaza con 400 si el rango de fechas resultante se solapa con otra promoción activa.
          */
         patch: operations["StarPromotionsController_update"];
+        trace?: never;
+    };
+    "/reward-milestones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar hitos del tablero de estrellas (admin) */
+        get: operations["RewardMilestonesController_findAll"];
+        put?: never;
+        /**
+         * Crear un hito del tablero de estrellas (admin)
+         * @description Rechaza con 400 si ya existe un hito configurado con el mismo starsRequired.
+         */
+        post: operations["RewardMilestonesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reward-milestones/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Obtener un hito del tablero de estrellas (admin) */
+        get: operations["RewardMilestonesController_findOne"];
+        put?: never;
+        post?: never;
+        /**
+         * Eliminar un hito del tablero de estrellas (admin)
+         * @description DELETE real: los premios ya otorgados con este umbral no se ven afectados (snapshot, no FK).
+         */
+        delete: operations["RewardMilestonesController_remove"];
+        options?: never;
+        head?: never;
+        /**
+         * Editar un hito del tablero de estrellas (admin)
+         * @description Rechaza con 400 si el starsRequired resultante ya está usado por otro hito.
+         */
+        patch: operations["RewardMilestonesController_update"];
         trace?: never;
     };
     "/settings/public": {
@@ -1196,6 +1242,11 @@ export interface components {
              */
             redeemableWithStars?: boolean;
             /**
+             * @description Si el producto puede canjearse específicamente con el premio especial (catálogo exclusivo, independiente de redeemableWithStars, default false)
+             * @example false
+             */
+            specialReward?: boolean;
+            /**
              * @description UUID de la categoría a la que pertenece
              * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
              */
@@ -1239,6 +1290,11 @@ export interface components {
              * @example false
              */
             redeemableWithStars?: boolean;
+            /**
+             * @description Si el producto puede canjearse específicamente con el premio especial (catálogo exclusivo, independiente de redeemableWithStars, default false)
+             * @example false
+             */
+            specialReward?: boolean;
             /**
              * @description UUID de la categoría a la que pertenece
              * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
@@ -1483,6 +1539,25 @@ export interface components {
             endDate?: string;
             /** @example true */
             active?: boolean;
+        };
+        CreateRewardMilestoneDto: {
+            /**
+             * @description Estrellas necesarias para ganar este premio
+             * @example 5
+             */
+            starsRequired: number;
+            /**
+             * @description Si este hito entrega el premio especial (catálogo exclusivo)
+             * @default false
+             * @example false
+             */
+            isSpecial: boolean;
+        };
+        UpdateRewardMilestoneDto: {
+            /** @example 5 */
+            starsRequired?: number;
+            /** @example false */
+            isSpecial?: boolean;
         };
         UpdateSettingDto: {
             /**
@@ -3511,7 +3586,10 @@ export interface operations {
     };
     RewardsController_getCatalog: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description true para el catálogo exclusivo del premio especial */
+                especial?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3696,6 +3774,218 @@ export interface operations {
                 content?: never;
             };
             /** @description La promoción no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RewardMilestonesController_findAll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lista de hitos, ASC por estrellasRequeridas */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RewardMilestonesController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateRewardMilestoneDto"];
+            };
+        };
+        responses: {
+            /** @description Hito creado */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Payload inválido o starsRequired ya configurado */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RewardMilestonesController_findOne: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID del hito */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Hito encontrado */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El hito no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RewardMilestonesController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID del hito */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Hito eliminado */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El hito no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    RewardMilestonesController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID del hito */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateRewardMilestoneDto"];
+            };
+        };
+        responses: {
+            /** @description Hito actualizado */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Payload inválido o starsRequired ya configurado */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El hito no existe */
             404: {
                 headers: {
                     [name: string]: unknown;

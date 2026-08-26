@@ -178,25 +178,18 @@ export function parseDeliveryAlertRadiusMeters(value: string | undefined): numbe
 }
 
 /**
- * Umbrales del programa de estrellas — claves sembradas por el backend con
- * default `"10"`/`"10"` (mismo patrón genérico GET/PATCH /settings que
- * `DELIVERY_ALERT_RADIUS_METERS_KEY`, confirmado contra rewards.service.ts).
+ * Umbral de acumulación del programa de estrellas — clave sembrada por el
+ * backend con default `"10"` (mismo patrón genérico GET/PATCH /settings que
+ * `DELIVERY_ALERT_RADIUS_METERS_KEY`, confirmado contra settings.service.ts).
+ * El reemplazo conceptual de `estrellas_por_premio` (eliminada del backend)
+ * son los hitos configurables de `RewardMilestone` (Estrellas → Hitos).
  */
 export const SOLES_POR_ESTRELLA_KEY = 'soles_por_estrella'
 export const SOLES_POR_ESTRELLA_DESCRIPTION =
   'Soles gastados (subtotal sin envío) necesarios para ganar 1 estrella'
-export const ESTRELLAS_POR_PREMIO_KEY = 'estrellas_por_premio'
-export const ESTRELLAS_POR_PREMIO_DESCRIPTION =
-  'Estrellas necesarias para ganar un premio (ítem gratis)'
 
 /** value ausente/no numérico/<=0 cae al default (10, mismo que el seed real). */
 export function parseSolesPorEstrella(value: string | undefined): number {
-  const parsed = Number(value)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 10
-}
-
-/** value ausente/no numérico/<=0 cae al default (10, mismo que el seed real). */
-export function parseEstrellasPorPremio(value: string | undefined): number {
   const parsed = Number(value)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 10
 }

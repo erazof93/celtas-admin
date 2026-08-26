@@ -12,7 +12,6 @@ import {
   normalizeWhatsappNumber,
   parseDeliveryAlertRadiusMeters,
   parseDeliveryFeeTiers,
-  parseEstrellasPorPremio,
   parseSchedule,
   parseSolesPorEstrella,
   parseStoreLocation,
@@ -223,19 +222,6 @@ describe('parseSolesPorEstrella', () => {
     expect(parseSolesPorEstrella('abc')).toBe(10)
     expect(parseSolesPorEstrella('0')).toBe(10)
     expect(parseSolesPorEstrella('-5')).toBe(10)
-  })
-})
-
-describe('parseEstrellasPorPremio', () => {
-  it('parsea un valor numérico válido', () => {
-    expect(parseEstrellasPorPremio('20')).toBe(20)
-  })
-
-  it('value undefined/no numérico/<=0 cae al default (10, mismo que el seed real)', () => {
-    expect(parseEstrellasPorPremio(undefined)).toBe(10)
-    expect(parseEstrellasPorPremio('abc')).toBe(10)
-    expect(parseEstrellasPorPremio('0')).toBe(10)
-    expect(parseEstrellasPorPremio('-5')).toBe(10)
   })
 })
 

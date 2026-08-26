@@ -19,9 +19,6 @@ import { LoadingState } from '@/components/ui/LoadingState'
 import { getApiMessage } from '@/lib/api-errors'
 import { useSettings, useUpsertSetting } from './hooks'
 import {
-  ESTRELLAS_POR_PREMIO_DESCRIPTION,
-  ESTRELLAS_POR_PREMIO_KEY,
-  parseEstrellasPorPremio,
   parseSolesPorEstrella,
   SOLES_POR_ESTRELLA_DESCRIPTION,
   SOLES_POR_ESTRELLA_KEY,
@@ -31,18 +28,16 @@ const estrellasSchema = z.object({
   solesPorEstrella: z.coerce
     .number('Debe ser un número')
     .positive('Debe ser mayor a 0'),
-  estrellasPorPremio: z.coerce
-    .number('Debe ser un número')
-    .positive('Debe ser mayor a 0'),
 })
 
 type EstrellasFormValues = z.output<typeof estrellasSchema>
 type EstrellasFormInputValues = z.input<typeof estrellasSchema>
 
 /**
- * Umbrales del programa de "Estrellas": soles por estrella y estrellas por
- * premio. Mismo patrón genérico GET/PATCH /settings que WhatsApp/Delivery —
- * dos keys independientes, cada una con su propio upsert.
+ * Umbral de acumulación del programa de "Estrellas": soles por estrella.
+ * Mismo patrón genérico GET/PATCH /settings que WhatsApp/Delivery. Los
+ * premios y sus umbrales (antes `estrellas_por_premio`, eliminado del
+ * backend) ahora se configuran en Estrellas → Hitos.
  */
 export function EstrellasSettingsCard() {
   const settingsQuery = useSettings()
@@ -53,9 +48,6 @@ export function EstrellasSettingsCard() {
   const solesPorEstrellaValue = settingsQuery.data?.find(
     (s) => s.key === SOLES_POR_ESTRELLA_KEY,
   )?.value
-  const estrellasPorPremioValue = settingsQuery.data?.find(
-    (s) => s.key === ESTRELLAS_POR_PREMIO_KEY,
-  )?.value
 
   const {
     register,
@@ -65,7 +57,6 @@ export function EstrellasSettingsCard() {
     resolver: zodResolver(estrellasSchema),
     values: {
       solesPorEstrella: parseSolesPorEstrella(solesPorEstrellaValue),
-      estrellasPorPremio: parseEstrellasPorPremio(estrellasPorPremioValue),
     },
   })
 
@@ -77,11 +68,6 @@ export function EstrellasSettingsCard() {
         key: SOLES_POR_ESTRELLA_KEY,
         value: String(values.solesPorEstrella),
         description: SOLES_POR_ESTRELLA_DESCRIPTION,
-      })
-      await upsertMutation.mutateAsync({
-        key: ESTRELLAS_POR_PREMIO_KEY,
-        value: String(values.estrellasPorPremio),
-        description: ESTRELLAS_POR_PREMIO_DESCRIPTION,
       })
       setSaved(true)
     } catch (error) {
@@ -99,7 +85,8 @@ export function EstrellasSettingsCard() {
           Programa de estrellas
         </CardTitle>
         <CardDescription>
-          Umbrales de acumulación y canje del programa de fidelización.
+          Umbral de acumulación del programa de fidelización. Los hitos y
+          premios del tablero se configuran en Estrellas → Hitos.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -118,7 +105,7 @@ export function EstrellasSettingsCard() {
                 <CheckCircle2 className="text-emerald-400" />
                 <AlertTitle>Configuración guardada</AlertTitle>
                 <AlertDescription>
-                  Los umbrales del programa de estrellas se actualizaron
+                  El umbral del programa de estrellas se actualizó
                   correctamente.
                 </AlertDescription>
               </Alert>
@@ -147,28 +134,6 @@ export function EstrellasSettingsCard() {
               ) : (
                 <p className="text-muted-foreground text-xs">
                   {SOLES_POR_ESTRELLA_DESCRIPTION}
-                </p>
-              )}
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="estrellas-por-premio">
-                Estrellas por premio
-              </Label>
-              <Input
-                id="estrellas-por-premio"
-                type="number"
-                step="1"
-                aria-invalid={Boolean(errors.estrellasPorPremio)}
-                {...register('estrellasPorPremio')}
-              />
-              {errors.estrellasPorPremio ? (
-                <p className="text-celtas-red-light text-xs">
-                  {errors.estrellasPorPremio.message}
-                </p>
-              ) : (
-                <p className="text-muted-foreground text-xs">
-                  {ESTRELLAS_POR_PREMIO_DESCRIPTION}
                 </p>
               )}
             </div>

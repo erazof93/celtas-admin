@@ -29,6 +29,7 @@ import {
   useMenuItems,
   useToggleItemAvailable,
   useToggleItemRedeemableWithStars,
+  useToggleItemSpecialReward,
 } from './hooks'
 import { ItemForm } from './ItemForm'
 import type { MenuItem } from '../types'
@@ -44,6 +45,7 @@ export function ItemsSection() {
   const itemsQuery = useMenuItems()
   const toggleMutation = useToggleItemAvailable()
   const toggleRedeemableMutation = useToggleItemRedeemableWithStars()
+  const toggleSpecialMutation = useToggleItemSpecialReward()
   const deleteMutation = useDeleteItem()
 
   const [formOpen, setFormOpen] = useState(false)
@@ -54,6 +56,9 @@ export function ItemsSection() {
   const [toggleRedeemableError, setToggleRedeemableError] = useState<
     string | null
   >(null)
+  const [toggleSpecialError, setToggleSpecialError] = useState<string | null>(
+    null,
+  )
 
   const items = itemsQuery.data
 
@@ -85,6 +90,17 @@ export function ItemsSection() {
     }
   }
 
+  async function handleToggleSpecial(item: MenuItem, specialReward: boolean) {
+    setToggleSpecialError(null)
+    try {
+      await toggleSpecialMutation.mutateAsync({ id: item.id, specialReward })
+    } catch (error) {
+      setToggleSpecialError(
+        getApiMessage(error, 'No se pudo cambiar el premio especial'),
+      )
+    }
+  }
+
   async function handleDelete() {
     if (!deleteTarget) return
     setDeleteError(null)
@@ -101,6 +117,9 @@ export function ItemsSection() {
     : null
   const togglingRedeemableId = toggleRedeemableMutation.isPending
     ? toggleRedeemableMutation.variables?.id
+    : null
+  const togglingSpecialId = toggleSpecialMutation.isPending
+    ? toggleSpecialMutation.variables?.id
     : null
 
   return (
@@ -137,6 +156,13 @@ export function ItemsSection() {
         </Alert>
       ) : null}
 
+      {toggleSpecialError ? (
+        <Alert variant="destructive">
+          <AlertTitle>No se pudo cambiar el premio especial</AlertTitle>
+          <AlertDescription>{toggleSpecialError}</AlertDescription>
+        </Alert>
+      ) : null}
+
       {itemsQuery.isLoading ? (
         <LoadingState label="Cargando productos…" />
       ) : itemsQuery.isError ? (
@@ -159,6 +185,7 @@ export function ItemsSection() {
                 <TableHead>Precio</TableHead>
                 <TableHead>Disponible</TableHead>
                 <TableHead>Canjeable</TableHead>
+                <TableHead>Especial</TableHead>
                 <TableHead className="text-center">ID</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
@@ -209,6 +236,16 @@ export function ItemsSection() {
                       }
                       disabled={togglingRedeemableId === item.id}
                       aria-label={`Cambiar canje con estrellas de ${item.name}`}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Switch
+                      checked={item.specialReward}
+                      onCheckedChange={(next) =>
+                        handleToggleSpecial(item, next)
+                      }
+                      disabled={togglingSpecialId === item.id}
+                      aria-label={`Cambiar premio especial de ${item.name}`}
                     />
                   </TableCell>
                   <TableCell className="text-center">

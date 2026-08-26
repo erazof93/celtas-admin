@@ -1102,3 +1102,153 @@ Veredicto: LISTO PARA MARCAR COMPLETO, con la salvedad explícita del gap de `ap
 del proceso documentado en `CLAUDE.md`, recomendado corregir con `pnpm run generate:types` antes de
 continuar con el siguiente módulo) y los riesgos no bloqueantes documentados arriba.
 
+## Programa de Estrellas — Hitos configurables (`RewardMilestone`) + Premio especial (`MenuItem.specialReward`)
+
+Reemplaza el setting fijo `estrellas_por_premio` (eliminado del backend) por hitos configurables
+con DELETE real, y agrega un segundo catálogo de canje independiente (`specialReward`), hermano de
+`redeemableWithStars`.
+
+- [x] Contrato confirmado línea por línea contra el código fuente real de `../backend-celtas`
+      (no solo Swagger/`api.d.ts`): `src/modules/rewards/entities/reward-milestone.entity.ts`
+      (`starsRequired: int UNIQUE`, `isSpecial: boolean default false`, comentario explícito de
+      que el DELETE es real porque `RewardRedemption` guarda snapshot, no FK),
+      `dto/create-reward-milestone.dto.ts` (`starsRequired: @IsInt() @Min(1)`, `isSpecial?:
+      @IsOptional() @IsBoolean()`), `dto/update-reward-milestone.dto.ts` (ambos opcionales, mismas
+      reglas), `reward-milestones.controller.ts` (`GET/GET:id/POST/PATCH:id/DELETE:id`, todos
+      `@Roles(UserRole.ADMIN)`), `reward-milestones.service.ts` (`findAll` ordena `ASC` por
+      `starsRequired` en SQL, no en cliente; `translateUniqueViolation` traduce el 23505 de
+      Postgres al mensaje EXACTO `"Ya existe un premio configurado para esa cantidad de
+      estrellas"` — coincide carácter a carácter con el regex `/premio configurado/i` de
+      `RewardMilestoneForm.tsx`). Y `src/modules/menu/entities/menu-item.entity.ts` (columna
+      `specialReward: boolean default false`, comentario explícito: "Un producto puede tener
+      cualquier combinación de los dos switches") + `create-menu-item.dto.ts` línea 70
+      ("independiente de redeemableWithStars") — confirma que la UI implementada (switches
+      100% independientes, sin exclusión mutua) es la conducta correcta según el backend real
+- [x] `useUpdateRewardMilestone` — regla del id-solo-en-path — **verificado con mutación real**:
+      cambié `const { id, ...body } = input; patch(...,body)` a `patch(url, input)` (id incluido) →
+      **2/2 tests de `hooks.test.tsx` FALLARON** exactamente como se esperaba (`expected {id:
+      'milestone-1', ...} to not have property "id"` y `expected {id: 'milestone-2', isSpecial:
+      false} to deeply equal {isSpecial: false}`); restauré el hook, `git diff --stat` confirmó
+      0 líneas de diferencia contra el original, 3/3 en verde de nuevo
+- [x] `useDeleteRewardMilestone` hace `DELETE /reward-milestones/:id` real (a diferencia de
+      `star-promotions`, que no tiene DELETE) — cubierto en `hooks.test.tsx`, confirmado contra
+      `reward-milestones.controller.ts`/`.service.ts` reales (`remove()` hace `findOne` + `.remove()`
+      de TypeORM, 404 si no existe)
+- [x] Mapeo del 400 de colisión de `starsRequired` (`/premio configurado/i` → `setError`
+      `starsRequired`) en `RewardMilestoneForm.tsx` — **verificado con mutación real**: cambié el
+      regex a `/nunca va a coincidir/i` → el test "mapea un 400 de colisión..." de
+      `RewardMilestoneForm.test.tsx` **FALLÓ** exactamente como se esperaba (encontró el div
+      "No se pudo guardar" que no debía aparecer); restauré el archivo, `git diff --stat` confirmó
+      0 líneas de diferencia, 3/3 en verde de nuevo
+- [x] `MilestonesSection.tsx`: estados de UI completos (`LoadingState`, `ErrorState` con retry,
+      vacío explícito "No hay hitos configurados"), confirmación de borrado en diálogo separado
+      (no borra con un solo clic), error de borrado mostrado en `Alert` dentro del mismo diálogo sin
+      cerrar la confirmación
+- [x] `StarPromotionsPage.tsx` reestructurada como shell de tabs ("Promociones"/"Hitos") — **mismo
+      patrón exacto que `MenuPage.tsx`** (confirmado por grep: mismo `TABS` array tipado, mismo
+      `role="tablist"`/`role="tab"`/`aria-selected`, mismos tokens de estilo activo/inactivo). El
+      contenido de "Promociones" (`PromotionsSection.tsx`) es una extracción literal del
+      `StarPromotionsPage.tsx` original — confirmado por diff: el único cambio de contenido es
+      `<h1 className="text-2xl font-bold...">Estrellas</h1>` (compartido con toda la página) →
+      `<h2 className="text-xl font-semibold...">Promociones</h2>` (propio de la sección); el resto
+      (query, estados, tabla, diálogo, `StarPromotionForm`) es carácter por carácter idéntico al
+      original. Ruta `/star-promotions` y nav item "Estrellas" NO cambiaron (confirmado sin diff en
+      `router.tsx`/`AdminLayout.tsx`)
+- [x] Switch "Premio especial" en `ItemsSection.tsx` — **verificado que NO impone exclusión mutua
+      con "Canjeable"**: `handleToggleSpecial`/`toggleSpecialMutation` son un hook y un estado
+      (`togglingSpecialId`) completamente independientes de `handleToggleRedeemable`/
+      `togglingRedeemableId`, mismo patrón ya auditado para "Canjeable"/"Disponible" — dos switches
+      del mismo producto pueden estar ambos en `true` simultáneamente sin que la UI lo bloquee,
+      consistente con el contrato real del backend (`create-menu-item.dto.ts`: "independiente de
+      redeemableWithStars"; `menu-item.entity.ts`: "cualquier combinación de los dos switches")
+- [x] `useToggleItemSpecialReward` hace `PATCH /menu/items/:id` con body `{ specialReward }` — un
+      solo campo, no pisa `available`/`redeemableWithStars`/otros (confirmado contra
+      `menu.service.ts updateItem()`, que usa `repository.merge()`, ya auditado en el módulo de
+      Menú)
+- [x] `estrellas_por_premio` eliminado por completo del lado del cliente: grep de
+      `estrellas_por_premio`/`ESTRELLAS_POR_PREMIO`/`parseEstrellasPorPremio` en `src/` = 0
+      resultados funcionales (solo 2 menciones en comentarios de `EstrellasSettingsCard.tsx`/
+      `settings-utils.ts` que documentan el reemplazo histórico, no código vivo). Confirmado contra
+      el backend real que la key ya no existe en `settings.service.ts` (grep = 0 resultados;
+      `soles_por_estrella` sigue existiendo, es la única key de Estrellas que queda en Configuración)
+- [x] `settings-utils.test.ts`: los 4 tests de `parseEstrellasPorPremio` se eliminaron junto con la
+      función (no quedaron huérfanos ni comentados); `parseSolesPorEstrella` conserva sus tests sin
+      cambios
+- [x] `pnpm run type-check` (`tsc -b`): sin salida, 0 errores — repetido de forma independiente
+- [x] `pnpm run lint` (`eslint .`): 0 errores, 1 warning preexistente en `StarPromotionForm.tsx`
+      (`react-hooks/incompatible-library` por `watch()`, archivo NO tocado en este cambio, ya
+      documentado en `ROADMAP.md` módulo 10 como pendiente de un fix igual al de `BannerForm.tsx`)
+- [x] `pnpm run build`: exitoso, sin warnings de tamaño de chunk; `StarPromotionsPage-*.js` sigue en
+      su propio chunk lazy
+- [x] `pnpm run test`: **33 archivos / 216 tests en verde, repetido en 3 corridas completas
+      independientes** (no solo una) — sin ningún timeout ni fallo, incluidos los 4 archivos
+      señalados como flaky intermitente por la sesión principal (`OrderDetailDialog.test.tsx`,
+      `GenerateCouponForm.test.tsx`, `BroadcastForm.test.tsx`, `DeliverySettingsCard.test.tsx`), que
+      pasaron 3/3 veces dentro de la suite completa en este entorno. No se reprodujo el flakiness
+      reportado — consistente con que ya está documentado como intermitente por contención de CPU
+      (no determinístico), no bloqueante
+- [x] Sin `any`/`@ts-ignore`/`@ts-expect-error`/casting forzado en los archivos nuevos/modificados
+      (grep = 0 resultados)
+- [x] `ItemForm.tsx` (diálogo de crear/editar producto) confirmado SIN cambios (`git diff --stat` =
+      vacío) y sin ninguna mención de `specialReward` — fuera de alcance a propósito, mismo criterio
+      ya aplicado a `redeemableWithStars`
+
+❌ Falló:
+- Ninguno de los puntos críticos del checklist
+
+⚠️ Hallazgo de documentación (no bloqueante, pero digno de corrección explícita):
+- **El doc-comment de `MenuItem.specialReward` en `src/features/menu/types.ts` usa la palabra
+  "EXCLUYENTE" de forma potencialmente engañosa.** Texto actual: *"Si el producto puede canjearse
+  específicamente con el PREMIO ESPECIAL (catálogo exclusivo, `GET /rewards/catalog?especial=true`)
+  — independiente de `redeemableWithStars`. Un producto puede tener cualquier combinación de los dos
+  switches."* — este comentario en concreto SÍ es correcto (dice explícitamente "independiente" y
+  "cualquier combinación"). Pero el comentario equivalente en el diff/reporte de la sesión principal
+  y el que aparece en `src/features/reward-milestones/types.ts` (`RewardMilestone.isSpecial`) usan
+  la palabra "catálogo exclusivo" heredada literalmente de la documentación Swagger del propio
+  backend (`rewards.controller.ts`/`rewards.service.ts`: *"lista EXCLUYENTE, no una unión de
+  ambas"*). Verifiqué el significado real en el backend: "EXCLUYENTE" ahí describe el comportamiento
+  de la **consulta** `GET /rewards/catalog?especial=X` (una sola llamada nunca devuelve la unión de
+  ambos catálogos, siempre filtra por un solo campo) — **no** significa que un producto no pueda
+  tener ambos flags en `true` a la vez. Confirmé con el código real que SÍ puede (`menu-item.entity.ts`
+  no tiene ningún check/constraint de exclusión entre las dos columnas, `create-menu-item.dto.ts` lo
+  dice explícitamente: "independiente de redeemableWithStars"). **La implementación real (switches
+  100% independientes en `ItemsSection.tsx`, confirmado arriba) es correcta** — este es un hallazgo
+  puramente de redacción/documentación, no un bug funcional, pero es exactamente el tipo de
+  ambigüedad que ya causó un incidente real en este proyecto (ver `CLAUDE.md`, incidente de campos
+  inventados) y vale la pena que la sesión principal aclare la palabra "exclusivo/EXCLUYENTE" en los
+  comentarios para que quede inequívoco que se refiere a la consulta del catálogo, no a los dos
+  campos del producto
+- **Nota sobre la premisa original del pedido**: el enunciado de la tarea decía que el usuario había
+  descrito los catálogos como "mutuamente excluyentes, nunca se combinan en un mismo canje" — esto
+  es cierto solo para un **canje individual** (`redemption.isSpecial` decide contra qué catálogo se
+  valida el producto elegido, `rewards.service.ts` líneas 260-262, nunca ambos a la vez en la misma
+  transacción), pero **no** para los switches del producto en el catálogo administrable, que sí
+  pueden coexistir en `true`. La implementación del frontend (sin bloqueo en el admin, un producto
+  puede marcarse como ambos) es la correcta según el contrato real del backend
+
+⚠️ Riesgos / casos borde no cubiertos (documentados, no bloqueantes):
+- Sin test de componente para `useToggleItemSpecialReward`/la columna "Especial" de
+  `ItemsSection.tsx` — mismo hueco de cobertura ya documentado y aceptado para "Canjeable"/
+  "Disponible" en la auditoría anterior (`ROADMAP.md` módulo 4), no es una regresión nueva
+- Sin test de componente para `StarPromotionsPage.tsx` (el shell de tabs nuevo) ni para
+  `MilestonesSection.tsx` como página completa — la cobertura de `MilestonesSection` es a nivel de
+  hooks (`hooks.test.tsx`) y del formulario (`RewardMilestoneForm.test.tsx`), no de la tabla/estados
+  de carga-error-vacío/diálogo de borrado como interacción end-to-end de RTL. Mismo nivel de rigor
+  que `PromotionsSection`/`StarPromotionsPage` original (tampoco tenían este test), pero sigue siendo
+  un hueco explícito
+- Sin prueba E2E/Playwright contra un backend real (local o producción) de ningún flujo de este
+  módulo: crear un hito, editarlo, borrarlo, intentar un `starsRequired` duplicado y confirmar el 400
+  real con el mensaje exacto, activar "Premio especial" de un producto real y confirmar que aparece
+  en `GET /rewards/catalog?especial=true`. Toda la verificación fue: contrato contra código fuente
+  real + tests de hook/componente con mocks + 2 mutaciones reales con reversión confirmada + 3
+  corridas completas de la suite
+- No se verificó el flujo de canje real en la app cliente (Flutter) que consume estos hitos/catálogo
+  especial — fuera de alcance de este panel admin, pero es la consecuencia de negocio real de esta
+  feature
+
+Veredicto: **LISTO PARA MARCAR COMPLETO**, con el hallazgo de documentación (wording "EXCLUYENTE")
+reportado explícitamente para corrección de comentarios (no de lógica — la lógica ya es correcta) y
+los riesgos no bloqueantes de cobertura de tests de componente/E2E documentados arriba, consistentes
+con el nivel de rigor ya aceptado en auditorías previas de módulos hermanos (Menú, Promociones de
+estrellas).
+

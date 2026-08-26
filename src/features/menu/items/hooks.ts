@@ -87,6 +87,23 @@ export function useToggleItemRedeemableWithStars() {
 }
 
 /**
+ * Toggle de "premio especial" desde la lista (PATCH con { specialReward}).
+ * Mismo criterio que useToggleItemRedeemableWithStars: no optimista, el
+ * switch queda deshabilitado mientras corre y el valor real llega del
+ * refetch. Catálogo independiente de redeemableWithStars.
+ */
+export function useToggleItemSpecialReward() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { id: string; specialReward: boolean }) =>
+      patch<MenuItem>(`/menu/items/${input.id}`, {
+        specialReward: input.specialReward,
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ITEMS_KEY }),
+  })
+}
+
+/**
  * Subida de imagen de un producto. Flujo real del backend: primero se crea el
  * item y luego se sube la imagen a POST /menu/items/:id/image (multipart,
  * campo "image", JPG/PNG/WEBP/GIF máx 5 MB).
