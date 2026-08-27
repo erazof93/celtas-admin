@@ -93,6 +93,19 @@ solo cuando pasa lo aplicable de este checklist.
       `removeChild` está después de `execCommand` en el mismo `try`) — fuga invisible en un caso
       patológico (execCommand casi nunca lanza, devuelve false). Fix sugerido: `try/finally`.
       Sin dependencias nuevas (`package.json`/`pnpm-lock.yaml` sin cambios). Suite completa: 71/71.
+- [x] **Salsas — catálogo `sauces` + checklist `sauceIds` por producto** (commit `085091e`,
+      auditado por @tester el 2026-08-26; detalle completo en "Auditoría: Menu — Salsas" al final
+      de este archivo). Contrato confirmado contra `src/modules/sauces/` y `src/modules/menu/`
+      reales del backend. `useUpdateSauce` NO manda `id` en el body del PATCH (`{ id, ...body }`),
+      con test de regresión en `src/features/menu/sauces/hooks.test.tsx` **verificado por mutación**
+      (revertir → 2/5 fallan). Salsas inactivas ya asignadas se muestran "(oculta)" y pre-marcadas
+      en `ItemForm.tsx`; catálogo vacío → mensaje que apunta a la pestaña "Salsas"; payload
+      `sauceIds` siempre `string[]` — los tres puntos cubiertos por
+      `src/features/menu/items/ItemForm.test.tsx` (nuevo, 5 tests) **verificado por mutación**
+      (romper el sufijo "(oculta)" o el prefill de `defaultValues.sauceIds` → fallan). Estados
+      loading/error/vacío explícitos en `SaucesSection` y en la sección de salsas de `ItemForm`.
+      409 de nombre duplicado mapeado al campo `name` en `SauceForm`. Sin `any`/`@ts-ignore`, sin
+      hex hardcodeado, sin texto en inglés.
 
 
 ## Orders
@@ -1251,4 +1264,132 @@ reportado explícitamente para corrección de comentarios (no de lógica — la 
 los riesgos no bloqueantes de cobertura de tests de componente/E2E documentados arriba, consistentes
 con el nivel de rigor ya aceptado en auditorías previas de módulos hermanos (Menú, Promociones de
 estrellas).
+
+---
+
+## Auditoría: Menu — Salsas (catálogo `sauces` + checklist `sauceIds` por producto), commit `085091e`
+
+Auditor: @tester (independiente). Fecha: 2026-08-26. Alcance: `src/features/menu/sauces/*`,
+`src/features/menu/items/ItemForm.tsx`, `src/features/menu/MenuPage.tsx`, `src/features/menu/types.ts`,
+`src/types/api.d.ts`.
+
+✅ Pasó:
+- `pnpm run type-check` (`tsc -b`): sin salida, cero errores. Repetido de forma independiente.
+- `pnpm run lint` (`eslint .`): `0 errors, 1 warning`. El único warning
+  (`react-hooks/incompatible-library`, `watch()` de RHF) está en
+  `src/features/star-promotions/StarPromotionForm.tsx`, NO en archivos de esta feature. Los archivos
+  de salsas pasan limpios.
+- `pnpm run build` (`tsc -b && vite build`): `✓ built in 6.44s`, sin errores.
+- **Contrato confirmado contra el código fuente real del backend** (accesible en
+  `D:/proyecto-celtas/backend-celtas/`, NO reconstruido de Swagger):
+  - `src/modules/sauces/sauces.controller.ts`: `GET /sauces`, `POST /sauces` (201/400/409),
+    `PATCH /sauces/:id` (`@Param('id', ParseUUIDPipe)` + `@Body() UpdateSauceDto`),
+    `DELETE /sauces/:id`. Guard `@Roles(ADMIN)`.
+  - `src/modules/sauces/dto/create-sauce.dto.ts`: `name` (string, no vacío, requerido),
+    `active?` (boolean), `sortOrder?` (int >= 0). `update-sauce.dto.ts` = `PartialType(CreateSauceDto)`
+    → NO declara `id`.
+  - `src/modules/sauces/entities/sauce.entity.ts`: `id`, `name` (unique), `active` (default true),
+    `sortOrder`, `createdAt`, `updatedAt`. `findAll()` ordena `sortOrder ASC, name ASC` y NO carga
+    la relación `menuItems` → el `Sauce` de `types.ts` (sin `menuItems`) coincide.
+  - `src/modules/menu/dto/create-menu-item.dto.ts`: `sauceIds?: string[]` con
+    `@IsArray` + `@IsUUID('4', { each: true })`, `@IsOptional`. `update-menu-item.dto.ts` =
+    `PartialType`.
+  - `src/modules/menu/entities/menu-item.entity.ts`: `@ManyToMany(() => Sauce)` + `@JoinTable`
+    (`menu_item_sauces`). `menu.service.ts` `createItem`/`updateItem` separan `sauceIds` del resto,
+    hacen `merge()` de lo demás y resuelven `item.sauces = saucesService.findByIds(sauceIds)` **solo
+    si `sauceIds !== undefined`** (guard explícito). `findAllItems()` carga `relations: { sauces: true }`
+    → `MenuItem.sauces` siempre presente en `GET /menu/items`.
+  - `src/main.ts`: `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true })`
+    → un `id` en el body de un PATCH devuelve 400 "property id should not exist". Confirma la
+    relevancia del fix de clase.
+- `src/types/api.d.ts` regenerado correctamente: `CreateSauceDto` / `UpdateSauceDto` /
+  `CreateMenuItemDto.sauceIds` / `UpdateMenuItemDto.sauceIds` coinciden campo a campo con los DTO
+  reales. `types.ts` (`Sauce`, `MenuItem.sauces`, `CreateSauceInput`, `UpdateSauceInput`,
+  `CreateMenuItemInput.sauceIds`) son espejo fiel (los responses no están en el Swagger:
+  `content?: never`, así que el tipado a mano de respuestas es el patrón ya establecido del módulo).
+- Hooks (`src/features/menu/sauces/hooks.ts`) tipados con los tipos-espejo (`get<Sauce[]>`,
+  `post<Sauce>`, `patch<Sauce>`, `del<void>`) — sin `any`, sin `as unknown as`, sin `@ts-ignore`.
+- **Fix de clase "id solo en el path del PATCH"**: `useUpdateSauce` hace
+  `const { id, ...body } = input; patch(\`/sauces/${id}\`, body)`. Verificado por **mutación
+  independiente**: revertí a `patch(\`/sauces/${id}\`, input)` → `hooks.test.tsx` falló 2/5
+  (`AssertionError: expected { id: 's-2', ... } to deeply equal { active: false, sortOrder: 3 }`);
+  restauré con `git checkout` → 5/5 en verde. El test de regresión NO pasa si se revierte el fix.
+- **Salsas inactivas ya asignadas ("(oculta)") en `ItemForm.tsx`**: no había test de componente que
+  lo cubriera → creé `src/features/menu/items/ItemForm.test.tsx` (5 tests). Verificado por mutación:
+  (1) quité el sufijo `{!sauce.active ? ' (oculta)' : ''}` → 1/5 falló
+  (`getByText(/Aji \(oculta\)/i)`); (2) cambié `defaultValues.sauceIds` de
+  `item?.sauces.map((s) => s.id) ?? []` a `[]` → 2/5 fallaron (checkbox pre-marcado + payload
+  `['s-aji','s-mayo']` y el test de "desmarcar"). Ambas mutaciones restauradas con `git checkout`,
+  5/5 en verde tras restaurar. `git status` tras la auditoría: solo `?? ItemForm.test.tsx` (ningún
+  archivo de producción quedó modificado).
+- Catálogo de salsas vacío en `ItemForm`: muestra el mensaje explícito
+  "Todavía no hay salsas en el catálogo. Créalas primero en la pestaña "Salsas" del Menú." y no
+  rinde checkboxes — cubierto por test.
+- Payload `sauceIds`: `buildPayload` siempre manda `sauceIds: values.sauceIds` (array de strings,
+  nunca `undefined`, nunca objetos) — cubierto por 3 tests (pre-asignadas conservadas, alta de una
+  nueva = `['s-mayo']`, desmarcar la última = `[]`).
+- Estados de UI:
+  - `SaucesSection.tsx`: loading (`LoadingState`), error (`ErrorState` con `onRetry`), vacío
+    (mensaje explícito), poblado (tabla). Diálogo de borrado con su propio manejo de error
+    (`deleteError` en `Alert`), botón deshabilitado mientras `isPending`.
+  - `SauceForm.tsx`: 409 de nombre duplicado → `setError('name', ...)` con el mensaje del backend
+    tal cual (regex `/nombre/i`), fallback a `serverError` genérico. Mismo patrón que
+    `CategoryForm`/`ItemForm`. `name` se envía `.trim()`.
+  - `ItemForm.tsx` sección salsas: loading ("Cargando salsas…"), error (`Alert`, el producto se
+    puede guardar igual — cubierto por test), vacío (mensaje), poblado (checkboxes). El `id` de la
+    salsa nunca viaja en el body de un PATCH (el checklist solo produce `sauceIds`, y
+    `useUpdateItem` ya separa el `id` en el path — fix de clase preexistente y con test propio).
+- `useUpdateSauce` y `useDeleteSauce` invalidan además `['menu', 'items']` (renombrar/ocultar/borrar
+  una salsa afecta la vista embebida del producto) — correcto.
+- Sin hex hardcodeado en los archivos de la feature; usa tokens celtas (`bg-celtas-orange`,
+  `text-celtas-red-light`, `ring-celtas-orange/40`, etc.). Sin texto de UI en inglés.
+- `pnpm exec vitest run src/features/menu`: 4 archivos / 14 tests en verde de forma aislada y
+  repetible (incluye `ItemForm.test.tsx` nuevo, 5/5). Suite completa con `--maxWorkers=2`:
+  221/221 (34 archivos).
+
+❌ Falló:
+- (ninguno bloqueante)
+
+⚠️ Riesgos / casos borde no cubiertos (documentados, no bloqueantes):
+- **`pnpm run test` (parallelism por defecto) es flaky en este entorno por saturación de CPU**:
+  tres corridas dieron `6`, `4` y `15` tests en rojo, con conjuntos DISTINTOS cada vez
+  (`banners/BannerForm`, `coupons/GenerateCouponForm` y `GenerateBulkCouponForm`,
+  `settings/DeliverySettingsCard`, `users/UserDetailDialog`, `marketing/BroadcastForm`,
+  `orders/OrderDetailDialog`, `reward-milestones/RewardMilestoneForm`, y en la peor corrida 3 de
+  los 5 tests nuevos de `ItemForm.test.tsx`), **todos** con `Error: Test timed out in 5000ms` y
+  siempre en tests que hacen `userEvent` + `waitFor`. NO es lógica: con
+  `pnpm exec vitest run --maxWorkers=2` la suite completa pasa **221/221 (34 archivos)**, y
+  `ItemForm.test.tsx` en aislamiento pasa 5/5 de forma determinista (3 corridas seguidas). Es un
+  problema de infra preexistente que afecta por igual a los tests de regresión de cupones/banners/
+  settings/users, no una regresión de esta feature. Sugerencia para la sesión principal: fijar
+  `poolOptions`/`maxWorkers` o subir `testTimeout` en `vitest.config.ts`.
+- `ItemForm.tsx` muestra **todas** las salsas inactivas del catálogo en el checklist, no solo las
+  que el producto ya tiene asignadas. El ROADMAP describe "las inactivas se muestran igual si el
+  producto ya las tenía asignadas". El efecto práctico: el admin puede asignar una salsa oculta a
+  un producto nuevo desde el form. El backend lo acepta (`findByIds` no filtra por `active`). No es
+  un bug —no se pierde ninguna relación, que es el objetivo declarado— pero diverge del wording y
+  vale confirmarlo con la sesión principal si el diseño buscado era más estricto.
+- `itemSchema.sauceIds` es `z.array(z.string())` sin `.uuid()`; el `sauceSchema` no valida longitud
+  de `name`. Validación laxa en cliente, el backend valida de verdad (`@IsUUID('4', { each: true })`,
+  `@IsNotEmpty`). Cosmético.
+- `CreateSauceInput`/`UpdateSauceInput` en `types.ts` duplican a mano `CreateSauceDto`/`UpdateSauceDto`
+  ya presentes en `api.d.ts`. Es el mismo patrón que `CreateMenuItemInput`/`CreateCategoryInput`
+  preexistentes (no una desviación nueva de esta feature), pero sigue siendo tipo de request escrito
+  a mano existiendo el generado.
+- `MenuPage.tsx`: el `<header>` sigue diciendo "Gestiona las categorías y productos…" y el JSDoc
+  "Dos vistas: categorías y productos (tabs)" — quedaron desactualizados con la 3ª pestaña "Salsas".
+  Solo texto/comentario, no afecta funcionamiento.
+- Sin prueba E2E/Playwright ejecutada por @tester (la sesión principal reportó una sesión manual de
+  Playwright en el commit, no reproducida acá). Toda la verificación de @tester fue: contrato contra
+  código fuente real del backend + tests de hook/componente + 3 mutaciones reales con reversión
+  confirmada (1 en `hooks.ts`, 2 en `ItemForm.tsx`) + corridas de la suite.
+- Sin test de componente de `SaucesSection.tsx` como página (tabla/estados/diálogo de borrado
+  end-to-end con RTL) — mismo nivel de cobertura que `CategoriesSection`/`ItemsSection`, que tampoco
+  lo tienen. Hueco explícito, no regresión.
+
+Veredicto: **LISTO PARA MARCAR COMPLETO** (`ROADMAP.md` línea ~176). Type-check, lint y build
+limpios; contrato confirmado contra el backend real; fix de clase "id solo en el path" con test de
+regresión que falla si se revierte; regla de "salsas ocultas ya asignadas" ahora con test de
+componente propio (`ItemForm.test.tsx`) verificado por mutación. Los ítems ⚠️ son no bloqueantes y
+quedan documentados para la sesión principal.
 

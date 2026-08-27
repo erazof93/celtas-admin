@@ -173,7 +173,7 @@ celtas-admin/
       dependencias en `src/components/ui/toast.tsx`). El UUID no se muestra como texto en la tabla
       (largo y poco legible); el botón copia el id real con toast "ID copiado" y fallback de error
       si el portapapeles falla. Tests en `CopyIdButton.test.tsx`
-- [ ] **Mejora nueva (en curso): catálogo de salsas/cremas + selección por producto.** El backend
+- [x] **Catálogo de salsas/cremas + selección por producto.** El backend
       agregó un módulo `sauces` (`GET/POST /sauces`, `PATCH/DELETE /sauces/:id`) y `MenuItem` gana
       `sauces: Sauce[]` + `sauceIds?: string[]` en create/update — confirmado contra
       `src/modules/sauces/` y `src/modules/menu/` reales del backend, `api.d.ts` regenerado con
@@ -189,9 +189,26 @@ celtas-admin/
       real** (no solo tests): login real, crear una salsa nueva desde la UI y verla en la tabla,
       editar "Arroz Chaufa" (checklist sin marcar, como corresponde) y "Celtas Burguesa Clásica"
       (checklist con "Mostaza" pre-marcada según la relación real ya guardada) — capturas
-      confirmadas visualmente, sin errores de consola. **Pendiente antes de marcar completo**:
-      pase real del subagente `@tester` (lo de arriba lo verifiqué yo directamente, no es el pase
-      habitual de `@tester` del proyecto).
+      confirmadas visualmente, sin errores de consola.
+      **Veredicto de @tester: LISTO** (2026-08-26, pase independiente): `type-check`/`lint`/`build`
+      limpios repetidos, contrato confirmado línea por línea contra `src/modules/sauces/` y
+      `src/modules/menu/` reales de `backend-celtas` (DTOs `PartialType` sin `id`, `ValidationPipe`
+      con `forbidNonWhitelisted`, `sauceIds?` con `@IsUUID('4', { each: true })`, `menu.service`
+      resuelve `item.sauces` solo si `sauceIds !== undefined`). **Verificado por mutación (3
+      mutaciones independientes, todas revertidas con `git checkout`)**: (a) revertir `useUpdateSauce`
+      a mandar `id` en el body → `hooks.test.tsx` falla 2/5; (b) romper el sufijo "(oculta)" en
+      `ItemForm.tsx` → falla 1/5 del test nuevo; (c) romper el prefill de `defaultValues.sauceIds`
+      → falla 2/5. `ItemForm.test.tsx` (nuevo, 5 tests) cubre: salsa inactiva ya asignada visible
+      "(oculta)" y pre-marcada con su id conservado en el payload, catálogo vacío → mensaje a la
+      pestaña "Salsas", `sauceIds` siempre `string[]`, alta/baja de salsa, y guardado con el
+      catálogo en error. Suite completa `--maxWorkers=2`: 221/221 (34 archivos). Riesgos no
+      bloqueantes en `docs/testing-checklist.md` (sección "Auditoría: Menu — Salsas"): flakiness
+      pre-existente de la suite bajo parallelism por defecto (saturación de CPU, no lógica);
+      `ItemForm.tsx` lista todas las salsas inactivas del catálogo, no solo las ya asignadas
+      (no pierde relaciones, pero permite asignar una oculta a un producto nuevo); `header`/JSDoc
+      de `MenuPage.tsx` desactualizados con la 3ª pestaña (solo texto); sin E2E/Playwright del lado
+      de @tester; sin test de `SaucesSection.tsx` como página end-to-end (mismo hueco que
+      `CategoriesSection`/`ItemsSection`).
 - [x] **Toggle "canjeable con estrellas" en la lista de productos** (`MenuItem.redeemableWithStars:
       boolean`, backend deployado): confirmado contra el código fuente real de `backend-celtas`
       (`menu-item.entity.ts` línea 54-55, `@Column({ type: 'boolean', default: false })` — el
