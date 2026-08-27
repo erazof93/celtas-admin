@@ -35,6 +35,7 @@ function makeOrder(items: OrderItem[], overrides: Partial<Order> = {}): Order {
     deliveryFee: 0,
     whatsappUrl: 'https://wa.me/51999999999?text=hola',
     deliveredAt: null,
+    cancelReason: null,
     items,
     user: { id: 'user-1', fullName: 'Test User', email: 'test@test.com', phone: null },
     createdAt: '2026-08-08T10:00:00.000Z',

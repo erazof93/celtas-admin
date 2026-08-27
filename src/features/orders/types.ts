@@ -76,6 +76,13 @@ export interface Order {
   whatsappUrl: string
   /** Solo se setea al pasar a "entregado". */
   deliveredAt: string | null
+  /**
+   * Motivo de la cancelación. El backend lo exige solo en la transición
+   * `en_camino` → `cancelado` (obligatorio); en pendiente/confirmado →
+   * `cancelado` es opcional. `null` en pedidos no cancelados o cancelados
+   * sin motivo registrado.
+   */
+  cancelReason: string | null
   items: OrderItem[]
   /**
    * Cliente dueño del pedido. Igual que `items`: el PATCH /orders/:id/status

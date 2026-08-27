@@ -11,9 +11,12 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { getApiMessage } from '@/lib/api-errors'
 import { formatLima } from '@/lib/dates'
 import { cn } from '@/lib/utils'
@@ -79,6 +82,12 @@ export function OrderDetailDialog({
   const updateStatus = useUpdateOrderStatus()
   const settingsQuery = useSettings()
   const [transitionError, setTransitionError] = useState<string | null>(null)
+  // Cancelación de un pedido "en camino": el backend exige un motivo (400 si
+  // falta). En pendiente/confirmado la cancelación sigue siendo directa, sin
+  // este diálogo.
+  const [cancelPromptOpen, setCancelPromptOpen] = useState(false)
+  const [cancelReason, setCancelReason] = useState('')
+  const [cancelError, setCancelError] = useState<string | null>(null)
 
   const geoapifyApiKey = import.meta.env.VITE_GEOAPIFY_API_KEY as
     | string
@@ -86,6 +95,13 @@ export function OrderDetailDialog({
 
   async function handleTransition(next: OrderStatus) {
     if (!order) return
+    // en_camino → cancelado: pedir motivo obligatorio antes de confirmar.
+    if (next === 'cancelado' && order.status === 'en_camino') {
+      setCancelReason('')
+      setCancelError(null)
+      setCancelPromptOpen(true)
+      return
+    }
     setTransitionError(null)
     try {
       const updated = await updateStatus.mutateAsync({
@@ -97,6 +113,23 @@ export function OrderDetailDialog({
       setTransitionError(
         getApiMessage(error, 'No se pudo cambiar el estado del pedido'),
       )
+    }
+  }
+
+  async function handleConfirmCancel() {
+    if (!order) return
+    setCancelError(null)
+    try {
+      const updated = await updateStatus.mutateAsync({
+        id: order.id,
+        status: 'cancelado',
+        cancelReason: cancelReason.trim(),
+      })
+      onOrderUpdated(updated)
+      setCancelPromptOpen(false)
+      setCancelReason('')
+    } catch (error) {
+      setCancelError(getApiMessage(error, 'No se pudo cancelar el pedido'))
     }
   }
 
@@ -130,6 +163,9 @@ export function OrderDetailDialog({
       open={open}
       onOpenChange={(next) => {
         setTransitionError(null)
+        setCancelPromptOpen(false)
+        setCancelReason('')
+        setCancelError(null)
         onOpenChange(next)
       }}
     >
@@ -161,6 +197,13 @@ export function OrderDetailDialog({
                 {order.userId.slice(0, 8).toUpperCase()}
               </DialogDescription>
             </DialogHeader>
+
+            {order.status === 'cancelado' && order.cancelReason ? (
+              <p className="text-muted-foreground text-sm">
+                <span className="font-medium">Motivo de cancelación:</span>{' '}
+                {order.cancelReason}
+              </p>
+            ) : null}
 
             {transitionError ? (
               <Alert variant="destructive">
@@ -375,6 +418,72 @@ export function OrderDetailDialog({
           </DialogHeader>
         )}
       </DialogContent>
+
+      {/*
+        Confirmación con motivo obligatorio para cancelar un pedido que ya
+        está "en camino" (mismo patrón de diálogo anidado que "Eliminar
+        categoría/producto"). Cancelar desde pendiente/confirmado no pasa por
+        aquí — es directo, sin pedir nada.
+      */}
+      <Dialog
+        open={cancelPromptOpen}
+        onOpenChange={(next) => {
+          if (!next) {
+            setCancelPromptOpen(false)
+            setCancelReason('')
+            setCancelError(null)
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancelar pedido en camino</DialogTitle>
+            <DialogDescription>
+              Este pedido ya está en camino. Indica el motivo de la cancelación
+              — es obligatorio y queda registrado en el pedido.
+            </DialogDescription>
+          </DialogHeader>
+
+          {cancelError ? (
+            <Alert variant="destructive">
+              <AlertTitle>No se pudo cancelar</AlertTitle>
+              <AlertDescription>{cancelError}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          <div className="space-y-1.5">
+            <Label htmlFor="cancel-reason">Motivo de la cancelación</Label>
+            <Textarea
+              id="cancel-reason"
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              maxLength={500}
+              rows={3}
+              placeholder="Ej. El cliente ya no se encuentra en la dirección de entrega"
+            />
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setCancelPromptOpen(false)
+                setCancelReason('')
+                setCancelError(null)
+              }}
+            >
+              Volver
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmCancel}
+              disabled={updateStatus.isPending || cancelReason.trim().length === 0}
+            >
+              {updateStatus.isPending ? 'Cancelando…' : 'Cancelar pedido'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   )
 }

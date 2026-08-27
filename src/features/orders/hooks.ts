@@ -41,8 +41,24 @@ export function useOrders(
 export function useUpdateOrderStatus() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, status }: { id: string; status: OrderStatus }) =>
-      patch<Order>(`/orders/${id}/status`, { status }),
+    mutationFn: ({
+      id,
+      status,
+      cancelReason,
+    }: {
+      id: string
+      status: OrderStatus
+      /**
+       * Motivo de cancelación. El backend lo exige (400) solo cuando la
+       * transición es `en_camino` → `cancelado`; en el resto es opcional y
+       * se omite del body si no viene. `id` viaja solo en el path.
+       */
+      cancelReason?: string
+    }) =>
+      patch<Order>(`/orders/${id}/status`, {
+        status,
+        ...(cancelReason ? { cancelReason } : {}),
+      }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ORDERS_LIST_KEY }),
   })

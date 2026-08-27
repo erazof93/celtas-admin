@@ -142,6 +142,86 @@ solo cuando pasa lo aplicable de este checklist.
       se esperaba (`Unable to find an element with the text: Comentario: Sin cebolla`); restauré
       el archivo (`git diff` confirma 5 líneas agregadas, idéntico al estado original) y la suite
       relevante volvió a 8/8 (`OrderDetailDialog.test.tsx` + `merge.test.ts`)
+- [x] **"Cancelar pedido" desde "en camino" con motivo obligatorio** — confirmado contra el código
+      fuente real de `../backend-celtas` (accesible desde este entorno, verificado con `ls`):
+      - `src/modules/orders/dto/update-order-status.dto.ts`: `cancelReason?: string` con
+        `@IsOptional() @IsString({ message: 'cancelReason debe ser texto' }) @MaxLength(500, ...)`
+        — el `Textarea` del diálogo usa `maxLength={500}` (cap nativo, espejo del DTO).
+      - `src/modules/orders/orders.service.ts` línea 36-42: `VALID_TRANSITIONS[EN_CAMINO] =
+        [ENTREGADO, CANCELADO]` — espejo exacto en `status.ts`
+        (`VALID_ORDER_TRANSITIONS.en_camino = ['entregado', 'cancelado']`).
+      - `orders.service.ts` línea ~281-289: lanza `BadRequestException('Debes indicar un motivo
+        para cancelar un pedido que ya está en camino')` solo si `dto.status === CANCELADO &&
+        order.status === EN_CAMINO && !dto.cancelReason?.trim()`; guarda
+        `order.cancelReason = dto.cancelReason.trim()` si viene con texto. El frontend deshabilita
+        el botón "Cancelar pedido" del diálogo hasta que `cancelReason.trim().length > 0` y envía
+        `cancelReason: cancelReason.trim()`, así que ese 400 es inalcanzable desde la UI.
+      - `src/modules/orders/entities/order.entity.ts` línea 96-97: `@Column({ type: 'text',
+        nullable: true }) cancelReason: string | null` — espejo en `orders/types.ts`
+        (`Order.cancelReason: string | null`, tipado a mano, consistente con el resto del módulo:
+        el Swagger de prod aún NO expone `cancelReason` — la instancia de onrender.com va detrás
+        del commit local `06b6968`).
+- [x] `id` nunca viaja en el body del PATCH (regla de oro): `useUpdateOrderStatus` manda `id` solo
+      en el path (`/orders/${id}/status`) y el body es `{ status, ...(cancelReason ? { cancelReason }
+      : {}) }` — `cancelReason` se omite del body si llega vacío/`undefined`. Cubierto por
+      `src/features/orders/hooks.test.tsx` (nuevo, 3 casos). **Verificado por @tester con mutación**:
+      cambiar el spread condicional por `cancelReason` fijo → 2/3 fallan (`{ status, cancelReason:
+      '' }` en vez de `{ status }`); restaurado, 3/3 en verde.
+- [x] Cancelar desde `pendiente`/`confirmado` sigue siendo directo (sin diálogo, sin `cancelReason`
+      en el payload) — cubierto por 2 casos de `OrderDetailDialog.test.tsx`.
+- [x] El diálogo anidado (`Textarea` + `Label`, patrón "Eliminar categoría/producto") solo aparece
+      en `en_camino → cancelado`; botón confirmar deshabilitado con motivo vacío, habilitado al
+      escribir; envía `status` + `cancelReason` trimeado; motivo visible bajo el badge si el pedido
+      ya está `cancelado` con `cancelReason`. 6 casos nuevos en `OrderDetailDialog.test.tsx`.
+      **Verificado por @tester con 6 mutaciones independientes** (Edit puntual + Edit inverso, sin
+      `git checkout` para no perder el resto del diff):
+      1. `status.ts` `en_camino: ['entregado']` → 3 tests fallan (no renderiza el botón "Cancelar
+         pedido" en `en_camino`).
+      2. `hooks.ts` body con `cancelReason` fijo en vez del spread condicional → `hooks.test.tsx`
+         2/3 fallan.
+      3. `OrderDetailDialog.tsx` `handleConfirmCancel` envía `cancelReason` sin `.trim()` → el test
+         "al confirmar, envía status + cancelReason" falla (recibe el string con espacios).
+      4. `OrderDetailDialog.tsx` botón confirmar sin `|| cancelReason.trim().length === 0` en
+         `disabled` → el test "botón deshabilitado con motivo vacío" falla.
+      5. `OrderDetailDialog.tsx` guard de `handleTransition` neutralizado (`if (false && ...)`) →
+         3 tests del diálogo `en_camino` fallan (cancela directo, sin abrir el diálogo).
+      6. `OrderDetailDialog.tsx` bloque de display del motivo neutralizado (`{false && ...}`) → el
+         test "pedido ya cancelado con motivo: lo muestra en el detalle" falla.
+      Tras restaurar cada mutación, `git diff --stat` vuelve a `318 insertions(+), 7 deletions(-)`
+      (idéntico al estado entregado) y `pnpm run test` = 230/230 en 35 archivos.
+- [x] `api.d.ts` regenerado con `pnpm run generate:types`: el diff (`git diff src/types/api.d.ts`)
+      trae solo cambios reales NO relacionados a esta feature (`UsersController_clearFcmToken` y la
+      `description` de `/rewards/catalog`), confirmando que el Swagger de prod todavía no expone
+      `cancelReason` ni la transición `en_camino → cancelado`. `cancelReason` está tipado a mano en
+      `orders/types.ts` y en el payload del hook, coherente con la cabecera del propio archivo
+      ("Swagger no documenta los schemas de respuesta").
+- [x] `pnpm run type-check` (`tsc -b`, sin salida), `pnpm run lint` (0 errores; 1 warning
+      pre-existente en `StarPromotionForm.tsx`, ajeno a este cambio), `pnpm run build` (sin
+      warnings) y `pnpm run test` (230/230, 35 archivos) en verde — repetidos por @tester antes y
+      después de las 6 mutaciones.
+
+⚠️ **Riesgos / casos borde no cubiertos** (documentados, no bloqueantes):
+- **Orden de despliegue**: el backend en `https://backend-celtas.onrender.com` todavía NO tiene
+  desplegada la transición `en_camino → cancelado` ni el campo `cancelReason` (va detrás del commit
+  local `06b6968`). Si `celtas-admin` sube esta feature a producción antes que el backend, el PATCH
+  de "Cancelar pedido" desde "en camino" recibirá un 400 (`No se puede pasar el pedido de
+  "en_camino" a "cancelado"`) del backend actual de prod. El botón/diálogo aparecerá en la UI pero
+  la acción fallará. Coordinar el deploy: backend primero.
+- El botón "Volver" del diálogo de cancelación NO se deshabilita mientras `updateStatus.isPending`
+  (solo el de confirmar lo hace). Si el usuario hace clic en "Volver" con la mutación en vuelo, el
+  diálogo se cierra pero la mutación sigue y, al resolver, `onOrderUpdated` actualiza el pedido de
+  todos modos. No corrompe estado (el resultado es correcto), pero la UI no refleja "cancelando…"
+  en ese instante. Caso muy estrecho (requiere clic en la ventana de red).
+- Dos botones con el mismo nombre accesible "Cancelar pedido" coexisten en el DOM cuando el diálogo
+  está abierto (el trigger de transición, tapado por el overlay modal, y el de confirmar). Los
+  tests lo resuelven con `getAllByRole(...).at(-1)`. Smell de a11y menor; no afecta al usuario real
+  porque el trigger queda inerte detrás del modal.
+- Sin E2E/Playwright contra un backend real con la feature desplegada — no es posible hoy contra
+  prod (ver primer punto). Toda la verificación fue: contrato contra el código fuente real del
+  backend + tests de componente/hook con mocks + 6 mutaciones con reversión confirmada.
+- El límite de 500 caracteres se aplica solo con `maxLength` nativo del `Textarea` (no hay
+  `superRefine`/mensaje de Zod). Es suficiente porque el navegador impide superarlo (tipeo y
+  pegado), pero no hay feedback visual de "llegaste al máximo".
 
 ## Testing (5.1 Infraestructura)
 

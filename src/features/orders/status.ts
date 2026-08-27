@@ -25,7 +25,7 @@ export const ORDER_STATUS_BADGE: Record<OrderStatus, string> = {
 export const VALID_ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   pendiente: ['confirmado', 'cancelado'],
   confirmado: ['en_camino', 'cancelado'],
-  en_camino: ['entregado'],
+  en_camino: ['entregado', 'cancelado'],
   entregado: [],
   cancelado: [],
 }

@@ -69,7 +69,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Borra el token FCM del dispositivo actual (logout)
+         * @description Best-effort desde la app al cerrar sesión: deja fcmToken en null para que el backend deje de enviarle notificaciones push a ese dispositivo. Evita que, en un celular compartido, el próximo usuario que inicie sesión reciba notificaciones de pedidos de la cuenta anterior. Sin body.
+         */
+        delete: operations["UsersController_clearFcmToken"];
         options?: never;
         head?: never;
         /**
@@ -709,7 +713,7 @@ export interface paths {
         };
         /**
          * Catálogo de productos canjeables con estrellas (cliente)
-         * @description Sin especial=true: productos redeemableWithStars=true y available=true. Con especial=true: productos specialReward=true y available=true — lista EXCLUYENTE, no una unión de ambas.
+         * @description Sin especial=true: productos redeemableWithStars=true. Con especial=true: productos specialReward=true — lista EXCLUYENTE, no una unión de ambas. No filtra por available: incluye productos exclusivos del programa de premios que nunca se venden sueltos en el menú.
          */
         get: operations["RewardsController_getCatalog"];
         put?: never;
@@ -1784,6 +1788,31 @@ export interface operations {
             };
             /** @description Payload inválido o campo no permitido */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    UsersController_clearFcmToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Token FCM borrado */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };

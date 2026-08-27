@@ -291,6 +291,54 @@ celtas-admin/
       4 en `orders-utils.test.ts` (sin cupón, con cupón, redondeo de punto flotante, sin cupón ni
       envío) + 2 en `OrderDetailDialog.test.tsx` (fila oculta sin cupón, fila visible con monto
       negativo en el orden Subtotal → Cupón → Envío → Total).
+- [x] **"Cancelar pedido" desde el estado "en camino", con motivo obligatorio**: el backend
+      agregó `cancelReason?: string` (`@IsString`, `MaxLength(500)`) a `UpdateOrderStatusDto` y
+      permite la transición `en_camino → cancelado`, exigiendo el motivo con un 400 (`"Debes
+      indicar un motivo para cancelar un pedido que ya está en camino"`) solo en ese caso —
+      confirmado contra el código fuente real de `backend-celtas` (`dto/update-order-status.dto.ts`,
+      `orders.service.ts` líneas 271-296 —`VALID_TRANSITIONS[EN_CAMINO] = [ENTREGADO, CANCELADO]`,
+      el chequeo de `!dto.cancelReason?.trim()` solo cuando `order.status === EN_CAMINO`, y
+      `order.cancelReason` como columna `text` nullable en `order.entity.ts`). **Nota de contrato**:
+      el Swagger desplegado en `onrender.com` todavía NO expone `cancelReason` (la instancia de
+      prod va detrás del commit local `06b6968`); `pnpm run generate:types` se corrió igual y trajo
+      cambios reales no relacionados (`UsersController_clearFcmToken`, descripción de
+      `/rewards/catalog`), pero `cancelReason` se tipó a mano en `orders/types.ts` y en el payload
+      del hook, consistente con el resto del módulo (`types.ts`: "Swagger no documenta los schemas").
+      `status.ts`: `VALID_ORDER_TRANSITIONS.en_camino` pasa a `['entregado', 'cancelado']` (espejo
+      exacto del backend). `hooks.ts`: `useUpdateOrderStatus` acepta `cancelReason?` opcional y lo
+      incluye en el body del PATCH solo si viene con texto (`id` sigue solo en el path).
+      `OrderDetailDialog.tsx`: `handleTransition` abre un diálogo anidado (mismo patrón que
+      "Eliminar categoría/producto": `<Dialog>` controlado por estado, `Textarea` + `Label`,
+      `DialogFooter` con "Volver" outline y "Cancelar pedido" destructive deshabilitado hasta que
+      el motivo `.trim()` no esté vacío) SOLO cuando `next === 'cancelado' && order.status ===
+      'en_camino'`; al confirmar llama `updateStatus.mutateAsync({ id, status: 'cancelado',
+      cancelReason })`. Cancelar desde pendiente/confirmado es idéntico a antes (directo, sin
+      diálogo). Si el pedido ya está `cancelado` y tiene `cancelReason`, se muestra bajo el badge
+      de estado ("Motivo de cancelación: …"). Tests: nuevo `orders/hooks.test.tsx` (3 casos: id
+      solo en path + solo `status` sin motivo, `cancelReason` en el body con texto,
+      `cancelReason` vacío se omite) y 6 casos nuevos en `OrderDetailDialog.test.tsx` (diálogo
+      aparece solo en `en_camino → cancelado`, botón deshabilitado con motivo vacío / habilitado al
+      escribir, envía `status` + `cancelReason` trimeado en el PATCH, `pendiente`/`confirmado →
+      cancelado` siguen directos sin diálogo ni `cancelReason`, motivo visible en el detalle de un
+      pedido ya cancelado). `type-check`, `lint`, `build` y `test` (35 archivos / 230 tests) en
+      verde. **Veredicto de @tester: LISTO** (pase independiente): contrato reconfirmado línea por
+      línea contra `../backend-celtas` real (`dto/update-order-status.dto.ts` `cancelReason?: string`
+      `@IsOptional/@IsString/@MaxLength(500)`; `orders.service.ts` `VALID_TRANSITIONS[EN_CAMINO] =
+      [ENTREGADO, CANCELADO]` y el 400 solo cuando `status===CANCELADO && order.status===EN_CAMINO
+      && !dto.cancelReason?.trim()`; `order.entity.ts` `cancelReason` columna `text` nullable).
+      `type-check`/`lint`/`build`/`test` (230/230, 35 archivos) en verde, repetidos antes y después
+      de las mutaciones. **Verificado por mutación (6 mutaciones independientes, Edit puntual +
+      reverso, sin `git checkout` para no perder el resto del diff)**: (1) `status.ts`
+      `en_camino: ['entregado']` → 3 tests fallan; (2) `hooks.ts` body con `cancelReason` fijo en
+      vez del spread condicional → `hooks.test.tsx` 2/3 fallan; (3) `handleConfirmCancel` sin
+      `.trim()` → falla el test del payload trimeado; (4) botón confirmar sin la condición de motivo
+      vacío en `disabled` → falla el test del botón deshabilitado; (5) guard de `handleTransition`
+      neutralizado → 3 tests del diálogo `en_camino` fallan; (6) bloque de display del motivo
+      neutralizado → falla el test del detalle de un pedido ya cancelado. Tras restaurar,
+      `git diff --stat` vuelve idéntico (`318 insertions(+), 7 deletions(-)`). Detalle y riesgos
+      no bloqueantes (orden de deploy backend-primero, "Volver" no deshabilitado durante la
+      mutación, 500 chars solo por `maxLength` nativo, sin E2E) en
+      `docs/testing-checklist.md`, sección Orders.
 
 ### 5.1 Infraestructura de tests
 - [x] Vitest + React Testing Library + jsdom instalados y configurados (script `pnpm run test`,

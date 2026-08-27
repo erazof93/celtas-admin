@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { OrderDetailDialog } from './OrderDetailDialog'
 import type { Order, OrderItem, OrderUser } from './types'
@@ -21,12 +22,16 @@ import type { Order, OrderItem, OrderUser } from './types'
  * `order.whatsappUrl` — el mensaje del pedido hacia la tienda).
  */
 
-const { settingsData } = vi.hoisted(() => ({
+const { settingsData, updateStatusMock } = vi.hoisted(() => ({
   settingsData: { current: [] as { key: string; value: string }[] },
+  updateStatusMock: {
+    mutateAsync: vi.fn(),
+    isPending: false,
+  },
 }))
 
 vi.mock('./hooks', () => ({
-  useUpdateOrderStatus: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useUpdateOrderStatus: () => updateStatusMock,
 }))
 
 vi.mock('../settings/hooks', () => ({
@@ -76,6 +81,7 @@ function makeOrder(items: OrderItem[], overrides: Partial<Order> = {}): Order {
     deliveryFee: 0,
     whatsappUrl: 'https://wa.me/51999999999?text=hola',
     deliveredAt: null,
+    cancelReason: null,
     items,
     user: makeUser(),
     createdAt: '2026-08-08T10:00:00.000Z',
@@ -100,6 +106,8 @@ function renderDialog(order: Order) {
 
 beforeEach(() => {
   settingsData.current = []
+  updateStatusMock.mutateAsync = vi.fn().mockResolvedValue(undefined)
+  updateStatusMock.isPending = false
 })
 
 afterEach(() => {
@@ -337,5 +345,114 @@ describe('OrderDetailDialog — botón "Contactar al cliente por WhatsApp"', () 
     ).not.toBeInTheDocument()
     // El botón existente (mensaje del PEDIDO) sigue ahí, sin confundirse con el nuevo.
     expect(screen.getByRole('link', { name: 'Abrir en WhatsApp' })).toBeInTheDocument()
+  })
+})
+
+describe('OrderDetailDialog — cancelar pedido con motivo obligatorio', () => {
+  it('en_camino → cancelado: abre el diálogo de motivo en vez de cancelar directo', async () => {
+    const user = userEvent.setup()
+    const order = makeOrder([makeItem()], { status: 'en_camino' })
+    renderDialog(order)
+
+    await user.click(screen.getByRole('button', { name: 'Cancelar pedido' }))
+
+    expect(
+      screen.getByText(
+        /Indica el motivo de la cancelación/i,
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByLabelText('Motivo de la cancelación'),
+    ).toBeInTheDocument()
+    // No se disparó ninguna mutación solo por abrir el diálogo.
+    expect(updateStatusMock.mutateAsync).not.toHaveBeenCalled()
+  })
+
+  it('el botón de confirmar está deshabilitado con el motivo vacío y se habilita al escribir', async () => {
+    const user = userEvent.setup()
+    const order = makeOrder([makeItem()], { status: 'en_camino' })
+    renderDialog(order)
+
+    await user.click(screen.getByRole('button', { name: 'Cancelar pedido' }))
+
+    // Dentro del diálogo hay un segundo botón "Cancelar pedido" (el de confirmar).
+    const confirmButton = screen
+      .getAllByRole('button', { name: 'Cancelar pedido' })
+      .at(-1)!
+    expect(confirmButton).toBeDisabled()
+
+    await user.type(
+      screen.getByLabelText('Motivo de la cancelación'),
+      'El cliente no responde',
+    )
+    expect(confirmButton).toBeEnabled()
+  })
+
+  it('al confirmar, envía status "cancelado" + cancelReason en el PATCH', async () => {
+    const user = userEvent.setup()
+    const order = makeOrder([makeItem()], { status: 'en_camino' })
+    renderDialog(order)
+
+    await user.click(screen.getByRole('button', { name: 'Cancelar pedido' }))
+    await user.type(
+      screen.getByLabelText('Motivo de la cancelación'),
+      '  El cliente ya no está en la dirección  ',
+    )
+    await user.click(
+      screen.getAllByRole('button', { name: 'Cancelar pedido' }).at(-1)!,
+    )
+
+    expect(updateStatusMock.mutateAsync).toHaveBeenCalledTimes(1)
+    expect(updateStatusMock.mutateAsync).toHaveBeenCalledWith({
+      id: 'order-1',
+      status: 'cancelado',
+      cancelReason: 'El cliente ya no está en la dirección',
+    })
+  })
+
+  it('pendiente → cancelado: sigue siendo directo, sin diálogo ni cancelReason', async () => {
+    const user = userEvent.setup()
+    const order = makeOrder([makeItem()], { status: 'pendiente' })
+    renderDialog(order)
+
+    await user.click(screen.getByRole('button', { name: 'Cancelar pedido' }))
+
+    expect(
+      screen.queryByLabelText('Motivo de la cancelación'),
+    ).not.toBeInTheDocument()
+    expect(updateStatusMock.mutateAsync).toHaveBeenCalledTimes(1)
+    expect(updateStatusMock.mutateAsync).toHaveBeenCalledWith({
+      id: 'order-1',
+      status: 'cancelado',
+    })
+  })
+
+  it('confirmado → cancelado: también directo, sin diálogo', async () => {
+    const user = userEvent.setup()
+    const order = makeOrder([makeItem()], { status: 'confirmado' })
+    renderDialog(order)
+
+    await user.click(screen.getByRole('button', { name: 'Cancelar pedido' }))
+
+    expect(
+      screen.queryByLabelText('Motivo de la cancelación'),
+    ).not.toBeInTheDocument()
+    expect(updateStatusMock.mutateAsync).toHaveBeenCalledWith({
+      id: 'order-1',
+      status: 'cancelado',
+    })
+  })
+
+  it('pedido ya cancelado con motivo: lo muestra en el detalle', () => {
+    const order = makeOrder([makeItem()], {
+      status: 'cancelado',
+      cancelReason: 'El local cerró antes de tiempo',
+    })
+    renderDialog(order)
+
+    expect(screen.getByText('Motivo de cancelación:')).toBeInTheDocument()
+    expect(
+      screen.getByText('El local cerró antes de tiempo'),
+    ).toBeInTheDocument()
   })
 })
