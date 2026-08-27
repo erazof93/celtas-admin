@@ -207,21 +207,63 @@ solo cuando pasa lo aplicable de este checklist.
   de "Cancelar pedido" desde "en camino" recibirá un 400 (`No se puede pasar el pedido de
   "en_camino" a "cancelado"`) del backend actual de prod. El botón/diálogo aparecerá en la UI pero
   la acción fallará. Coordinar el deploy: backend primero.
-- El botón "Volver" del diálogo de cancelación NO se deshabilita mientras `updateStatus.isPending`
-  (solo el de confirmar lo hace). Si el usuario hace clic en "Volver" con la mutación en vuelo, el
-  diálogo se cierra pero la mutación sigue y, al resolver, `onOrderUpdated` actualiza el pedido de
-  todos modos. No corrompe estado (el resultado es correcto), pero la UI no refleja "cancelando…"
-  en ese instante. Caso muy estrecho (requiere clic en la ventana de red).
-- Dos botones con el mismo nombre accesible "Cancelar pedido" coexisten en el DOM cuando el diálogo
-  está abierto (el trigger de transición, tapado por el overlay modal, y el de confirmar). Los
-  tests lo resuelven con `getAllByRole(...).at(-1)`. Smell de a11y menor; no afecta al usuario real
-  porque el trigger queda inerte detrás del modal.
 - Sin E2E/Playwright contra un backend real con la feature desplegada — no es posible hoy contra
   prod (ver primer punto). Toda la verificación fue: contrato contra el código fuente real del
   backend + tests de componente/hook con mocks + 6 mutaciones con reversión confirmada.
-- El límite de 500 caracteres se aplica solo con `maxLength` nativo del `Textarea` (no hay
-  `superRefine`/mensaje de Zod). Es suficiente porque el navegador impide superarlo (tipeo y
-  pegado), pero no hay feedback visual de "llegaste al máximo".
+
+### Vuelta de pulido (cierre de los 3 riesgos de bajo impacto) — `OrderDetailDialog.tsx`
+
+- [x] **Botón "Volver" deshabilitado durante la mutación** — se agregó
+      `disabled={updateStatus.isPending}` al botón "Volver" del `DialogFooter` (antes solo lo tenía
+      el de confirmar). Ya no se puede cerrar el diálogo con un clic mientras el PATCH está en
+      vuelo. Test nuevo en `OrderDetailDialog.test.tsx`: con `updateStatusMock.isPending = true` +
+      `rerender`, "Volver" queda `toBeDisabled()` y el de confirmar muestra "Cancelando…".
+- [x] **Nombre accesible "Cancelar pedido" ya no queda duplicado** — el botón trigger de la
+      transición (rama `next === 'cancelado'` del `transitions.map`) recibe
+      `aria-hidden={cancelPromptOpen}` + `tabIndex={cancelPromptOpen ? -1 : undefined}`. Con el
+      diálogo de motivo abierto, solo el botón de confirmar queda en la accessibility tree (el
+      trigger ya estaba inerte para el mouse por el overlay). El texto de ambos botones NO cambió.
+      **Test reescrito tras el hallazgo de @tester (1ª ronda):** la versión anterior comparaba
+      `getAllByRole('button', { name: 'Cancelar pedido' }).toHaveLength(1)` antes y después de
+      abrir — NO distinguía el fix, porque Radix, al abrir el `<Dialog>` modal, ya pone
+      `aria-hidden="true"` en el `DialogContent` exterior vía `hideOthers`, así que el trigger sale
+      de la a11y tree con o sin las props explícitas. El test actual guarda la referencia al
+      `<button>` ANTES de abrir y afirma el atributo directamente sobre él:
+      `expect(trigger).not.toHaveAttribute('tabindex')` antes, y tras `click`
+      `expect(trigger).toHaveAttribute('aria-hidden', 'true')` + `toHaveAttribute('tabindex', '-1')`
+      (Radix pone `aria-hidden` en un div ancestro, no en el `<button>`, así que esta aserción SÍ
+      distingue el fix). Verificado por mutación: al revertir `aria-hidden`/`tabIndex` el test
+      FALLA en `toHaveAttribute('aria-hidden', 'true')`; restaurado, 27/27. Los tests previos que
+      usan `getAllByRole(...).at(-1)` siguen pasando tal cual (array de 1 elemento).
+- [x] **Contador de caracteres 0/500** — `<p className="text-muted-foreground text-right text-xs">`
+      bajo el `Textarea` con `{cancelReason.length}/500` (mismo patrón `text-muted-foreground
+      text-xs` del resto del componente). El `maxLength={500}` nativo sigue siendo el límite duro.
+      Test nuevo: al abrir muestra `0/500`, tras escribir "abc" muestra `3/500`.
+- Verificación @tester: `pnpm run type-check` (`tsc -b`, sin salida), `pnpm run lint` (0 errores;
+  1 warning pre-existente ajeno en `StarPromotionForm.tsx`), `pnpm run build` limpio. `pnpm run test`:
+  una corrida en verde 233/233 (35 archivos) y otra con 2 fallos por timeout de 5 s
+  (`menu/items/ItemForm.test.tsx` y `settings/DeliverySettingsCard.test.tsx`) — flakiness
+  pre-existente por contención de CPU con `userEvent` en la suite paralela; ambos pasan 13/13 en
+  aislado y no tocan nada de este cambio. `OrderDetailDialog.test.tsx` aislado: 27/27 estable.
+- Verificación por mutación (Edit puntual + reverso, sin `git checkout`):
+  - Revertir `disabled={updateStatus.isPending}` de "Volver" → FALLA solo
+    "con una cancelación en curso, 'Volver' también queda deshabilitado". Test de regresión real. ✅
+  - Revertir `aria-hidden`/`tabIndex` del trigger `cancelado` → tras reescribir el test (ver punto
+    arriba), FALLA en `expect(trigger).toHaveAttribute('aria-hidden', 'true')`; restaurado, 27/27. ✅
+    (La versión original del test NO fallaba — hallazgo de @tester, ya corregido.)
+  - Revertir el `<p>{cancelReason.length}/500</p>` → FALLA solo "el contador de caracteres arranca
+    en 0/500 y se actualiza al escribir". Test de regresión real. ✅
+- Los tests previos del `describe` de cancelación siguen en verde con el `aria-hidden` puesto
+  (9/9 en el describe, incluidos los `getAllByRole(...).at(-1)`).
+
+⚠️ **Riesgos / casos borde que siguen abiertos tras el pulido** (no bloqueantes):
+- **Orden de despliegue** (sin cambios): backend primero, ver el primer punto de arriba.
+- El botón "Volver" ahora se deshabilita, pero si la mutación falla el `cancelError` se muestra
+  dentro del diálogo y el usuario debe usar "Volver" (ya habilitado de nuevo) — flujo correcto,
+  solo se anota.
+- El contador `0/500` no cambia de color ni avisa al acercarse al máximo; es puramente
+  informativo. El navegador sigue siendo quien impide pasarse (tipeo y pegado).
+- Sin E2E/Playwright contra backend real con la feature desplegada (mismo motivo: prod va detrás).
 
 ## Testing (5.1 Infraestructura)
 

@@ -90,18 +90,21 @@ function makeOrder(items: OrderItem[], overrides: Partial<Order> = {}): Order {
   }
 }
 
-function renderDialog(order: Order) {
-  const queryClient = new QueryClient()
-  return render(
-    <QueryClientProvider client={queryClient}>
+function dialogTree(order: Order) {
+  return (
+    <QueryClientProvider client={new QueryClient()}>
       <OrderDetailDialog
         order={order}
         open
         onOpenChange={() => {}}
         onOrderUpdated={() => {}}
       />
-    </QueryClientProvider>,
+    </QueryClientProvider>
   )
+}
+
+function renderDialog(order: Order) {
+  return render(dialogTree(order))
 }
 
 beforeEach(() => {
@@ -375,7 +378,8 @@ describe('OrderDetailDialog — cancelar pedido con motivo obligatorio', () => {
 
     await user.click(screen.getByRole('button', { name: 'Cancelar pedido' }))
 
-    // Dentro del diálogo hay un segundo botón "Cancelar pedido" (el de confirmar).
+    // El trigger de la transición queda con aria-hidden al abrir el diálogo, así
+    // que el único "Cancelar pedido" en la accessibility tree es el de confirmar.
     const confirmButton = screen
       .getAllByRole('button', { name: 'Cancelar pedido' })
       .at(-1)!
@@ -454,5 +458,52 @@ describe('OrderDetailDialog — cancelar pedido con motivo obligatorio', () => {
     expect(
       screen.getByText('El local cerró antes de tiempo'),
     ).toBeInTheDocument()
+  })
+
+  it('al abrir el diálogo, el trigger de la transición sale de la accessibility tree (aria-hidden + tabindex=-1)', async () => {
+    const user = userEvent.setup()
+    const order = makeOrder([makeItem()], { status: 'en_camino' })
+    renderDialog(order)
+
+    // Referencia al MISMO nodo del trigger antes de abrir (React no lo desmonta).
+    // Se afirma el atributo directamente sobre el <button>: Radix ya pone
+    // aria-hidden en un div ancestro vía hideOthers, así que contar elementos
+    // con getAllByRole no distinguiría este fix. El atributo explícito sobre el
+    // botón sí lo distingue (falla si se revierten las props aria-hidden/tabIndex).
+    const trigger = screen.getByRole('button', { name: 'Cancelar pedido' })
+    expect(trigger).not.toHaveAttribute('tabindex')
+
+    await user.click(trigger)
+
+    expect(trigger).toHaveAttribute('aria-hidden', 'true')
+    expect(trigger).toHaveAttribute('tabindex', '-1')
+  })
+
+  it('el contador de caracteres arranca en 0/500 y se actualiza al escribir', async () => {
+    const user = userEvent.setup()
+    const order = makeOrder([makeItem()], { status: 'en_camino' })
+    renderDialog(order)
+
+    await user.click(screen.getByRole('button', { name: 'Cancelar pedido' }))
+    expect(screen.getByText('0/500')).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Motivo de la cancelación'), 'abc')
+    expect(screen.getByText('3/500')).toBeInTheDocument()
+  })
+
+  it('con una cancelación en curso, "Volver" también queda deshabilitado (no solo el de confirmar)', async () => {
+    const user = userEvent.setup()
+    const order = makeOrder([makeItem()], { status: 'en_camino' })
+    const view = renderDialog(order)
+
+    await user.click(screen.getByRole('button', { name: 'Cancelar pedido' }))
+    expect(screen.getByRole('button', { name: 'Volver' })).toBeEnabled()
+
+    // React Query pondría isPending=true mientras el PATCH está en vuelo.
+    updateStatusMock.isPending = true
+    view.rerender(dialogTree(order))
+
+    expect(screen.getByRole('button', { name: 'Volver' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Cancelando…' })).toBeDisabled()
   })
 })

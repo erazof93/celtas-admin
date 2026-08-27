@@ -387,6 +387,12 @@ export function OrderDetailDialog({
                         variant="destructive"
                         onClick={() => handleTransition(next)}
                         disabled={updateStatus.isPending}
+                        // Con el diálogo de motivo abierto, el botón de confirmar
+                        // repite este mismo texto: se saca de la accessibility
+                        // tree para no duplicar el nombre accesible (el overlay
+                        // ya lo vuelve inerte para el mouse).
+                        aria-hidden={cancelPromptOpen}
+                        tabIndex={cancelPromptOpen ? -1 : undefined}
                       >
                         {TRANSITION_ACTION_LABELS[next]}
                       </Button>
@@ -461,6 +467,9 @@ export function OrderDetailDialog({
               rows={3}
               placeholder="Ej. El cliente ya no se encuentra en la dirección de entrega"
             />
+            <p className="text-muted-foreground text-right text-xs">
+              {cancelReason.length}/500
+            </p>
           </div>
 
           <DialogFooter>
@@ -471,6 +480,7 @@ export function OrderDetailDialog({
                 setCancelReason('')
                 setCancelError(null)
               }}
+              disabled={updateStatus.isPending}
             >
               Volver
             </Button>

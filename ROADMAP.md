@@ -339,6 +339,33 @@ celtas-admin/
       no bloqueantes (orden de deploy backend-primero, "Volver" no deshabilitado durante la
       mutación, 500 chars solo por `maxLength` nativo, sin E2E) en
       `docs/testing-checklist.md`, sección Orders.
+  - [x] **Vuelta de pulido — cierre de los 3 riesgos de bajo impacto** (solo UI/a11y, sin tocar el
+        contrato con el backend): (1) el botón "Volver" del diálogo de motivo ahora lleva
+        `disabled={updateStatus.isPending}` — ya no cierra el diálogo con la mutación en vuelo;
+        (2) el botón trigger de la transición `cancelado` recibe `aria-hidden={cancelPromptOpen}` +
+        `tabIndex={cancelPromptOpen ? -1 : undefined}` para no duplicar el nombre accesible
+        "Cancelar pedido" mientras el diálogo está abierto (el texto de los botones NO cambió);
+        (3) contador `{cancelReason.length}/500` bajo el `Textarea` (`text-muted-foreground
+        text-right text-xs`), el `maxLength={500}` nativo sigue siendo el límite duro. 3 tests
+        nuevos en `OrderDetailDialog.test.tsx` (Volver deshabilitado con `isPending` + `rerender`;
+        el trigger `cancelado` gana `aria-hidden="true"` + `tabindex="-1"` al abrir el diálogo —
+        aserción directa sobre el nodo del `<button>`, no conteo de `getAllByRole`; contador
+        `0/500` → `3/500` al escribir "abc"); los tests previos con `getAllByRole(...).at(-1)`
+        siguen pasando sobre un array de 1. `type-check`/`lint`/`build` limpios, `test` 233/233
+        (35 archivos; suite paralela con flakiness pre-existente en `ItemForm.test.tsx` y
+        `DeliverySettingsCard.test.tsx`, ambos verdes en aislado y ajenos).
+        **1ª ronda de @tester: NO LISTO** — el test del cambio (2) no fallaba al revertir el fix
+        (Radix ya saca el trigger de la a11y tree con `hideOthers`, así que el conteo de
+        `getAllByRole` daba length 1 con o sin el atributo). **Corregido**: el test se reescribió
+        para afirmar `toHaveAttribute('aria-hidden', 'true')` / `toHaveAttribute('tabindex', '-1')`
+        directamente sobre el nodo del trigger; verificado por mutación que ahora FALLA al revertir
+        `aria-hidden`/`tabIndex` y vuelve a 27/27 al restaurar. Cambios (1) y (3) ya estaban OK por
+        mutación. **2ª ronda de @tester: LISTO** — re-corrió `type-check`/`lint`/`build`/`vitest run
+        src/features/orders` (48/48) y confirmó por mutación que el test reescrito ahora FALLA en
+        `toHaveAttribute('aria-hidden', 'true')` al revertir las props del trigger y vuelve a 27/27
+        al restaurar; los 9 tests del `describe` de cancelación (incluidos los `getAllByRole(...)
+        .at(-1)`) en verde. Riesgos abiertos sin cambio: orden de deploy (backend primero), sin E2E,
+        contador `0/500` puramente informativo.
 
 ### 5.1 Infraestructura de tests
 - [x] Vitest + React Testing Library + jsdom instalados y configurados (script `pnpm run test`,
