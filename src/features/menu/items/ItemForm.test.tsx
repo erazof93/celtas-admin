@@ -393,6 +393,33 @@ describe('ItemForm - checklist de bebidas', () => {
     expect(payload.beverageGroupMaxSelectable).toBe(2)
     expect(payload.beverageGroupRequired).toBe(true)
   })
+
+  it('al editar un producto con beverageGroupRequired=true, el switch "Obligatorio" carga marcado y se conserva en el payload sin tocarlo', async () => {
+    const user = userEvent.setup()
+    updateMock.mockResolvedValue(makeItem())
+    beveragesState.data = [makeBeverage({ id: 'b-coca', name: 'Coca-Cola' })]
+
+    render(
+      <ItemForm
+        item={makeItem({
+          beverages: [makeBeverage({ id: 'b-coca', name: 'Coca-Cola' })],
+          beverageGroupRequired: true,
+          beverageGroupMaxSelectable: 1,
+        })}
+        onClose={() => {}}
+      />,
+    )
+
+    expect(
+      screen.getByRole('switch', { name: 'El cliente debe elegir una bebida' }),
+    ).toBeChecked()
+
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
+    const payload = updateMock.mock.calls[0][0] as { beverageGroupRequired: boolean }
+    expect(payload.beverageGroupRequired).toBe(true)
+  })
 })
 
 describe('ItemForm - checklist de porciones extras', () => {
@@ -532,6 +559,33 @@ describe('ItemForm - checklist de porciones extras', () => {
       extraPortionsGroupRequired: boolean
     }
     expect(payload.extraPortionsGroupMaxSelectable).toBe(3)
+    expect(payload.extraPortionsGroupRequired).toBe(true)
+  })
+
+  it('al editar un producto con extraPortionsGroupRequired=true, el switch "Obligatorio" carga marcado y se conserva en el payload sin tocarlo', async () => {
+    const user = userEvent.setup()
+    updateMock.mockResolvedValue(makeItem())
+    extraPortionsState.data = [makeExtraPortion({ id: 'ep-papas', name: 'Papas extra' })]
+
+    render(
+      <ItemForm
+        item={makeItem({
+          extraPortions: [makeExtraPortion({ id: 'ep-papas', name: 'Papas extra' })],
+          extraPortionsGroupRequired: true,
+          extraPortionsGroupMaxSelectable: 1,
+        })}
+        onClose={() => {}}
+      />,
+    )
+
+    expect(
+      screen.getByRole('switch', { name: 'El cliente debe elegir una porción extra' }),
+    ).toBeChecked()
+
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
+    const payload = updateMock.mock.calls[0][0] as { extraPortionsGroupRequired: boolean }
     expect(payload.extraPortionsGroupRequired).toBe(true)
   })
 })
