@@ -22,6 +22,8 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { getApiMessage, getApiStatus, isConflict, isNotFound } from '@/lib/api-errors'
 import { useCategories } from '../categories/hooks'
+import { useBeverages } from '../beverages/hooks'
+import { useExtraPortions } from '../extra-portions/hooks'
 import { useSauces } from '../sauces/hooks'
 import {
   useCreateItem,
@@ -34,9 +36,13 @@ import type { MenuItem } from '../types'
 /**
  * Reglas espejo del CreateMenuItemDto: nombre obligatorio, precio > 0 con
  * máximo 2 decimales, categoryId UUID obligatorio, available booleano.
- * sauceIds es opcional en el backend (undefined/[] = sin selector en la app,
- * ej. arroz chaufa) — acá se normaliza siempre a array, nunca undefined, para
- * no tener que distinguir "no tocado" de "vacío" en un formulario de UI.
+ * sauceIds/beverageIds/extraPortionIds son opcionales en el backend
+ * (undefined/[] = sin selector en la app, ej. arroz chaufa) — acá se
+ * normalizan siempre a array, nunca undefined, para no tener que distinguir
+ * "no tocado" de "vacío" en un formulario de UI. Los *GroupMaxSelectable son
+ * enteros >= 1 (default 1) y *GroupRequired son booleanos (default false) —
+ * ambos sin efecto si el catálogo elegido queda vacío (confirmado contra
+ * create-menu-item.dto.ts del backend).
  */
 const itemSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio'),
@@ -49,6 +55,18 @@ const itemSchema = z.object({
   categoryId: z.string().min(1, 'Selecciona una categoría'),
   available: z.boolean(),
   sauceIds: z.array(z.string()).default([]),
+  beverageIds: z.array(z.string()).default([]),
+  beverageGroupRequired: z.boolean(),
+  beverageGroupMaxSelectable: z.coerce
+    .number()
+    .int('Debe ser un número entero')
+    .min(1, 'Debe ser al menos 1'),
+  extraPortionIds: z.array(z.string()).default([]),
+  extraPortionsGroupRequired: z.boolean(),
+  extraPortionsGroupMaxSelectable: z.coerce
+    .number()
+    .int('Debe ser un número entero')
+    .min(1, 'Debe ser al menos 1'),
 })
 
 type ItemFormValues = z.output<typeof itemSchema>
@@ -75,6 +93,8 @@ interface ItemFormProps {
 export function ItemForm({ item, onClose }: ItemFormProps) {
   const categoriesQuery = useCategories()
   const saucesQuery = useSauces()
+  const beveragesQuery = useBeverages()
+  const extraPortionsQuery = useExtraPortions()
   const createMutation = useCreateItem()
   const updateMutation = useUpdateItem()
   const uploadMutation = useUploadItemImage()
@@ -103,10 +123,20 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
       categoryId: item?.categoryId ?? '',
       available: item?.available ?? true,
       sauceIds: item?.sauces.map((sauce) => sauce.id) ?? [],
+      beverageIds: item?.beverages.map((beverage) => beverage.id) ?? [],
+      beverageGroupRequired: item?.beverageGroupRequired ?? false,
+      beverageGroupMaxSelectable: item?.beverageGroupMaxSelectable ?? 1,
+      extraPortionIds:
+        item?.extraPortions.map((extraPortion) => extraPortion.id) ?? [],
+      extraPortionsGroupRequired: item?.extraPortionsGroupRequired ?? false,
+      extraPortionsGroupMaxSelectable:
+        item?.extraPortionsGroupMaxSelectable ?? 1,
     },
   })
 
   const sauceIds = useWatch({ control, name: 'sauceIds' })
+  const beverageIds = useWatch({ control, name: 'beverageIds' })
+  const extraPortionIds = useWatch({ control, name: 'extraPortionIds' })
 
   function buildPayload(values: ItemFormValues) {
     return {
@@ -118,6 +148,12 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
       categoryId: values.categoryId,
       available: values.available,
       sauceIds: values.sauceIds,
+      beverageIds: values.beverageIds,
+      beverageGroupRequired: values.beverageGroupRequired,
+      beverageGroupMaxSelectable: values.beverageGroupMaxSelectable,
+      extraPortionIds: values.extraPortionIds,
+      extraPortionsGroupRequired: values.extraPortionsGroupRequired,
+      extraPortionsGroupMaxSelectable: values.extraPortionsGroupMaxSelectable,
     }
   }
 
@@ -172,7 +208,11 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
   const categories = categoriesQuery.data ?? []
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      noValidate
+      className="space-y-4"
+    >
       {serverError ? (
         <Alert variant="destructive">
           <AlertTitle>No se pudo guardar</AlertTitle>
@@ -339,6 +379,205 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
               </label>
             ))}
           </div>
+        )}
+      </div>
+
+      <div className="space-y-1.5 pt-2">
+        <Label className="text-sm font-medium">Bebidas</Label>
+        <p className="text-muted-foreground mb-1 text-xs">
+          Qué puede elegir el cliente al agregar este producto al carrito. Sin
+          selección = el producto no muestra selector de bebidas en la app.
+        </p>
+        {beveragesQuery.isLoading ? (
+          <p className="text-muted-foreground text-xs">Cargando bebidas…</p>
+        ) : beveragesQuery.isError ? (
+          <Alert variant="destructive">
+            <AlertTitle>No se pudieron cargar las bebidas</AlertTitle>
+            <AlertDescription>
+              Este producto se puede guardar igual, pero no vas a poder
+              asignarle bebidas hasta que recargues la página.
+            </AlertDescription>
+          </Alert>
+        ) : beveragesQuery.data && beveragesQuery.data.length === 0 ? (
+          <p className="text-muted-foreground text-xs">
+            Todavía no hay bebidas en el catálogo. Créalas primero en la
+            pestaña "Bebidas" del Menú.
+          </p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+              {(beveragesQuery.data ?? []).map((beverage) => (
+                <label
+                  key={beverage.id}
+                  className="flex items-center gap-1.5 text-sm"
+                >
+                  <Checkbox
+                    checked={beverageIds?.includes(beverage.id) ?? false}
+                    onCheckedChange={(isChecked) => {
+                      const current = beverageIds ?? []
+                      setValue(
+                        'beverageIds',
+                        isChecked
+                          ? [...current, beverage.id]
+                          : current.filter((id) => id !== beverage.id),
+                      )
+                    }}
+                  />
+                  <span
+                    className={beverage.active ? '' : 'text-muted-foreground'}
+                  >
+                    {beverage.name}
+                    {!beverage.active ? ' (oculta)' : ''}
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 pt-1">
+              <div className="space-y-1.5">
+                <Label htmlFor="item-beverage-max">Máximo a elegir</Label>
+                <Input
+                  id="item-beverage-max"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  aria-invalid={Boolean(errors.beverageGroupMaxSelectable)}
+                  {...register('beverageGroupMaxSelectable')}
+                />
+                {errors.beverageGroupMaxSelectable ? (
+                  <p className="text-celtas-red-light text-xs">
+                    {errors.beverageGroupMaxSelectable.message}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="space-y-1.5">
+                <span className="text-sm font-medium">Obligatorio</span>
+                <div className="flex items-center gap-2 pt-0.5">
+                  <Controller
+                    control={control}
+                    name="beverageGroupRequired"
+                    render={({ field }) => (
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        aria-label="El cliente debe elegir una bebida"
+                      />
+                    )}
+                  />
+                  <span className="text-muted-foreground text-sm">
+                    El cliente debe elegir una
+                  </span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div className="space-y-1.5 pt-2">
+        <Label className="text-sm font-medium">Porciones extras</Label>
+        <p className="text-muted-foreground mb-1 text-xs">
+          Qué puede elegir el cliente al agregar este producto al carrito. Sin
+          selección = el producto no muestra selector de porciones extras en
+          la app.
+        </p>
+        {extraPortionsQuery.isLoading ? (
+          <p className="text-muted-foreground text-xs">
+            Cargando porciones extras…
+          </p>
+        ) : extraPortionsQuery.isError ? (
+          <Alert variant="destructive">
+            <AlertTitle>
+              No se pudieron cargar las porciones extras
+            </AlertTitle>
+            <AlertDescription>
+              Este producto se puede guardar igual, pero no vas a poder
+              asignarle porciones extras hasta que recargues la página.
+            </AlertDescription>
+          </Alert>
+        ) : extraPortionsQuery.data && extraPortionsQuery.data.length === 0 ? (
+          <p className="text-muted-foreground text-xs">
+            Todavía no hay porciones extras en el catálogo. Créalas primero en
+            la pestaña "Porciones Extras" del Menú.
+          </p>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+              {(extraPortionsQuery.data ?? []).map((extraPortion) => (
+                <label
+                  key={extraPortion.id}
+                  className="flex items-center gap-1.5 text-sm"
+                >
+                  <Checkbox
+                    checked={
+                      extraPortionIds?.includes(extraPortion.id) ?? false
+                    }
+                    onCheckedChange={(isChecked) => {
+                      const current = extraPortionIds ?? []
+                      setValue(
+                        'extraPortionIds',
+                        isChecked
+                          ? [...current, extraPortion.id]
+                          : current.filter((id) => id !== extraPortion.id),
+                      )
+                    }}
+                  />
+                  <span
+                    className={
+                      extraPortion.active ? '' : 'text-muted-foreground'
+                    }
+                  >
+                    {extraPortion.name}
+                    {!extraPortion.active ? ' (oculta)' : ''}
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 pt-1">
+              <div className="space-y-1.5">
+                <Label htmlFor="item-extra-portion-max">
+                  Máximo a elegir
+                </Label>
+                <Input
+                  id="item-extra-portion-max"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  aria-invalid={Boolean(
+                    errors.extraPortionsGroupMaxSelectable,
+                  )}
+                  {...register('extraPortionsGroupMaxSelectable')}
+                />
+                {errors.extraPortionsGroupMaxSelectable ? (
+                  <p className="text-celtas-red-light text-xs">
+                    {errors.extraPortionsGroupMaxSelectable.message}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="space-y-1.5">
+                <span className="text-sm font-medium">Obligatorio</span>
+                <div className="flex items-center gap-2 pt-0.5">
+                  <Controller
+                    control={control}
+                    name="extraPortionsGroupRequired"
+                    render={({ field }) => (
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        aria-label="El cliente debe elegir una porción extra"
+                      />
+                    )}
+                  />
+                  <span className="text-muted-foreground text-sm">
+                    El cliente debe elegir una
+                  </span>
+                </div>
+              </div>
+            </div>
+          </>
         )}
       </div>
 

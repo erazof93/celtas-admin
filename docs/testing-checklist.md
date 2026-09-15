@@ -1515,3 +1515,144 @@ regresión que falla si se revierte; regla de "salsas ocultas ya asignadas" ahor
 componente propio (`ItemForm.test.tsx`) verificado por mutación. Los ítems ⚠️ son no bloqueantes y
 quedan documentados para la sesión principal.
 
+## Auditoría: Menu — Bebidas y Porciones Extras (catálogos `beverages`/`extra-portions` + checklist
+de grupo en `ItemForm`)
+
+Auditor: @tester (independiente). Fecha: 2026-09-15. Alcance: `src/features/menu/beverages/*`,
+`src/features/menu/extra-portions/*`, `src/features/menu/items/ItemForm.tsx`,
+`src/features/menu/MenuPage.tsx`, `src/features/menu/types.ts`, `src/types/api.d.ts`, y el fix de
+clase `noValidate` en los 5 `<form>` del módulo Menú.
+
+✅ Pasó:
+- `pnpm run type-check` (`tsc -b`): sin salida, cero errores.
+- `pnpm run lint` (`eslint .`): `0 errors, 1 warning` (el mismo warning preexistente y ajeno de
+  `StarPromotionForm.tsx`, no de esta feature).
+- `pnpm run build`: `✓ built in 7.89s`, sin errores ni warnings de tamaño nuevos.
+- `pnpm exec vitest run --maxWorkers=2`: **269/269** (39 archivos) — incluye los 12 tests nuevos
+  agregados por @tester (ver hallazgos abajo) sobre los 257 que ya traía la sesión principal.
+- **Contrato confirmado contra el código fuente real del backend** (`D:/proyecto-celtas/backend-celtas/`,
+  no reconstruido de Swagger):
+  - `src/modules/beverages/entities/beverage.entity.ts` y
+    `src/modules/extra-portions/entities/extra-portion.entity.ts`: `id`, `name` (unique), `price`
+    (`decimal(10,2)` con transformer a `number`), `active` (default true), `sortOrder`,
+    `createdAt`/`updatedAt` — coincide campo a campo con `Beverage`/`ExtraPortion` en `types.ts`.
+  - `dto/create-beverage.dto.ts` / `create-extra-portion.dto.ts`: `price` con
+    `@IsNumber({ maxDecimalPlaces: 2 })` + `@Min(0.01, 'El precio debe ser mayor a cero')` — el
+    schema Zod de `BeverageForm`/`ExtraPortionForm` es espejo exacto (mismos 3 mensajes en
+    español). `update-*.dto.ts` = `PartialType(Create*Dto)` → NO declaran `id`.
+  - `*.controller.ts`: `GET`/`POST /beverages`, `PATCH`/`DELETE /beverages/:id` (mismo patrón en
+    `extra-portions`), guard `@Roles(ADMIN)`.
+  - `*.service.ts` `remove()`: sin bloqueo por uso (catálogo de etiquetas, no FK con historial —
+    `OrderItem.selectedBeverages`/`selectedExtraPortions` guardan `{name, price}` como snapshot);
+    borra explícitamente de `menu_item_beverages`/`menu_item_extra_portions` antes del delete para
+    evitar un 500 por FK. El texto de confirmación de borrado en `BeveragesSection`/
+    `ExtraPortionsSection` coincide con este comportamiento real.
+  - `menu-item.entity.ts`: `beverages`/`extraPortions` (`@ManyToMany` + `@JoinTable`),
+    `beverageGroupRequired`/`extraPortionsGroupRequired` (boolean, default `false`),
+    `beverageGroupMaxSelectable`/`extraPortionsGroupMaxSelectable` (int, default `1`) — coincide
+    campo a campo con `MenuItem` en `types.ts`, incluidos los defaults usados en
+    `defaultValues` de `ItemForm.tsx` (`?? false`, `?? 1`).
+  - `dto/create-menu-item.dto.ts`: `beverageIds?`/`extraPortionIds?` (`@IsArray` +
+    `@IsUUID('4', { each: true })`), `*GroupRequired?` (`@IsBoolean`), `*GroupMaxSelectable?`
+    (`@IsInt` + `@Min(1)`) — espejo exacto de `CreateMenuItemInput` en `types.ts`.
+  - `menu.service.ts` `createItem`/`updateItem`: separan `sauceIds`/`beverageIds`/`extraPortionIds`
+    del resto, `merge()` para lo demás, y resuelven cada relación **solo si el campo no es
+    `undefined`** (mismo guard ya confirmado para `sauceIds`) — `ItemForm.tsx` siempre manda los
+    tres arrays como `string[]` (nunca `undefined`), consistente con ese guard.
+  - `src/main.ts`: `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })` — confirma que
+    un `id` colado en el body de `PATCH /beverages/:id` o `/extra-portions/:id` devuelve 400
+    "property id should not exist".
+- `src/types/api.d.ts` regenerado correctamente (`git diff --stat`: 623 inserciones, 2 eliminaciones):
+  trae `/beverages`, `/beverages/{id}`, `/extra-portions`, `/extra-portions/{id}`,
+  `CreateBeverageDto`/`UpdateBeverageDto`/`CreateExtraPortionDto`/`UpdateExtraPortionDto`, y los 6
+  campos nuevos en `CreateMenuItemDto`/`UpdateMenuItemDto` — todo coincide campo a campo con el
+  código fuente real revisado arriba.
+- **Fix de clase "id solo en el path del PATCH"** aplicado desde el primer intento en
+  `useUpdateBeverage`/`useUpdateExtraPortion` (`const { id, ...body } = input`). **Verificado por
+  mutación real (2 mutaciones independientes, Edit puntual + reverso)**: cambié ambos hooks para
+  mandar `input` completo (con `id`) en el body → **4 de 10 tests fallaron exactamente como se
+  esperaba** (`useUpdateBeverage`/`useUpdateExtraPortion`, "el id SOLO en el path" y "conserva los
+  campos editables", `AssertionError: expected { id: ... } to not have property "id"` /
+  `to deeply equal {...sin id}`); restauré ambos hooks y `10/10` volvieron a pasar
+  (`hooks.test.tsx` de ambos módulos).
+- Precio: schema Zod espejo del DTO (`Number.isFinite` → "El precio debe ser un número",
+  `v >= 0.01` → "El precio debe ser mayor a cero", `Math.round(v*100)/100 === v` → "Máximo 2
+  decimales"), con `noValidate` en el `<form>` para que el mensaje de Zod se muestre en vez de que
+  el navegador bloquee el submit silenciosamente (mismo bug de clase ya documentado en Cupones).
+  Casos ya cubiertos por la sesión principal: precio válido con decimales, `0`, más de 2 decimales,
+  edición conserva el `id` solo para la mutación, 409 de nombre duplicado → campo `name`.
+- **Hallazgo de @tester, cerrado en esta misma auditoría (no bloqueante, agregué los tests yo
+  mismo)**: la tarea pedía explícitamente revisar "precio negativo escrito directo sin pasar por
+  el spinner" y "campo vacío" — ninguno de los dos estaba cubierto (el único test de precio
+  inválido usaba `'0'`, pese a que su título decía "0 o negativo"). Agregué 2 tests por formulario
+  (`BeverageForm.test.tsx`, `ExtraPortionForm.test.tsx`): tipear `'-5'` directo y dejar el campo
+  vacío al enviar — ambos casos **ya funcionan correctamente** con el código actual (el `-5` cae en
+  el refine `v >= 0.01` → "El precio debe ser mayor a cero"; el campo vacío coacciona a `0` por el
+  mismo camino), pero no había ninguna prueba que lo demostrara. 14/14 en verde tras agregarlos.
+- **Hallazgo de @tester, cerrado en esta misma auditoría (el más relevante de la ronda)**: la
+  sesión principal actualizó los mocks de `useBeverages`/`useExtraPortions` en
+  `ItemForm.test.tsx` para que el componente no crasheara, pero **no dejó ningún test ejercitando
+  el comportamiento real de esas dos secciones nuevas** — la paridad con el checklist de salsas
+  (inactiva ya asignada "(oculta)", catálogo vacío, payload como `string[]`, alta/baja) y la config
+  de grupo (`Obligatorio`/`Máximo a elegir`) estaban sin cubrir. Agregué 12 tests nuevos (2
+  describes: "ItemForm - checklist de bebidas" y "ItemForm - checklist de porciones extras", 6 cada
+  uno, espejo exacto de los 5 ya existentes para salsas + 1 nuevo de config de grupo por sección).
+  **Verificado por mutación real (2 mutaciones independientes, Edit puntual + reverso)**:
+  (1) quité el sufijo `{!beverage.active ? ' (oculta)' : ''}` en `ItemForm.tsx` → el test "una
+  bebida inactiva ya asignada se muestra..." falló exactamente como se esperaba
+  (`TestingLibraryElementError: Unable to find an element with the text: /Fanta \(oculta\)/i`);
+  (2) forcé `beverageGroupMaxSelectable: 1` fijo en `buildPayload` (en vez de
+  `values.beverageGroupMaxSelectable`) → el test de config de grupo falló exactamente como se
+  esperaba (`expected 1 to be 2`). Ambas mutaciones restauradas, `17/17` en `ItemForm.test.tsx`
+  tras restaurar. `git status` tras la auditoría: solo archivos `*.test.tsx` modificados, ningún
+  archivo de producción quedó tocado.
+- Consistencia de UX entre Salsas/Bebidas/Porciones Extras en `ItemForm.tsx`: los tres bloques
+  comparten estructura idéntica (loading/error/vacío con el mismo wording adaptado, checklist de
+  `Checkbox` + sufijo "(oculta)", payload siempre `string[]`) — confirmado línea por línea
+  comparando los tres bloques del JSX. `BeveragesSection.tsx`/`ExtraPortionsSection.tsx` son
+  espejo estructural de `SaucesSection.tsx` (diff normalizado por nombre = solo texto/naming),
+  con la columna "Precio" agregada.
+- El checklist de grupo (switch "Obligatorio" + input "Máximo a elegir") solo se renderiza cuando
+  el catálogo respectivo tiene al menos un elemento — con catálogo vacío no aparece ni el
+  checklist ni la config de grupo (cubierto por los 2 tests nuevos de "catálogo vacío"), sin
+  romper el caso ya existente de "catálogo de salsas vacío" (sigue en verde, sin cambios).
+- `noValidate` agregado a los 5 `<form>` del módulo (`ItemForm`, `SauceForm`, `CategoryForm`,
+  `BeverageForm`, `ExtraPortionForm`) — confirmado con `grep` que los 5 lo tienen y que ninguno de
+  los otros módulos (`settings`, `coupons`, `star-promotions`, `reward-milestones`, `banners`) fue
+  tocado, tal como reportó la sesión principal. Coincide con el bug de clase ya conocido en
+  Cupones (`minPurchaseAmount`/`percentage`).
+
+❌ Falló:
+- (ninguno bloqueante)
+
+⚠️ Riesgos / casos borde no cubiertos (documentados, no bloqueantes):
+- **Bug de clase pendiente fuera de este alcance**: `settings`, `coupons` (formularios que aún no
+  lo tenían), `star-promotions`, `reward-milestones` y `banners` siguen teniendo `<input
+  type="number">` con `min`/`step` nativos sin `noValidate` en sus `<form>` — mismo patrón de
+  riesgo ya identificado y corregido en Menú y en `GenerateCouponForm`/`GenerateBulkCouponForm`.
+  Vale la pena un barrido dedicado en una sesión futura (regla del proyecto: "si encuentras un bug
+  de clase, haz un barrido completo antes de continuar" — este barrido específico quedó fuera del
+  alcance pedido para esta auditoría).
+- Sin validación explícita en cliente de que `*GroupMaxSelectable` no supere la cantidad de
+  elementos del catálogo elegidos para ese producto (ej. marcar 1 bebida pero dejar "Máximo a
+  elegir" en 5) — el backend tampoco lo valida (`@Min(1)` es la única cota), así que no es una
+  regresión de este frontend, solo un caso borde de UX no resuelto por ninguno de los dos lados.
+- Los 4 campos de config de grupo (`*Required`/`*MaxSelectable`) no tienen tests directos de
+  "tipear directo sin pasar por el spinner" (negativo/vacío) como sí los tiene `price` — el schema
+  Zod usa el mismo patrón ya probado (`z.coerce.number().int().min(...)` + `noValidate`), así que
+  el riesgo es bajo, pero no se verificó explícitamente con un test nuevo en esta ronda.
+- Mismos huecos ya aceptados y heredados de Salsas: sin test de componente de
+  `BeveragesSection.tsx`/`ExtraPortionsSection.tsx` como página end-to-end (tabla/diálogo de
+  borrado con RTL); `MenuPage.tsx` sigue con el `<header>`/JSDoc desactualizado ("Dos vistas:
+  categorías y productos") pese a que ahora son 5 pestañas — puramente cosmético, señalado también
+  en la auditoría de Salsas y aún no corregido; `itemSchema.beverageIds`/`extraPortionIds` son
+  `z.array(z.string())` sin `.uuid()` (mismo criterio laxo ya aceptado para `sauceIds`); sin
+  prueba E2E/Playwright de esta feature específica.
+
+Veredicto: **LISTO**. `type-check`/`lint`/`build` limpios; contrato confirmado línea por línea
+contra el código fuente real del backend; fix de clase "id solo en el path" con test de regresión
+que falla si se revierte (verificado por mutación en ambos hooks nuevos); huecos de cobertura
+reales encontrados (checklist de bebidas/porciones extras y casos borde de precio sin tests) y
+cerrados por @tester en esta misma auditoría con 16 tests nuevos, todos verificados por mutación
+donde aplicaba. Los ítems ⚠️ son no bloqueantes y quedan documentados para la sesión principal.
+

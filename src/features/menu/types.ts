@@ -50,6 +50,26 @@ export interface MenuItem {
    * array (confirmado contra menu.service.ts findAllItems/createItem/updateItem).
    */
   sauces: Sauce[]
+  /**
+   * Bebidas que este producto ofrece (relación ManyToMany, cargada por GET
+   * /menu/items). Vacío = sin selector de bebidas en la app. Mismo criterio
+   * que `sauces` (confirmado contra menu-item.entity.ts del backend).
+   */
+  beverages: Beverage[]
+  /** Si el grupo de bebidas es obligatorio. Sin efecto si `beverages` está vacío. */
+  beverageGroupRequired: boolean
+  /** Máximo de bebidas que el cliente puede elegir para este producto. */
+  beverageGroupMaxSelectable: number
+  /**
+   * Porciones extras que este producto ofrece (relación ManyToMany, cargada
+   * por GET /menu/items). Vacío = sin selector de porciones extras en la app.
+   * Mismo criterio que `sauces`/`beverages`.
+   */
+  extraPortions: ExtraPortion[]
+  /** Si el grupo de porciones extras es obligatorio. Sin efecto si `extraPortions` está vacío. */
+  extraPortionsGroupRequired: boolean
+  /** Máximo de porciones extras que el cliente puede elegir para este producto. */
+  extraPortionsGroupMaxSelectable: number
   createdAt: string
   updatedAt: string
 }
@@ -58,6 +78,38 @@ export interface MenuItem {
 export interface Sauce {
   id: string
   name: string
+  active: boolean
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * Catálogo global de bebidas (ej. Coca-Cola, Inca Kola, Agua). Mismo patrón
+ * que `Sauce`, con `price` — elegir una bebida suma al total del pedido
+ * (confirmado contra beverage.entity.ts del backend).
+ */
+export interface Beverage {
+  id: string
+  name: string
+  /** Precio en soles (la API expone number, no "5.00"). */
+  price: number
+  active: boolean
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * Catálogo global de porciones extras (ej. Papas extra, Tocino extra, Queso
+ * extra). Mismo patrón que `Beverage` (confirmado contra
+ * extra-portion.entity.ts del backend).
+ */
+export interface ExtraPortion {
+  id: string
+  name: string
+  /** Precio en soles (la API expone number, no "8.00"). */
+  price: number
   active: boolean
   sortOrder: number
   createdAt: string
@@ -87,6 +139,24 @@ export interface CreateMenuItemInput {
    */
   sauceIds?: string[]
   specialReward?: boolean
+  /**
+   * UUIDs de las bebidas del catálogo que este producto ofrece. Omitido o
+   * vacío = sin selector de bebidas.
+   */
+  beverageIds?: string[]
+  /** Si el grupo de bebidas es obligatorio (default false). Sin efecto si beverageIds queda vacío. */
+  beverageGroupRequired?: boolean
+  /** Máximo de bebidas que el cliente puede elegir para este producto (default 1). */
+  beverageGroupMaxSelectable?: number
+  /**
+   * UUIDs de las porciones extras del catálogo que este producto ofrece.
+   * Omitido o vacío = sin selector de porciones extras.
+   */
+  extraPortionIds?: string[]
+  /** Si el grupo de porciones extras es obligatorio (default false). Sin efecto si extraPortionIds queda vacío. */
+  extraPortionsGroupRequired?: boolean
+  /** Máximo de porciones extras que el cliente puede elegir para este producto (default 1). */
+  extraPortionsGroupMaxSelectable?: number
 }
 
 export type UpdateMenuItemInput = Partial<CreateMenuItemInput>
@@ -101,3 +171,21 @@ export interface CreateSauceInput {
 }
 
 export type UpdateSauceInput = Partial<CreateSauceInput>
+
+export interface CreateBeverageInput {
+  name: string
+  price: number
+  active?: boolean
+  sortOrder?: number
+}
+
+export type UpdateBeverageInput = Partial<CreateBeverageInput>
+
+export interface CreateExtraPortionInput {
+  name: string
+  price: number
+  active?: boolean
+  sortOrder?: number
+}
+
+export type UpdateExtraPortionInput = Partial<CreateExtraPortionInput>

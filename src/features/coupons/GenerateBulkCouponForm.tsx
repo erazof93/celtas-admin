@@ -228,7 +228,11 @@ export function GenerateBulkCouponForm({ onClose }: GenerateBulkCouponFormProps)
   }
 
   return (
-    <form onSubmit={handleSubmit(onValidated)} className="space-y-4">
+    <form
+      onSubmit={handleSubmit(onValidated)}
+      noValidate
+      className="space-y-4"
+    >
       {result ? (
         <Alert className="border-emerald-400/40 bg-emerald-400/10">
           <CheckCircle2 className="text-emerald-400" />

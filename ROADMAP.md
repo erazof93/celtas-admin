@@ -225,6 +225,21 @@ celtas-admin/
       separados, y que `menu.service.ts updateItem()` usa `repository.merge()` — un PATCH parcial
       nunca pisa otros campos). Riesgo no bloqueante señalado por @tester: sin test de componente de
       `ItemsSection.tsx` para esta columna (tampoco lo tenía la de "Disponible").
+- [x] **Catálogos de Bebidas y Porciones Extras + checklist por producto** (`GET/POST /beverages`,
+      `PATCH/DELETE /beverages/:id`, `GET/POST /extra-portions`, `PATCH/DELETE /extra-portions/:id`,
+      backend deployado): mismo patrón CRUD que Salsas, con `price` (número > 0, máx. 2 decimales,
+      espejo de `CreateBeverageDto`/`CreateExtraPortionDto`). `MenuItem` gana `beverages[]`,
+      `beverageGroupRequired`, `beverageGroupMaxSelectable`, `extraPortions[]`,
+      `extraPortionsGroupRequired`, `extraPortionsGroupMaxSelectable` — confirmado contra el código
+      fuente real de `backend-celtas` (`src/modules/{beverages,extra-portions,menu}`, no solo
+      Swagger). `ItemForm.tsx` gana dos checklists nuevos (mismo patrón que salsas: inactivas ya
+      asignadas se muestran "(oculta)" y pre-marcadas, catálogo vacío → mensaje a la pestaña
+      correspondiente) más un switch "Obligatorio" y un input "Máximo a elegir" por grupo. Bug de
+      clase corregido de paso: `noValidate` agregado a los `<form>` de `ItemForm`/`SauceForm`/
+      `CategoryForm`/`BeverageForm`/`ExtraPortionForm` (la validación nativa del navegador en los
+      `<input type="number">` bloqueaba el submit antes de que Zod mostrara su mensaje en español).
+      **Veredicto de @tester: LISTO** — detalle completo, mutaciones y hallazgos en
+      `docs/testing-checklist.md`, sección "Auditoría: Menu — Bebidas y Porciones Extras".
 
 ### 5. Pedidos
 - [x] Listado paginado, filtro por estado

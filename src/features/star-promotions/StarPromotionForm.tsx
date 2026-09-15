@@ -133,7 +133,11 @@ export function StarPromotionForm({
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      noValidate
+      className="space-y-4"
+    >
       {serverError ? (
         <Alert variant="destructive">
           <AlertTitle>No se pudo guardar</AlertTitle>

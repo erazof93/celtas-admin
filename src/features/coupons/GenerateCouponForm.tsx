@@ -147,7 +147,11 @@ export function GenerateCouponForm({
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form
+      onSubmit={handleSubmit(onSubmit)}
+      noValidate
+      className="space-y-4"
+    >
       {generated ? (
         <Alert className="border-emerald-400/40 bg-emerald-400/10">
           <CheckCircle2 className="text-emerald-400" />

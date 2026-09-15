@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
+import { BeveragesSection } from './beverages/BeveragesSection'
 import { CategoriesSection } from './categories/CategoriesSection'
+import { ExtraPortionsSection } from './extra-portions/ExtraPortionsSection'
 import { ItemsSection } from './items/ItemsSection'
 import { SaucesSection } from './sauces/SaucesSection'
 
@@ -8,6 +10,8 @@ const TABS = [
   { key: 'categories', label: 'Categorías' },
   { key: 'items', label: 'Productos' },
   { key: 'sauces', label: 'Salsas' },
+  { key: 'beverages', label: 'Bebidas' },
+  { key: 'extra-portions', label: 'Porciones Extras' },
 ] as const
 
 type MenuTab = (typeof TABS)[number]['key']
@@ -55,8 +59,12 @@ export default function MenuPage() {
         <CategoriesSection />
       ) : tab === 'items' ? (
         <ItemsSection />
-      ) : (
+      ) : tab === 'sauces' ? (
         <SaucesSection />
+      ) : tab === 'beverages' ? (
+        <BeveragesSection />
+      ) : (
+        <ExtraPortionsSection />
       )}
     </div>
   )

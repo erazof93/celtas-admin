@@ -435,6 +435,84 @@ export interface paths {
         patch: operations["SaucesController_update"];
         trace?: never;
     };
+    "/beverages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar todas las bebidas del catálogo (admin) */
+        get: operations["BeveragesController_findAll"];
+        put?: never;
+        /** Crear una bebida en el catálogo (admin) */
+        post: operations["BeveragesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/beverages/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Eliminar una bebida del catálogo (admin)
+         * @description No afecta pedidos ya creados (guardan un snapshot de nombre + precio); solo la quita de la oferta futura de los productos que la tenían asignada.
+         */
+        delete: operations["BeveragesController_remove"];
+        options?: never;
+        head?: never;
+        /** Editar una bebida del catálogo (admin) */
+        patch: operations["BeveragesController_update"];
+        trace?: never;
+    };
+    "/extra-portions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar todas las porciones extras del catálogo (admin) */
+        get: operations["ExtraPortionsController_findAll"];
+        put?: never;
+        /** Crear una porción extra en el catálogo (admin) */
+        post: operations["ExtraPortionsController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/extra-portions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Eliminar una porción extra del catálogo (admin)
+         * @description No afecta pedidos ya creados (guardan un snapshot de nombre + precio); solo la quita de la oferta futura de los productos que la tenían asignada.
+         */
+        delete: operations["ExtraPortionsController_remove"];
+        options?: never;
+        head?: never;
+        /** Editar una porción extra del catálogo (admin) */
+        patch: operations["ExtraPortionsController_update"];
+        trace?: never;
+    };
     "/orders": {
         parameters: {
             query?: never;
@@ -525,7 +603,7 @@ export interface paths {
         head?: never;
         /**
          * Actualizar el estado de un pedido (solo admin)
-         * @description Valida transiciones (pendiente→confirmado→en_camino→entregado; cancelado solo desde pendiente/confirmado). Al pasar a "entregado" suma el total a user.totalSpent en una transacción.
+         * @description Valida transiciones (pendiente→confirmado→en_camino→entregado; cancelado desde pendiente/confirmado/en_camino). Al pasar a "entregado" suma el total a user.totalSpent en una transacción. Al cancelar un pedido "en_camino" es obligatorio enviar cancelReason; en el resto de transiciones a "cancelado" es opcional.
          */
         patch: operations["OrdersController_updateStatus"];
         trace?: never;
@@ -1262,6 +1340,40 @@ export interface components {
              *     ]
              */
             sauceIds?: string[];
+            /**
+             * @description UUIDs de las bebidas del catálogo que este producto ofrece (vacío u omitido = sin selector de bebidas)
+             * @example [
+             *       "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+             *     ]
+             */
+            beverageIds?: string[];
+            /**
+             * @description Si el grupo de bebidas es obligatorio (default false). Sin efecto si beverageIds queda vacío.
+             * @example false
+             */
+            beverageGroupRequired?: boolean;
+            /**
+             * @description Máximo de bebidas que el cliente puede elegir para este producto (default 1)
+             * @example 1
+             */
+            beverageGroupMaxSelectable?: number;
+            /**
+             * @description UUIDs de las porciones extras del catálogo que este producto ofrece (vacío u omitido = sin selector de porciones extras)
+             * @example [
+             *       "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+             *     ]
+             */
+            extraPortionIds?: string[];
+            /**
+             * @description Si el grupo de porciones extras es obligatorio (default false). Sin efecto si extraPortionIds queda vacío.
+             * @example false
+             */
+            extraPortionsGroupRequired?: boolean;
+            /**
+             * @description Máximo de porciones extras que el cliente puede elegir para este producto (default 1)
+             * @example 1
+             */
+            extraPortionsGroupMaxSelectable?: number;
         };
         UpdateMenuItemDto: {
             /**
@@ -1311,6 +1423,40 @@ export interface components {
              *     ]
              */
             sauceIds?: string[];
+            /**
+             * @description UUIDs de las bebidas del catálogo que este producto ofrece (vacío u omitido = sin selector de bebidas)
+             * @example [
+             *       "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+             *     ]
+             */
+            beverageIds?: string[];
+            /**
+             * @description Si el grupo de bebidas es obligatorio (default false). Sin efecto si beverageIds queda vacío.
+             * @example false
+             */
+            beverageGroupRequired?: boolean;
+            /**
+             * @description Máximo de bebidas que el cliente puede elegir para este producto (default 1)
+             * @example 1
+             */
+            beverageGroupMaxSelectable?: number;
+            /**
+             * @description UUIDs de las porciones extras del catálogo que este producto ofrece (vacío u omitido = sin selector de porciones extras)
+             * @example [
+             *       "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+             *     ]
+             */
+            extraPortionIds?: string[];
+            /**
+             * @description Si el grupo de porciones extras es obligatorio (default false). Sin efecto si extraPortionIds queda vacío.
+             * @example false
+             */
+            extraPortionsGroupRequired?: boolean;
+            /**
+             * @description Máximo de porciones extras que el cliente puede elegir para este producto (default 1)
+             * @example 1
+             */
+            extraPortionsGroupMaxSelectable?: number;
         };
         CreateSauceDto: {
             /**
@@ -1346,6 +1492,94 @@ export interface components {
              */
             sortOrder?: number;
         };
+        CreateBeverageDto: {
+            /**
+             * @description Nombre de la bebida
+             * @example Coca-Cola 500ml
+             */
+            name: string;
+            /**
+             * @description Precio de la bebida en soles (S/)
+             * @example 5
+             */
+            price: number;
+            /**
+             * @description Si la bebida está disponible para asignarse a productos (default true)
+             * @example true
+             */
+            active?: boolean;
+            /**
+             * @description Orden de aparición en el selector (menor = primero)
+             * @example 1
+             */
+            sortOrder?: number;
+        };
+        UpdateBeverageDto: {
+            /**
+             * @description Nombre de la bebida
+             * @example Coca-Cola 500ml
+             */
+            name?: string;
+            /**
+             * @description Precio de la bebida en soles (S/)
+             * @example 5
+             */
+            price?: number;
+            /**
+             * @description Si la bebida está disponible para asignarse a productos (default true)
+             * @example true
+             */
+            active?: boolean;
+            /**
+             * @description Orden de aparición en el selector (menor = primero)
+             * @example 1
+             */
+            sortOrder?: number;
+        };
+        CreateExtraPortionDto: {
+            /**
+             * @description Nombre de la porción extra
+             * @example Papas extra
+             */
+            name: string;
+            /**
+             * @description Precio de la porción extra en soles (S/)
+             * @example 8
+             */
+            price: number;
+            /**
+             * @description Si la porción extra está disponible para asignarse a productos (default true)
+             * @example true
+             */
+            active?: boolean;
+            /**
+             * @description Orden de aparición en el selector (menor = primero)
+             * @example 1
+             */
+            sortOrder?: number;
+        };
+        UpdateExtraPortionDto: {
+            /**
+             * @description Nombre de la porción extra
+             * @example Papas extra
+             */
+            name?: string;
+            /**
+             * @description Precio de la porción extra en soles (S/)
+             * @example 8
+             */
+            price?: number;
+            /**
+             * @description Si la porción extra está disponible para asignarse a productos (default true)
+             * @example true
+             */
+            active?: boolean;
+            /**
+             * @description Orden de aparición en el selector (menor = primero)
+             * @example 1
+             */
+            sortOrder?: number;
+        };
         CreateOrderItemDto: {
             /**
              * @description UUID del producto del menú
@@ -1364,6 +1598,20 @@ export interface components {
              *     ]
              */
             sauceIds?: string[];
+            /**
+             * @description UUIDs de las bebidas elegidas para este ítem (deben estar entre las que el producto ofrece; se aplican a las `quantity` unidades del ítem — cada bebida elegida suma su precio una vez por unidad). Mismo tri-state que sauceIds: omitido = no aplica, [] explícito = "sin bebida" elegido a propósito.
+             * @example [
+             *       "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+             *     ]
+             */
+            beverageIds?: string[];
+            /**
+             * @description UUIDs de las porciones extras elegidas para este ítem (deben estar entre las que el producto ofrece; se aplican a las `quantity` unidades del ítem — cada porción extra elegida suma su precio una vez por unidad). Mismo tri-state que sauceIds.
+             * @example [
+             *       "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+             *     ]
+             */
+            extraPortionIds?: string[];
             /**
              * @description Comentario libre opcional para este ítem (se aplica a las `quantity` unidades del ítem, no una nota por unidad individual). Vacío o solo espacios se trata como ausente.
              * @example Sin cebolla, bien cocida
@@ -1408,6 +1656,11 @@ export interface components {
              * @enum {string}
              */
             status: "pendiente" | "confirmado" | "en_camino" | "entregado" | "cancelado";
+            /**
+             * @description Motivo de la cancelación. Obligatorio solo cuando el pedido está "en_camino" y se cancela; opcional en el resto de transiciones a "cancelado".
+             * @example El cliente ya no se encuentra en la dirección de entrega
+             */
+            cancelReason?: string;
         };
         GenerateCouponDto: {
             /**
@@ -3026,6 +3279,374 @@ export interface operations {
             };
         };
     };
+    BeveragesController_findAll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lista de bebidas */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BeveragesController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBeverageDto"];
+            };
+        };
+        responses: {
+            /** @description Bebida creada */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Payload inválido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya existe una bebida con ese nombre */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BeveragesController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID de la bebida */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bebida eliminada */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La bebida no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    BeveragesController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID de la bebida */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateBeverageDto"];
+            };
+        };
+        responses: {
+            /** @description Bebida actualizada */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Payload inválido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La bebida no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya existe otra bebida con ese nombre */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ExtraPortionsController_findAll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lista de porciones extras */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ExtraPortionsController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateExtraPortionDto"];
+            };
+        };
+        responses: {
+            /** @description Porción extra creada */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Payload inválido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya existe una porción extra con ese nombre */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ExtraPortionsController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID de la porción extra */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Porción extra eliminada */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La porción extra no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ExtraPortionsController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID de la porción extra */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateExtraPortionDto"];
+            };
+        };
+        responses: {
+            /** @description Porción extra actualizada */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Payload inválido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description La porción extra no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya existe otra porción extra con ese nombre */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     OrdersController_listAll: {
         parameters: {
             query?: {
@@ -3243,7 +3864,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Transición de estado inválida */
+            /** @description Transición de estado inválida, o falta cancelReason al cancelar un pedido en_camino */
             400: {
                 headers: {
                     [name: string]: unknown;
