@@ -1341,6 +1341,16 @@ export interface components {
              */
             sauceIds?: string[];
             /**
+             * @description Si el grupo de salsas es obligatorio (default false). Sin efecto si sauceIds queda vacío.
+             * @example false
+             */
+            sauceGroupRequired?: boolean;
+            /**
+             * @description Máximo de salsas que el cliente puede elegir para este producto (default 1)
+             * @example 1
+             */
+            sauceGroupMaxSelectable?: number;
+            /**
              * @description UUIDs de las bebidas del catálogo que este producto ofrece (vacío u omitido = sin selector de bebidas)
              * @example [
              *       "3fa85f64-5717-4562-b3fc-2c963f66afa6"
@@ -1423,6 +1433,16 @@ export interface components {
              *     ]
              */
             sauceIds?: string[];
+            /**
+             * @description Si el grupo de salsas es obligatorio (default false). Sin efecto si sauceIds queda vacío.
+             * @example false
+             */
+            sauceGroupRequired?: boolean;
+            /**
+             * @description Máximo de salsas que el cliente puede elegir para este producto (default 1)
+             * @example 1
+             */
+            sauceGroupMaxSelectable?: number;
             /**
              * @description UUIDs de las bebidas del catálogo que este producto ofrece (vacío u omitido = sin selector de bebidas)
              * @example [

@@ -122,6 +122,8 @@ function makeItem(overrides: Partial<MenuItem> = {}): MenuItem {
     categoryId: 'cat-burgers',
     category: { id: 'cat-burgers', name: 'Burgers' } as Category,
     sauces: [],
+    sauceGroupRequired: false,
+    sauceGroupMaxSelectable: 1,
     beverages: [],
     beverageGroupRequired: false,
     beverageGroupMaxSelectable: 1,
@@ -248,6 +250,50 @@ describe('ItemForm - checklist de salsas', () => {
 
     expect(screen.getByText(/No se pudieron cargar las salsas/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeEnabled()
+  })
+
+  it('al editar un producto con sauceGroupRequired=true, el switch "Obligatorio" carga marcado y se conserva en el payload sin tocarlo', async () => {
+    const user = userEvent.setup()
+    updateMock.mockResolvedValue(makeItem())
+    saucesState.data = [makeSauce({ id: 's-mayo', name: 'Mayonesa' })]
+
+    render(
+      <ItemForm
+        item={makeItem({
+          sauces: [makeSauce({ id: 's-mayo', name: 'Mayonesa' })],
+          sauceGroupRequired: true,
+          sauceGroupMaxSelectable: 1,
+        })}
+        onClose={() => {}}
+      />,
+    )
+
+    expect(
+      screen.getByRole('switch', { name: 'El cliente debe elegir una salsa' }),
+    ).toBeChecked()
+
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
+    const payload = updateMock.mock.calls[0][0] as { sauceGroupRequired: boolean }
+    expect(payload.sauceGroupRequired).toBe(true)
+  })
+
+  it('al editar un producto con sauceGroupMaxSelectable=3, el input "Máximo a elegir" muestra 3', () => {
+    saucesState.data = [makeSauce({ id: 's-mayo', name: 'Mayonesa' })]
+
+    render(
+      <ItemForm
+        item={makeItem({
+          sauces: [makeSauce({ id: 's-mayo', name: 'Mayonesa' })],
+          sauceGroupRequired: false,
+          sauceGroupMaxSelectable: 3,
+        })}
+        onClose={() => {}}
+      />,
+    )
+
+    expect(screen.getByLabelText('Máximo a elegir')).toHaveValue(3)
   })
 })
 

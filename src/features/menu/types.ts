@@ -50,6 +50,10 @@ export interface MenuItem {
    * array (confirmado contra menu.service.ts findAllItems/createItem/updateItem).
    */
   sauces: Sauce[]
+  /** Si el grupo de salsas es obligatorio. Sin efecto si `sauces` está vacío. */
+  sauceGroupRequired: boolean
+  /** Máximo de salsas que el cliente puede elegir para este producto. */
+  sauceGroupMaxSelectable: number
   /**
    * Bebidas que este producto ofrece (relación ManyToMany, cargada por GET
    * /menu/items). Vacío = sin selector de bebidas en la app. Mismo criterio
@@ -138,6 +142,10 @@ export interface CreateMenuItemInput {
    * = sin selector de salsas en la app (ej. arroz chaufa).
    */
   sauceIds?: string[]
+  /** Si el grupo de salsas es obligatorio (default false). Sin efecto si sauceIds queda vacío. */
+  sauceGroupRequired?: boolean
+  /** Máximo de salsas que el cliente puede elegir para este producto (default 1). */
+  sauceGroupMaxSelectable?: number
   specialReward?: boolean
   /**
    * UUIDs de las bebidas del catálogo que este producto ofrece. Omitido o

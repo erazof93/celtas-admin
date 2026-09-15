@@ -55,6 +55,11 @@ const itemSchema = z.object({
   categoryId: z.string().min(1, 'Selecciona una categoría'),
   available: z.boolean(),
   sauceIds: z.array(z.string()).default([]),
+  sauceGroupRequired: z.boolean(),
+  sauceGroupMaxSelectable: z.coerce
+    .number()
+    .int('Debe ser un número entero')
+    .min(1, 'Debe ser al menos 1'),
   beverageIds: z.array(z.string()).default([]),
   beverageGroupRequired: z.boolean(),
   beverageGroupMaxSelectable: z.coerce
@@ -123,6 +128,8 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
       categoryId: item?.categoryId ?? '',
       available: item?.available ?? true,
       sauceIds: item?.sauces.map((sauce) => sauce.id) ?? [],
+      sauceGroupRequired: item?.sauceGroupRequired ?? false,
+      sauceGroupMaxSelectable: item?.sauceGroupMaxSelectable ?? 1,
       beverageIds: item?.beverages.map((beverage) => beverage.id) ?? [],
       beverageGroupRequired: item?.beverageGroupRequired ?? false,
       beverageGroupMaxSelectable: item?.beverageGroupMaxSelectable ?? 1,
@@ -148,6 +155,8 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
       categoryId: values.categoryId,
       available: values.available,
       sauceIds: values.sauceIds,
+      sauceGroupRequired: values.sauceGroupRequired,
+      sauceGroupMaxSelectable: values.sauceGroupMaxSelectable,
       beverageIds: values.beverageIds,
       beverageGroupRequired: values.beverageGroupRequired,
       beverageGroupMaxSelectable: values.beverageGroupMaxSelectable,
@@ -354,31 +363,72 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
             pestaña "Salsas" del Menú.
           </p>
         ) : (
-          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-            {(saucesQuery.data ?? []).map((sauce) => (
-              <label
-                key={sauce.id}
-                className="flex items-center gap-1.5 text-sm"
-              >
-                <Checkbox
-                  checked={sauceIds?.includes(sauce.id) ?? false}
-                  onCheckedChange={(isChecked) => {
-                    const current = sauceIds ?? []
-                    setValue(
-                      'sauceIds',
-                      isChecked
-                        ? [...current, sauce.id]
-                        : current.filter((id) => id !== sauce.id),
-                    )
-                  }}
+          <>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+              {(saucesQuery.data ?? []).map((sauce) => (
+                <label
+                  key={sauce.id}
+                  className="flex items-center gap-1.5 text-sm"
+                >
+                  <Checkbox
+                    checked={sauceIds?.includes(sauce.id) ?? false}
+                    onCheckedChange={(isChecked) => {
+                      const current = sauceIds ?? []
+                      setValue(
+                        'sauceIds',
+                        isChecked
+                          ? [...current, sauce.id]
+                          : current.filter((id) => id !== sauce.id),
+                      )
+                    }}
+                  />
+                  <span className={sauce.active ? '' : 'text-muted-foreground'}>
+                    {sauce.name}
+                    {!sauce.active ? ' (oculta)' : ''}
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 pt-1">
+              <div className="space-y-1.5">
+                <Label htmlFor="item-sauce-max">Máximo a elegir</Label>
+                <Input
+                  id="item-sauce-max"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  aria-invalid={Boolean(errors.sauceGroupMaxSelectable)}
+                  {...register('sauceGroupMaxSelectable')}
                 />
-                <span className={sauce.active ? '' : 'text-muted-foreground'}>
-                  {sauce.name}
-                  {!sauce.active ? ' (oculta)' : ''}
-                </span>
-              </label>
-            ))}
-          </div>
+                {errors.sauceGroupMaxSelectable ? (
+                  <p className="text-celtas-red-light text-xs">
+                    {errors.sauceGroupMaxSelectable.message}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="space-y-1.5">
+                <span className="text-sm font-medium">Obligatorio</span>
+                <div className="flex items-center gap-2 pt-0.5">
+                  <Controller
+                    control={control}
+                    name="sauceGroupRequired"
+                    render={({ field }) => (
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        aria-label="El cliente debe elegir una salsa"
+                      />
+                    )}
+                  />
+                  <span className="text-muted-foreground text-sm">
+                    El cliente debe elegir una
+                  </span>
+                </div>
+              </div>
+            </div>
+          </>
         )}
       </div>
 
