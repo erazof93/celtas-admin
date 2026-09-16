@@ -106,6 +106,83 @@ solo cuando pasa lo aplicable de este checklist.
       loading/error/vacío explícitos en `SaucesSection` y en la sección de salsas de `ItemForm`.
       409 de nombre duplicado mapeado al campo `name` en `SauceForm`. Sin `any`/`@ts-ignore`, sin
       hex hardcodeado, sin texto en inglés.
+- [x] **`ItemForm.tsx` envuelto en `ScrollArea` (`src/components/ui/scroll-area.tsx`, nuevo,
+      shadcn estándar importando desde `radix-ui` unificado) — auditado por @tester el
+      2026-09-16, dos rondas. 1ª ronda: NO LISTO (bug bloqueante encontrado, no corregido por
+      regla del rol, reportado a la sesión principal). 2ª ronda (tras el fix): LISTO, con un
+      caso borde residual documentado**:
+      - `pnpm run type-check`, `pnpm run lint` (0 errores; mismo warning preexistente ajeno en
+        `StarPromotionForm.tsx`), `pnpm run build` y `pnpm run test` (273/273, 39 archivos,
+        incluye `ItemForm.test.tsx` 21/21) — los cuatro en verde en ambas rondas. Sin regresión
+        detectable en validaciones, selects, checkboxes ni envío del formulario. (Una corrida de
+        la suite completa tras el fix mostró 1 fallo en `BroadcastForm.test.tsx` — reproducido
+        en aislado: 5/5 en verde, confirma la flakiness preexistente por contención de CPU ya
+        documentada en otras secciones de este archivo, ajena a este cambio.)
+      - ❌ **1ª ronda — bug de layout encontrado** (no detectable por la suite de Vitest/jsdom,
+        que no calcula overflow real — se confirmó leyendo el código compilado real de
+        `@radix-ui/react-scroll-area`, no por inferencia): `ScrollArea` (Root) recibía
+        `className="max-h-[80vh]"` directamente — `max-height` sin `height` explícito, sin
+        `overflow-hidden` en el Root. Su `Viewport` interno (`size-full` → `height: 100%`) no
+        tenía una altura definida contra la cual resolverse (CSS 2.1 §10.5: el porcentaje solo
+        se resuelve si la altura del padre fue "especificada explícitamente", y `max-height` no
+        cuenta) — colapsaba a `height: auto` (crecía a su contenido real). Radix mide
+        `scrollHeight` vs `clientHeight` del `Viewport` para decidir si activa el scroll
+        (`.../dist/index.mjs` línea ~121: `overflowY: context.scrollbarYEnabled ? "scroll" :
+        "hidden"`); con el `Viewport` ya crecido a su contenido, ambas medidas coincidían y
+        Radix nunca activaba el scroll — el contenido se desbordaba de los 80vh sin recortarse
+        ni poder alcanzar el footer (Guardar/Cancelar) con scroll. Reportado sin corregir, por
+        regla del rol.
+      - ✅ **2ª ronda — fix verificado, mecanismo confirmado correcto**: la sesión principal
+        movió `max-h-[80vh]` + `overflow-hidden` a un `<div className="flex max-h-[80vh]
+        flex-col overflow-hidden">` que envuelve al `ScrollArea`, y el `ScrollArea` pasó a
+        `className="min-h-0 flex-1"` (sin `max-h` propio). Confirmado línea por línea en el
+        archivo real (`ItemForm.tsx` líneas 217-219 y 676-678), no solo por el diff pegado en el
+        mensaje. Con esta estructura, el algoritmo de flexbox (no la resolución de porcentajes
+        de CSS 2.1 §10.5, que es la regla que rompía el patrón anterior) calcula la altura
+        "tentativa" del contenedor flex (`flex flex-col`) sumando el tamaño hipotético de sus
+        hijos, y la clampa contra `max-height: 80vh` — esto SÍ produce una altura final definida
+        para el contenedor (el algoritmo flex resuelve el `max-height` antes de repartir espacio
+        entre los flex-items, a diferencia del layout de bloque con porcentajes). El
+        `overflow-hidden` explícito en ese mismo div ahora sí recorta cualquier exceso. El
+        `ScrollArea` (Root), como único flex-item con `flex-1` + `min-h-0` (crítico: sin
+        `min-h-0`, el default `min-height: auto` de un flex-item no lo deja encogerse por debajo
+        de la altura mínima de su contenido, reproduciendo el mismo bug), recibe ahora una
+        altura definida real vía flexbox — su `Viewport` (`height: 100%`) sí puede resolverse
+        contra ella, `clientHeight` queda genuinamente menor que `scrollHeight` cuando el
+        contenido excede el espacio, y Radix activa `overflow-y: scroll` correctamente. Verificado
+        que las clases compiladas existen tal cual en el CSS de build (`dist/assets/index-*.css`):
+        `.max-h-\[80vh\]{max-height:80vh}`, `.min-h-0{min-height:0}`, `.flex-1{flex:1}`,
+        `.flex-col{flex-direction:column}`, `.overflow-hidden{overflow:hidden}`,
+        `.flex{display:flex}` — no es solo una promesa de nombre de clase, el CSS real las
+        emite. Es el patrón canónico recomendado para "Dialog + ScrollArea + formulario largo" en
+        Radix/shadcn (evita la deficiencia de porcentaje-contra-padre-auto usando el algoritmo de
+        flexbox, que sí resuelve `max-height` antes de heredar la altura hacia abajo).
+      - ⚠️ **Caso borde residual, NO bloqueante, documentado (no verificado con navegador real —
+        sigue sin haber Playwright/herramienta de navegador en este entorno)**: el fix resuelve
+        que el *contenido del formulario* se pueda scrollear dentro de sus 80vh, pero
+        `DialogContent` (`src/components/ui/dialog.tsx`, sin tocar por este fix a propósito) y
+        `ItemsSection.tsx` siguen sin tener `max-height`/`overflow` propios — el div envolvente
+        vive dentro de un `DialogHeader` + `gap-4` + `p-4` (~32px padding) que NO están
+        contemplados en el `80vh` (esa unidad es relativa al viewport completo, no al espacio
+        restante tras el header). Estimando la altura del `DialogHeader` (~60-90px) + `gap-4`
+        (16px) + padding (32px) ≈ 110-140px adicionales por fuera del `80vh` del formulario: en
+        viewports con menos de ~590px de alto (ventana de navegador achicada, zoom alto, algunos
+        tablets/móviles en landscape con la barra del navegador visible) el `DialogContent`
+        total seguiría excediendo el viewport, y como no tiene scroll/overflow propio ni lo
+        compensa el `body` (bloqueado por Radix Dialog mientras el diálogo está abierto), el
+        borde inferior del diálogo —y con él el footer, aun con el scroll interno funcionando
+        correctamente— podría quedar por debajo del viewport visible, inalcanzable. Mucho menos
+        severo que el bug original (que rompía en cualquier pantalla normal), pero sigue siendo
+        un caso real en pantallas cortas. Sugerencia para una vuelta de pulido futura, no
+        bloqueante: acotar también `DialogContent` (ej. `max-h-[90vh] overflow-y-auto`, o restar
+        el alto estimado del header al `max-h` del formulario con `calc()`), fuera del alcance
+        que la sesión principal decidió tocar en este fix puntual.
+      - Veredicto: **LISTO** — el bug reportado y verificado en la 1ª ronda está corregido con el
+        patrón correcto (confirmado por mecanismo CSS/flexbox, no solo por confiar en el reporte
+        de la sesión principal); type-check/lint/build/tests en verde, sin regresión. Único
+        pendiente: el caso borde de viewports muy cortos arriba, documentado como riesgo menor no
+        bloqueante, sin confirmación visual en navegador real por falta de herramienta en este
+        entorno.
 
 
 ## Orders

@@ -28,7 +28,7 @@ import {
 } from './users-utils'
 import type { AdminUser } from './types'
 
-const PAGE_SIZE = 10
+const PAGE_SIZE = 15
 
 /**
  * Usuarios — MÓDULO 9. Listado paginado (GET /users) con filtro de búsqueda
@@ -116,7 +116,9 @@ export default function UsersPage() {
                 <TableBody>
                   {visibleUsers.map((user) => (
                     <TableRow key={user.id}>
-                      <TableCell className="font-medium">{user.fullName}</TableCell>
+                      <TableCell className="font-medium">
+                        {user.fullName}
+                      </TableCell>
                       <TableCell className="text-muted-foreground text-sm">
                         {user.email}
                       </TableCell>
