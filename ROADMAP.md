@@ -240,6 +240,16 @@ celtas-admin/
       `<input type="number">` bloqueaba el submit antes de que Zod mostrara su mensaje en español).
       **Veredicto de @tester: LISTO** — detalle completo, mutaciones y hallazgos en
       `docs/testing-checklist.md`, sección "Auditoría: Menu — Bebidas y Porciones Extras".
+- [x] **Bebida gratis en combos** (`Beverage.includeFreeTo`, `PATCH/POST /beverages`): campo
+      `includeFreeTo?: string[]` confirmado contra el código fuente real de `backend-celtas`
+      (`beverage.entity.ts`, `create-beverage.dto.ts`) — el `api.d.ts` local estaba desactualizado
+      y se regeneró con `pnpm run generate:types` antes de tocar el componente. `BeverageForm.tsx`
+      gana un checklist de productos (mismo patrón que los checklists de salsas/bebidas/porciones
+      extras en `ItemForm.tsx`), con aviso puntual "(bebida no asignada como opción)" por producto
+      que todavía no tiene esta bebida como opción propia — condición real para que el precio 0
+      del combo aplique, confirmado contra `menu.service.ts`. **Veredicto de @tester: LISTO**
+      (`type-check`/`lint`/`build` limpios, 277/277 tests verificados por mutación real) — detalle
+      completo en `docs/testing-checklist.md`, sección "Auditoría: Menu — Bebida gratis en combos".
 
 ### 5. Pedidos
 - [x] Listado paginado, filtro por estado

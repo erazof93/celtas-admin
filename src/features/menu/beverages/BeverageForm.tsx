@@ -1,19 +1,23 @@
 import { useState } from 'react'
-import { Controller, useForm } from 'react-hook-form'
+import { Controller, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { getApiMessage, isConflict } from '@/lib/api-errors'
+import { useMenuItems } from '../items/hooks'
 import { useCreateBeverage, useUpdateBeverage } from './hooks'
 import type { Beverage } from '../types'
 
 /**
  * Reglas espejo del CreateBeverageDto del backend: nombre obligatorio, precio
- * > 0 con máximo 2 decimales, sortOrder entero >= 0.
+ * > 0 con máximo 2 decimales, sortOrder entero >= 0. includeFreeTo es un
+ * array de ids de MenuItem (combos) — igual que sauceIds/beverageIds en
+ * ItemForm, se normaliza siempre a array, nunca undefined.
  */
 const beverageSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio'),
@@ -22,6 +26,7 @@ const beverageSchema = z.object({
     .refine((v) => Number.isFinite(v), 'El precio debe ser un número')
     .refine((v) => v >= 0.01, 'El precio debe ser mayor a cero')
     .refine((v) => Math.round(v * 100) / 100 === v, 'Máximo 2 decimales'),
+  includeFreeTo: z.array(z.string()).default([]),
   sortOrder: z.coerce
     .number()
     .int('El orden debe ser un número entero')
@@ -44,6 +49,7 @@ interface BeverageFormProps {
  * mismo patrón que SauceForm/CategoryForm/ItemForm.
  */
 export function BeverageForm({ beverage, onClose }: BeverageFormProps) {
+  const menuItemsQuery = useMenuItems()
   const createMutation = useCreateBeverage()
   const updateMutation = useUpdateBeverage()
   const isEditing = Boolean(beverage)
@@ -53,6 +59,7 @@ export function BeverageForm({ beverage, onClose }: BeverageFormProps) {
     register,
     handleSubmit,
     control,
+    setValue,
     setError,
     formState: { errors, isSubmitting },
   } = useForm<BeverageFormInputValues, unknown, BeverageFormValues>({
@@ -60,16 +67,20 @@ export function BeverageForm({ beverage, onClose }: BeverageFormProps) {
     defaultValues: {
       name: beverage?.name ?? '',
       price: beverage?.price ?? '',
+      includeFreeTo: beverage?.includeFreeTo ?? [],
       sortOrder: beverage?.sortOrder ?? 0,
       active: beverage?.active ?? true,
     },
   })
+
+  const includeFreeTo = useWatch({ control, name: 'includeFreeTo' })
 
   async function onSubmit(values: BeverageFormValues) {
     setServerError(null)
     const payload = {
       name: values.name.trim(),
       price: values.price,
+      includeFreeTo: values.includeFreeTo,
       sortOrder: values.sortOrder,
       active: values.active,
     }
@@ -158,6 +169,69 @@ export function BeverageForm({ beverage, onClose }: BeverageFormProps) {
             </p>
           ) : null}
         </div>
+      </div>
+
+      <div className="space-y-1.5 pt-2">
+        <Label className="text-sm font-medium">Incluida GRATIS en combos</Label>
+        <p className="text-muted-foreground mb-1 text-xs">
+          Productos en los que esta bebida va gratis al elegirla. Solo tiene
+          efecto en productos que además tengan esta bebida asignada como
+          opción (pestaña "Bebidas" del producto) — marcarla acá sola no la
+          agrega como opción.
+        </p>
+        {menuItemsQuery.isLoading ? (
+          <p className="text-muted-foreground text-xs">Cargando productos…</p>
+        ) : menuItemsQuery.isError ? (
+          <Alert variant="destructive">
+            <AlertTitle>No se pudieron cargar los productos</AlertTitle>
+            <AlertDescription>
+              Esta bebida se puede guardar igual, pero no vas a poder
+              asignarle combos hasta que recargues la página.
+            </AlertDescription>
+          </Alert>
+        ) : menuItemsQuery.data && menuItemsQuery.data.length === 0 ? (
+          <p className="text-muted-foreground text-xs">
+            Todavía no hay productos en el catálogo. Créalos primero en la
+            pestaña "Productos" del Menú.
+          </p>
+        ) : (
+          <div className="max-h-[200px] space-y-1.5 overflow-y-auto rounded border p-2">
+            {(menuItemsQuery.data ?? []).map((menuItem) => {
+              // Sin esto, el checklist no avisa que marcar el combo acá no
+              // alcanza si el producto no tiene esta bebida como opción propia
+              // (menu.service.ts solo aplica precio 0 sobre MenuItem.beverages).
+              const isAssigned = beverage
+                ? menuItem.beverages.some((b) => b.id === beverage.id)
+                : false
+              return (
+                <label
+                  key={menuItem.id}
+                  className="flex items-center gap-1.5 text-sm"
+                >
+                  <Checkbox
+                    checked={includeFreeTo?.includes(menuItem.id) ?? false}
+                    onCheckedChange={(isChecked) => {
+                      const current = includeFreeTo ?? []
+                      setValue(
+                        'includeFreeTo',
+                        isChecked
+                          ? [...current, menuItem.id]
+                          : current.filter((id) => id !== menuItem.id),
+                      )
+                    }}
+                  />
+                  <span
+                    className={menuItem.available ? '' : 'text-muted-foreground'}
+                  >
+                    {menuItem.name}
+                    {!menuItem.available ? ' (no disponible)' : ''}
+                    {!isAssigned ? ' (bebida no asignada como opción)' : ''}
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       <div className="space-y-1.5">

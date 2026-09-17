@@ -100,6 +100,15 @@ export interface Beverage {
   price: number
   active: boolean
   sortOrder: number
+  /**
+   * IDs de MenuItem (combos) en los que esta bebida va gratis (precio 0) al
+   * elegirla — confirmado contra beverage.entity.ts del backend. `null` =
+   * nunca es gratis (columna nullable, sin default). Solo tiene efecto en un
+   * producto que ADEMÁS tenga esta bebida asignada como opción propia
+   * (confirmado contra menu.service.ts: MenuService aplica precio 0 mapeando
+   * sobre `MenuItem.beverages`, no sobre este array de forma independiente).
+   */
+  includeFreeTo: string[] | null
   createdAt: string
   updatedAt: string
 }
@@ -185,6 +194,8 @@ export interface CreateBeverageInput {
   price: number
   active?: boolean
   sortOrder?: number
+  /** Omitido o vacío = nunca es gratis en ningún combo. */
+  includeFreeTo?: string[]
 }
 
 export type UpdateBeverageInput = Partial<CreateBeverageInput>

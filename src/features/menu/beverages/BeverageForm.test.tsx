@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AxiosError } from 'axios'
 import { BeverageForm } from './BeverageForm'
-import type { Beverage } from '../types'
+import type { Beverage, MenuItem } from '../types'
 
 function makeConflictError(message: string) {
   return new AxiosError(
@@ -31,6 +31,16 @@ vi.mock('./hooks', () => ({
   useUpdateBeverage: () => ({ mutateAsync: updateMock }),
 }))
 
+const menuItemsState: {
+  data: MenuItem[] | undefined
+  isLoading: boolean
+  isError: boolean
+} = { data: [], isLoading: false, isError: false }
+
+vi.mock('../items/hooks', () => ({
+  useMenuItems: () => menuItemsState,
+}))
+
 function makeBeverage(overrides: Partial<Beverage> = {}): Beverage {
   return {
     id: 'b-cocacola',
@@ -38,6 +48,34 @@ function makeBeverage(overrides: Partial<Beverage> = {}): Beverage {
     price: 5,
     active: true,
     sortOrder: 0,
+    includeFreeTo: null,
+    createdAt: '2026-08-01T12:00:00.000Z',
+    updatedAt: '2026-08-01T12:00:00.000Z',
+    ...overrides,
+  }
+}
+
+function makeMenuItem(overrides: Partial<MenuItem> = {}): MenuItem {
+  return {
+    id: 'combo-1',
+    name: 'Combo Clásico',
+    description: null,
+    price: 24.9,
+    image: null,
+    available: true,
+    redeemableWithStars: false,
+    specialReward: false,
+    categoryId: 'cat-combos',
+    category: { id: 'cat-combos', name: 'Combos' } as MenuItem['category'],
+    sauces: [],
+    sauceGroupRequired: false,
+    sauceGroupMaxSelectable: 1,
+    beverages: [],
+    beverageGroupRequired: false,
+    beverageGroupMaxSelectable: 1,
+    extraPortions: [],
+    extraPortionsGroupRequired: false,
+    extraPortionsGroupMaxSelectable: 1,
     createdAt: '2026-08-01T12:00:00.000Z',
     updatedAt: '2026-08-01T12:00:00.000Z',
     ...overrides,
@@ -47,6 +85,9 @@ function makeBeverage(overrides: Partial<Beverage> = {}): Beverage {
 beforeEach(() => {
   createMock.mockReset()
   updateMock.mockReset()
+  menuItemsState.data = []
+  menuItemsState.isLoading = false
+  menuItemsState.isError = false
 })
 
 describe('BeverageForm', () => {
@@ -147,6 +188,89 @@ describe('BeverageForm', () => {
     }
     expect(payload.id).toBe('b-1')
     expect(payload.price).toBe(6)
+  })
+
+  it('crea una bebida marcada como gratis en combos seleccionados', async () => {
+    const user = userEvent.setup()
+    menuItemsState.data = [
+      makeMenuItem({ id: 'combo-1', name: 'Combo Clásico' }),
+      makeMenuItem({ id: 'combo-2', name: 'Combo Familiar' }),
+      makeMenuItem({ id: 'combo-3', name: 'Combo Broaster' }),
+    ]
+    createMock.mockResolvedValue(makeBeverage())
+
+    render(<BeverageForm onClose={() => {}} />)
+
+    await user.type(screen.getByLabelText('Nombre'), 'Inca Kola 500ml')
+    await user.clear(screen.getByLabelText('Precio (S/)'))
+    await user.type(screen.getByLabelText('Precio (S/)'), '5')
+    await user.click(screen.getByText(/^Combo Clásico/))
+    await user.click(screen.getByText(/^Combo Familiar/))
+    await user.click(screen.getByRole('button', { name: 'Crear bebida' }))
+
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1))
+    const payload = createMock.mock.calls[0][0] as { includeFreeTo: string[] }
+    expect(payload.includeFreeTo).toEqual(['combo-1', 'combo-2'])
+  })
+
+  it('al editar, actualiza includeFreeTo con los combos marcados', async () => {
+    const user = userEvent.setup()
+    menuItemsState.data = [
+      makeMenuItem({ id: 'combo-1', name: 'Combo Clásico' }),
+      makeMenuItem({ id: 'combo-2', name: 'Combo Familiar' }),
+    ]
+    const beverage = makeBeverage({ id: 'b-1', includeFreeTo: ['combo-1'] })
+    updateMock.mockResolvedValue(beverage)
+
+    render(<BeverageForm beverage={beverage} onClose={() => {}} />)
+
+    await user.click(screen.getByText(/^Combo Familiar/))
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
+    const payload = updateMock.mock.calls[0][0] as { includeFreeTo: string[] }
+    expect(payload.includeFreeTo).toEqual(['combo-1', 'combo-2'])
+  })
+
+  it('al editar, quita un combo desmarcado de includeFreeTo', async () => {
+    const user = userEvent.setup()
+    menuItemsState.data = [
+      makeMenuItem({ id: 'combo-1', name: 'Combo Clásico' }),
+      makeMenuItem({ id: 'combo-2', name: 'Combo Familiar' }),
+    ]
+    const beverage = makeBeverage({
+      id: 'b-1',
+      includeFreeTo: ['combo-1', 'combo-2'],
+    })
+    updateMock.mockResolvedValue(beverage)
+
+    render(<BeverageForm beverage={beverage} onClose={() => {}} />)
+
+    await user.click(screen.getByText(/^Combo Clásico/))
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
+    const payload = updateMock.mock.calls[0][0] as { includeFreeTo: string[] }
+    expect(payload.includeFreeTo).toEqual(['combo-2'])
+  })
+
+  it('avisa cuando un combo no tiene la bebida asignada como opción todavía', async () => {
+    const beverage = makeBeverage({ id: 'b-1', includeFreeTo: [] })
+    menuItemsState.data = [
+      makeMenuItem({
+        id: 'combo-1',
+        name: 'Combo Clásico',
+        beverages: [beverage],
+      }),
+      makeMenuItem({ id: 'combo-2', name: 'Combo Familiar', beverages: [] }),
+    ]
+
+    render(<BeverageForm beverage={beverage} onClose={() => {}} />)
+
+    expect(screen.getByText('Combo Clásico')).toBeInTheDocument()
+    expect(
+      screen.getByText('Combo Familiar (bebida no asignada como opción)'),
+    ).toBeInTheDocument()
   })
 
   it('409 de nombre duplicado se muestra como error del campo "Nombre"', async () => {

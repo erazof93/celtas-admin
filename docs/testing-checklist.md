@@ -1733,3 +1733,93 @@ reales encontrados (checklist de bebidas/porciones extras y casos borde de preci
 cerrados por @tester en esta misma auditoría con 16 tests nuevos, todos verificados por mutación
 donde aplicaba. Los ítems ⚠️ son no bloqueantes y quedan documentados para la sesión principal.
 
+## Auditoría: Menu — Bebida gratis en combos (`Beverage.includeFreeTo`)
+
+Auditor: @tester (independiente). Fecha: 2026-09-16. Alcance: `src/features/menu/types.ts`,
+`src/features/menu/beverages/BeverageForm.tsx`, `src/features/menu/beverages/BeverageForm.test.tsx`,
+`src/features/menu/items/ItemForm.test.tsx`, `src/types/api.d.ts`.
+
+✅ Pasó:
+- `pnpm run type-check` (`tsc -b`): sin salida, cero errores.
+- `pnpm run lint` (`eslint .`): `0 errors, 1 warning` (mismo warning preexistente y ajeno de
+  `StarPromotionForm.tsx`).
+- `pnpm run build`: build limpio, sin warnings nuevos.
+- `pnpm exec vitest run --maxWorkers=2`: **277/277** (40 archivos).
+- Contrato: `Beverage.includeFreeTo: string[] | null` y `CreateBeverageInput.includeFreeTo?:
+  string[]` en `types.ts` coinciden con `CreateBeverageDto`/`UpdateBeverageDto` regenerados en
+  `src/types/api.d.ts` (`includeFreeTo?: string[]`, único diff real del regenerado en este
+  archivo aparte de dos cambios ajenos de otro módulo — `OrdersController_listMine` y la
+  `description` de `/rewards/catalog` — que confirman que se regeneró contra el swagger real, no
+  a mano). Como es esperable en este proyecto, Swagger no documenta el shape de la entidad
+  `Beverage` en las respuestas GET, así que el campo en `types.ts` queda tipado a mano — mismo
+  patrón ya aceptado para el resto del módulo Menú.
+- `useUpdateBeverage` (sin tocar en este cambio) sigue mandando el `id` solo en el path
+  (`const { id, ...body } = input`), así que `includeFreeTo` viaja dentro del body del PATCH sin
+  arrastrar el bug de clase.
+- `buildPayload`/`onSubmit` de `BeverageForm.tsx` siempre manda `includeFreeTo` como `string[]`
+  (nunca `undefined`/`null`), consistente con `sauceIds`/`beverageIds`/`extraPortionIds` de
+  `ItemForm.tsx`.
+- Estados de UI del checklist de combos: loading ("Cargando productos…"), error (`Alert` sin
+  bloquear el guardado de la bebida) y vacío ("Todavía no hay productos…") — los tres cubiertos
+  explícitamente en el JSX, aunque **sin test de componente para los tres casos** (ver hallazgo
+  abajo).
+- **Verificado por mutación (2 mutaciones independientes, Edit puntual + reverso)**:
+  1. Forcé `includeFreeTo: []` fijo en el payload de `onSubmit` (en vez de
+     `values.includeFreeTo`) → **3 de 10 tests de `BeverageForm.test.tsx` fallaron exactamente
+     como se esperaba** ("crea una bebida marcada como gratis...", "al editar, actualiza
+     includeFreeTo...", "al editar, quita un combo desmarcado..." — los tres con
+     `AssertionError: expected [] to deeply equal [...]`).
+  2. Restauré (1), y luego quité la rama de remoción del handler `onCheckedChange` (el checkbox
+     solo agregaba, nunca filtraba al desmarcar) → **el test "al editar, quita un combo
+     desmarcado de includeFreeTo" falló** (`expected [ 'combo-1', 'combo-2', 'combo-1' ] to
+     deeply equal [ 'combo-2' ]`), los otros 9 siguieron en verde.
+  Restauré ambas mutaciones desde una copia de respaldo; `git diff --stat` volvió a
+  `69 insertions(+), 2 deletions(-)` en `BeverageForm.tsx`, idéntico al estado entregado; la
+  suite de `BeverageForm.test.tsx` + `ItemForm.test.tsx` volvió a 31/31.
+
+❌ Falló:
+- (ninguno bloqueante)
+
+⚠️ Riesgos / casos borde no cubiertos (documentados, no bloqueantes):
+- **Gap de UX real, no de código**: la regla de negocio más importante de este cambio —
+  "`includeFreeTo` de una bebida SOLO tiene efecto en un producto que ADEMÁS tenga esa bebida
+  asignada como opción propia"— hoy solo se comunica con un párrafo de texto fijo en
+  `BeverageForm.tsx` ("marcarla acá sola no la agrega como opción"). El checklist de combos NO
+  cruza, por cada `menuItem`, si ese producto ya tiene la bebida en `menuItem.beverages` (el dato
+  sí viaja embebido en `GET /menu/items`, confirmado en `types.ts`: `MenuItem.beverages:
+  Beverage[]`) para avisar en el momento — por ejemplo con un sufijo tipo "(bebida no asignada
+  como opción todavía)". Sin este aviso puntual, un admin puede marcar tranquilamente un combo
+  que en la práctica no tendrá el efecto esperado, y solo el texto genérico de arriba lo previene.
+  No es un bug (el comportamiento del backend se respeta y el payload es correcto), pero es
+  exactamente el tipo de regla "silenciosa" que este proyecto ya ha preferido hacer explícita en
+  la UI en otros módulos (ej. "(oculta)" en salsas/bebidas/porciones extras, "(sin coincidencia)"
+  en banners). Sugerido para una vuelta de pulido futura, no bloqueante.
+- Sin test de componente que ejercite explícitamente los 3 estados de UI del checklist de combos
+  (`isLoading`/`isError`/catálogo vacío) en `BeverageForm.test.tsx` — se verificó leyendo el JSX
+  que las tres ramas existen y no rompen el guardado de la bebida, pero no hay una aserción
+  automatizada por cada rama (mismo hueco de cobertura, más leve, que el que @tester encontró y
+  cerró en la auditoría anterior de Bebidas/Porciones Extras).
+- `BeveragesSection.tsx` (la tabla del catálogo) no muestra ninguna indicación de en cuántos/qué
+  combos una bebida es gratis — solo se ve entrando a editarla. No es un requisito pedido, se
+  documenta como posible mejora de visibilidad.
+- Sin prueba E2E/Playwright de este cambio específico contra el backend real.
+
+Veredicto: **LISTO**. `type-check`/`lint`/`build` limpios (repetidos por @tester de forma
+independiente); `pnpm exec vitest run --maxWorkers=2` en 277/277 (40 archivos); contrato de
+`includeFreeTo` confirmado contra `src/types/api.d.ts` regenerado (sin `any` ni castings
+forzados); `id` sigue sin viajar en el body del PATCH; los 3 tests nuevos de `BeverageForm.test.tsx`
+son regresiones reales — verificado por mutación que fallan si se revierte tanto el envío del
+campo en el payload como la lógica de quitar un combo desmarcado, y que vuelven a pasar al
+restaurar el código original. El único hallazgo es un gap de UX no bloqueante (falta de aviso
+puntual por producto cuando el combo elegido no tiene la bebida asignada como opción), documentado
+arriba para la sesión principal.
+
+**Addendum (misma sesión, post-auditoría):** se cerró el gap de UX arriba. `BeverageForm.tsx`
+ahora cruza, por cada `menuItem` del checklist, si `menuItem.beverages` ya incluye esta bebida
+(dato embebido en `GET /menu/items`) y agrega el sufijo " (bebida no asignada como opción)" cuando
+no es el caso — mismo criterio que el sufijo "(no disponible)" ya usado ahí mismo. Se agregó el
+test "avisa cuando un combo no tiene la bebida asignada como opción todavía". Los tests que
+seleccionan combos por texto exacto se ajustaron a un matcher por prefijo (`/^Combo X/`) para no
+quedar acoplados al sufijo. Suite completa vuelve a verificarse en 278/278 (40 archivos),
+`type-check`/`lint`/`build` limpios.
+

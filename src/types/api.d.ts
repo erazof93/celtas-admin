@@ -771,7 +771,7 @@ export interface paths {
         };
         /**
          * Progreso del programa de estrellas (cliente)
-         * @description Estrellas hacia el próximo premio (recalculadas en caliente, no persistidas), premios disponibles sin usar/sin vencer, y la promoción de estrellas dobles vigente hoy, si hay alguna.
+         * @description Estrellas hacia el próximo premio (recalculadas en caliente, no persistidas), premios sin vencer (ya reclamados o no, distinguibles por "estado": "pending"/"redeemed" y "usedAt"), y la promoción de estrellas dobles vigente hoy, si hay alguna.
          */
         get: operations["RewardsController_getProgress"];
         put?: never;
@@ -1533,6 +1533,13 @@ export interface components {
              * @example 1
              */
             sortOrder?: number;
+            /**
+             * @description IDs de productos (combos) en los que esta bebida va gratis. Vacío u omitido = nunca es gratis
+             * @example [
+             *       "b3f1c2a0-1234-4a5b-8c9d-abcdef123456"
+             *     ]
+             */
+            includeFreeTo?: string[];
         };
         UpdateBeverageDto: {
             /**
@@ -1555,6 +1562,13 @@ export interface components {
              * @example 1
              */
             sortOrder?: number;
+            /**
+             * @description IDs de productos (combos) en los que esta bebida va gratis. Vacío u omitido = nunca es gratis
+             * @example [
+             *       "b3f1c2a0-1234-4a5b-8c9d-abcdef123456"
+             *     ]
+             */
+            includeFreeTo?: string[];
         };
         CreateExtraPortionDto: {
             /**
@@ -3796,7 +3810,10 @@ export interface operations {
     };
     OrdersController_listMine: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Cantidad máxima de pedidos a devolver (default 20, máx 100) */
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
