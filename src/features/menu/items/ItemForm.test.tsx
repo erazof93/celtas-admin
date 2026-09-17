@@ -296,6 +296,38 @@ describe('ItemForm - checklist de salsas', () => {
 
     expect(screen.getByLabelText('Máximo a elegir')).toHaveValue(3)
   })
+
+  it('cambiar "Máximo a elegir" y activar "Obligatorio" se refleja en el payload', async () => {
+    const user = userEvent.setup()
+    updateMock.mockResolvedValue(makeItem())
+    saucesState.data = [makeSauce({ id: 's-mayo', name: 'Mayonesa' })]
+
+    render(
+      <ItemForm
+        item={makeItem({
+          sauces: [makeSauce({ id: 's-mayo', name: 'Mayonesa' })],
+          sauceGroupRequired: false,
+          sauceGroupMaxSelectable: 1,
+        })}
+        onClose={() => {}}
+      />,
+    )
+
+    await user.clear(screen.getByLabelText('Máximo a elegir'))
+    await user.type(screen.getByLabelText('Máximo a elegir'), '2')
+    await user.click(
+      screen.getByLabelText('El cliente debe elegir una salsa'),
+    )
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
+    const payload = updateMock.mock.calls[0][0] as {
+      sauceGroupMaxSelectable: number
+      sauceGroupRequired: boolean
+    }
+    expect(payload.sauceGroupMaxSelectable).toBe(2)
+    expect(payload.sauceGroupRequired).toBe(true)
+  })
 })
 
 /**

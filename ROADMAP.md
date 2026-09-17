@@ -240,6 +240,25 @@ celtas-admin/
       `<input type="number">` bloqueaba el submit antes de que Zod mostrara su mensaje en español).
       **Veredicto de @tester: LISTO** — detalle completo, mutaciones y hallazgos en
       `docs/testing-checklist.md`, sección "Auditoría: Menu — Bebidas y Porciones Extras".
+- [x] **Grupo obligatorio/máximo a elegir en Salsas** (`sauceGroupRequired`/
+      `sauceGroupMaxSelectable` en `CreateMenuItemDto`/`UpdateMenuItemDto`, commit `2606fa2`):
+      retrofit sobre el catálogo `sauces` (que nació sin esta config) para dar paridad con
+      `beverageGroupRequired`/`extraPortionsGroupRequired` y sus `*MaxSelectable` — mismo switch
+      "Obligatorio" + input "Máximo a elegir" ya usado en bebidas/porciones extras, agregado al
+      bloque de salsas en `ItemForm.tsx`. Confirmado contra el código fuente real de
+      `backend-celtas` (`create-menu-item.dto.ts`, `menu-item.entity.ts`) y contra
+      `orders.service.ts` (`validateGroupSelection`, compartida por los tres grupos): la validación
+      real ocurre en tiempo de pedido, no al crear/editar el producto, y no hay cota entre
+      `sauceGroupMaxSelectable` y la cantidad de `sauceIds` elegidos (mismo criterio que
+      bebidas/porciones extras). **Veredicto de @tester: LISTO** (2026-09-17, pase independiente):
+      `type-check`/`lint`/`build` limpios, `test` 279/279 (40 archivos, incluye 1 test nuevo
+      agregado por @tester). Detalle completo, mutaciones y hallazgo (test de interacción en vivo
+      faltante para el bloque de salsas, cerrado en la misma auditoría) en
+      `docs/testing-checklist.md`, sección "Auditoría: Menu — Grupo obligatorio/máximo a elegir en
+      Salsas". Riesgos no bloqueantes heredados de la auditoría de Bebidas/Porciones Extras: sin
+      cota de `*MaxSelectable` contra el catálogo elegido (ni frontend ni backend, en ningún de los
+      tres grupos); sin verificación visual en navegador en esta ronda (sin credenciales de admin a
+      mano).
 - [x] **Bebida gratis en combos** (`Beverage.includeFreeTo`, `PATCH/POST /beverages`): campo
       `includeFreeTo?: string[]` confirmado contra el código fuente real de `backend-celtas`
       (`beverage.entity.ts`, `create-beverage.dto.ts`) — el `api.d.ts` local estaba desactualizado

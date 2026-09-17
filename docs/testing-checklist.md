@@ -1733,6 +1733,114 @@ reales encontrados (checklist de bebidas/porciones extras y casos borde de preci
 cerrados por @tester en esta misma auditoría con 16 tests nuevos, todos verificados por mutación
 donde aplicaba. Los ítems ⚠️ son no bloqueantes y quedan documentados para la sesión principal.
 
+## Auditoría: Menu — Grupo obligatorio/máximo a elegir en Salsas (`sauceGroupRequired`/
+`sauceGroupMaxSelectable`), commit `2606fa2`
+
+Auditor: @tester (independiente). Fecha: 2026-09-17. Alcance: el retrofit de
+`sauceGroupRequired`/`sauceGroupMaxSelectable` sobre el catálogo de salsas, agregando paridad con
+`beverageGroupRequired`/`beverageGroupMaxSelectable` y
+`extraPortionsGroupRequired`/`extraPortionsGroupMaxSelectable` (ya auditados en la sección
+anterior). Nota: la auditoría original de Salsas (`085091e`, ver arriba) **no incluía** estos dos
+campos — el catálogo `sauces` nació sin config de grupo y la recibió después, en este commit. Es la
+primera vez que se audita este par de campos específicamente para salsas.
+
+✅ Pasó:
+- `pnpm run type-check` (`tsc -b`): sin salida, cero errores. Corrido de forma independiente.
+- `pnpm run lint` (`eslint .`): `0 errors, 1 warning` — el mismo warning preexistente y ajeno de
+  `StarPromotionForm.tsx` (`react-hooks/incompatible-library` por `watch()`), no relacionado con
+  esta feature.
+- `pnpm run build`: `✓ built in 779ms`, sin errores.
+- `pnpm run test`: **278/278** (40 archivos) en el primer pase, igual a lo reportado por la sesión
+  principal. Tras agregar el test nuevo (ver hallazgo abajo): **279/279** (40 archivos).
+- **Contrato confirmado contra el código fuente real de `backend-celtas`**
+  (`D:/proyecto-celtas/backend-celtas/`, no reconstruido de Swagger):
+  - `src/modules/menu/dto/create-menu-item.dto.ts` líneas 95-112: `sauceGroupRequired?: boolean`
+    (`@IsOptional`, `@IsBoolean`) y `sauceGroupMaxSelectable?: number` (`@IsOptional`, `@IsInt`,
+    `@Min(1)`) — espejo exacto del schema Zod en `ItemForm.tsx` (`z.boolean()` sin default propio,
+    `z.coerce.number().int().min(1)`) y de `CreateMenuItemInput` en `types.ts`.
+  - `src/modules/menu/entities/menu-item.entity.ts` líneas 106/113: mismas columnas, mismo patrón
+    de default (`boolean` default `false`, `int` default `1`) que `beverageGroupRequired`/
+    `extraPortionsGroupRequired` — confirma que `defaultValues` de `ItemForm.tsx`
+    (`item?.sauceGroupRequired ?? false`, `item?.sauceGroupMaxSelectable ?? 1`) usa los defaults
+    correctos.
+  - `src/modules/menu/menu.service.ts`: `createItem`/`updateItem` no tienen ninguna validación
+    cruzada entre `sauceGroupMaxSelectable` y el tamaño de `sauceIds` — el campo se guarda tal cual
+    llega, sin relación con el catálogo elegido. Mismo comportamiento confirmado para
+    `beverageGroupMaxSelectable`/`extraPortionsGroupMaxSelectable` (ninguno de los tres tiene esa
+    cota en el backend).
+  - `src/modules/orders/orders.service.ts` líneas 624-634 y `validateGroupSelection` (líneas
+    794-815): la validación real de `sauceGroupRequired`/`sauceGroupMaxSelectable` ocurre en tiempo
+    de pedido (`POST /orders`), no en la creación/edición del producto — `sauceGroupRequired`
+    dispara 400 si el cliente no elige ninguna salsa y el grupo la ofrece, y
+    `sauceGroupMaxSelectable` dispara 400 si el cliente elige más de las permitidas. Confirmado
+    también el comentario explícito del backend: "Sin efecto si el producto no ofrece nada de esta
+    categoría (`offered` vacío o ausente)" — coincide palabra por palabra con el JSDoc ya puesto en
+    `ItemForm.tsx` ("Sin efecto si `sauces` está vacío") y en `types.ts`. Esta misma función
+    (`validateGroupSelection`) es compartida por los tres grupos (salsas/bebidas/porciones extras),
+    así que el comportamiento es idéntico entre los tres, sin caso especial para salsas.
+  - `src/types/api.d.ts` regenerado: confirmado por la sesión principal (`sauceGroupRequired?:
+    boolean` y `sauceGroupMaxSelectable?: number` en `CreateMenuItemDto`/`UpdateMenuItemDto`) y
+    re-verificado por @tester leyendo `types.ts` (líneas 52-56 en `MenuItem`, 153-157 en
+    `CreateMenuItemInput`) — sin castings forzados ni `any`.
+- **Verificado con mutación real (3 mutaciones independientes, Edit puntual + reverso, `git diff
+  --stat` confirmó `ItemForm.tsx` sin cambios netos tras cada reverso)**:
+  1. `defaultValues.sauceGroupRequired: item?.sauceGroupRequired ?? false` → `false` fijo: el test
+     "al editar un producto con sauceGroupRequired=true, el switch 'Obligatorio' carga marcado..."
+     falló exactamente como se esperaba (`toBeChecked()` con `aria-checked="false"` real).
+  2. Quité `{...register('sauceGroupMaxSelectable')}` del `<Input id="item-sauce-max">` → el test
+     "el input 'Máximo a elegir' muestra 3" falló exactamente como se esperaba (`toHaveValue(3)`
+     recibió `null`); confirmado además que esto NO rompió los tests equivalentes de
+     bebidas/porciones extras (aislamiento correcto por campo).
+  3. En `buildPayload`, quité la línea `sauceGroupRequired: values.sauceGroupRequired` → el test
+     "se conserva en el payload sin tocarlo" falló con `expected undefined to be true` (detecta
+     también la omisión silenciosa del campo en el payload, no solo el estado visual del switch).
+- **Hallazgo de @tester, cerrado en esta misma auditoría**: a diferencia de los bloques de bebidas
+  y porciones extras (que sí tienen un test "cambiar 'Máximo a elegir' y activar 'Obligatorio' se
+  refleja en el payload" con interacción real de usuario), el bloque de salsas en
+  `ItemForm.test.tsx` solo tenía tests de **carga** (`sauceGroupRequired=true` se preserva sin
+  tocarlo, `sauceGroupMaxSelectable=3` se muestra) pero ninguno que ejercitara el **cambio en vivo**
+  de ambos controles. Agregué el test faltante (paridad exacta con el de bebidas/porciones extras):
+  tipea `2` en "Máximo a elegir", activa el switch "Obligatorio", envía, y confirma
+  `sauceGroupMaxSelectable: 2` / `sauceGroupRequired: true` en el payload. **Verificado por
+  mutación**: forzar `sauceGroupMaxSelectable: 1` fijo en `buildPayload` (en vez de
+  `values.sauceGroupMaxSelectable`) → el test nuevo falló exactamente como se esperaba (`expected 1
+  to be 2`); restaurado, `22/22` en `ItemForm.test.tsx` (279/279 en la suite completa).
+  `git status` tras la auditoría: solo `src/features/menu/items/ItemForm.test.tsx` modificado,
+  ningún archivo de producción quedó tocado.
+- Consistencia con beverages/extras: el switch "Obligatorio" y el input "Máximo a elegir" de salsas
+  usan exactamente el mismo patrón JSX (`Controller` + `Switch` / `register` + `Input type=number`)
+  y el mismo `aria-label` estructurado (`"El cliente debe elegir una salsa"`), confirmado
+  comparando línea por línea los tres bloques en `ItemForm.tsx`.
+
+❌ Falló:
+- (ninguno bloqueante)
+
+⚠️ Riesgos / casos borde no cubiertos (documentados, no bloqueantes):
+- **Heredado, ya documentado en la auditoría de Bebidas/Porciones Extras y confirmado también acá
+  contra el backend real**: no hay validación (ni en frontend ni en backend) de que
+  `sauceGroupMaxSelectable` no supere la cantidad de salsas realmente marcadas para el producto
+  (ej. marcar 1 sola salsa pero dejar "Máximo a elegir" en 5) — consistente entre los tres grupos,
+  no es una regresión de esta feature puntual.
+- Mismo hueco heredado: `itemSchema.sauceIds` es `z.array(z.string())` sin `.uuid()` (validación
+  laxa ya aceptada desde la auditoría original de Salsas).
+- No se verificó visualmente en navegador (Playwright) esta feature puntual — el usuario decidió
+  omitir esa parte de la auditoría por falta de credenciales de admin a mano en esta sesión. La
+  auditoría original de Salsas (`085091e`) sí tuvo verificación visual completa, pero no incluía
+  estos dos campos porque no existían todavía.
+- Sin test dedicado de "tipear directo sin pasar por el spinner" (negativo/vacío) en
+  `sauceGroupMaxSelectable` — mismo hueco ya aceptado en la auditoría de Bebidas/Porciones Extras
+  para sus campos equivalentes (`noValidate` + `z.coerce.number().int().min(1)` ya cubre el caso a
+  nivel de patrón, pero no hay un test explícito nuevo para salsas en esta ronda).
+
+Veredicto: **LISTO**. `type-check`/`lint`/`build` limpios (independiente); contrato confirmado
+línea por línea contra el código fuente real del backend, incluida la validación real en tiempo de
+pedido (`orders.service.ts`) que confirma el efecto de ambos campos; 3 mutaciones independientes
+confirmaron que los tests de regresión existentes realmente fallan si se revierte el fix; 1 hueco
+de cobertura real encontrado (falta de test de interacción en vivo para el switch/input de salsas,
+a diferencia de bebidas/porciones extras) y cerrado por @tester en esta misma auditoría, también
+verificado por mutación. Los ítems ⚠️ son no bloqueantes, heredados de auditorías previas, y quedan
+documentados para la sesión principal.
+
 ## Auditoría: Menu — Bebida gratis en combos (`Beverage.includeFreeTo`)
 
 Auditor: @tester (independiente). Fecha: 2026-09-16. Alcance: `src/features/menu/types.ts`,
