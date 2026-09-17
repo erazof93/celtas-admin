@@ -878,6 +878,36 @@ celtas-admin/
       COMPLETO**. Detalle completo en `docs/testing-checklist.md`, sección "Marketing
       (notificaciones de fidelización) — v1 manual" + reporte de auditoría al final del archivo.
       Pendiente: veredicto de `@tester`.
+- [x] **Campo `link` opcional en el broadcast** (`BroadcastNotificationDto.link?: string`, backend
+      commit `9c97272`, ruta real `../backend-celtas` — no `celtas-backend`): deep link/URL
+      opcional (`@IsOptional() @IsString() @MaxLength(500)`) al que navega la app al tocar la
+      notificación; se guarda en la nueva columna `link: string | null` de
+      `MarketingNotification` y viaja en `data.link` del payload FCM solo si viene con valor.
+      **Nota de contrato (corregida tras el veredicto de @tester)**: al momento de escribir el
+      código, el swagger de producción todavía no tenía este commit desplegado, así que `link`
+      se tipó a mano en `src/features/marketing/types.ts` como precaución (mismo patrón que
+      `cancelReason` en Orders); una verificación posterior en la misma sesión (regenerar
+      `api.d.ts` contra prod y compararlo byte a byte con una segunda regeneración independiente,
+      ambas idénticas — descartando una edición a mano fabricada) confirmó que Render **ya
+      desplegó el commit** antes de cerrar esta tarea, y `api.d.ts` ya documenta `link` en
+      `BroadcastNotificationDto`. Se mantiene tipado a mano en `types.ts` por consistencia con
+      `title`/`body` de la misma interfaz (ya hand-typed ahí por el DTO de respuesta sin
+      `@ApiResponse`), no porque falte en `api.d.ts`.
+      `BroadcastForm.tsx` gana el campo (Zod `.url().max(500).optional().or(z.literal(''))`,
+      `noValidate` en el `<form>` por el mismo bug de clase de `type="url"`/`type="number"`
+      bloqueando el submit nativo antes de Zod), normaliza `link` vacío a `undefined` antes de
+      enviarlo (no manda la clave), y lo muestra en el panel de confirmación si existe. `hooks.ts`
+      sin cambios (ya reenviaba el input completo). **Veredicto de @tester: LISTO** (2026-09-17,
+      pase independiente): contrato confirmado por `git show 9c97272` real contra
+      `../backend-celtas`; `type-check`/`lint`/`build` limpios; `test` 282/282 (40 archivos);
+      2 mutaciones reales confirmaron que la normalización de `link` vacío y el
+      `noValidate`/`.url()` del schema son necesarios (revertir cualquiera de los tres rompe el
+      test correspondiente, restaurado después de cada una). Detalle completo, incluida la
+      verificación de casos borde (espacios en blanco, trim, URL de 509 caracteres) en
+      `docs/testing-checklist.md`, sección "Marketing (notificaciones de fidelización) — v1
+      manual" → adenda "campo `link` opcional en el broadcast". Hallazgo no bloqueante: `link` no
+      se muestra todavía en la tabla "Historial de campañas" de `MarketingPage.tsx` (fuera de
+      alcance a propósito en esta ronda).
 
 ---
 

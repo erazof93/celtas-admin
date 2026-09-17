@@ -1790,6 +1790,11 @@ export interface components {
              * @example Aprovecha nuestras promos especiales antes de que se acaben.
              */
             body: string;
+            /**
+             * @description Link opcional al que navega la app al tocar la notificación (deep link o URL).
+             * @example https://celtas.com/promos/dia-del-padre
+             */
+            link?: string;
         };
         CreateStarPromotionDto: {
             /**

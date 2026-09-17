@@ -15,11 +15,22 @@ import type { BroadcastResult } from './types'
 /**
  * Reglas espejo del BroadcastNotificationDto del backend: title/body
  * requeridos y no vacíos (class-validator: @IsString + @IsNotEmpty, sin
- * límite de longitud declarado — no inventamos uno acá).
+ * límite de longitud declarado — no inventamos uno acá). `link` es opcional
+ * (`@IsOptional`/`@IsString`/`@MaxLength(500)`) — deep link o URL al que
+ * navega la app al tocar la notificación; confirmado contra el código
+ * fuente real de `backend-celtas` (commit `9c97272`, ya desplegado en
+ * producción — confirmado regenerando `api.d.ts` el 2026-09-17).
  */
 const broadcastSchema = z.object({
   title: z.string().trim().min(1, 'El título es obligatorio'),
   body: z.string().trim().min(1, 'El cuerpo es obligatorio'),
+  link: z
+    .string()
+    .trim()
+    .url('El link debe ser una URL válida')
+    .max(500, 'El link no puede superar los 500 caracteres')
+    .optional()
+    .or(z.literal('')),
 })
 
 type BroadcastFormValues = z.infer<typeof broadcastSchema>
@@ -48,15 +59,17 @@ export function BroadcastForm() {
     formState: { errors },
   } = useForm<BroadcastFormValues>({
     resolver: zodResolver(broadcastSchema),
-    defaultValues: { title: '', body: '' },
+    defaultValues: { title: '', body: '', link: '' },
   })
 
   // El submit del form solo pasa a modo confirmación — la API se llama desde
-  // handleConfirm, tras el clic explícito del admin.
+  // handleConfirm, tras el clic explícito del admin. `link` vacío se
+  // normaliza a undefined (no se manda la clave, el backend lo trata igual
+  // que "sin link" con @IsOptional).
   function onValidated(values: BroadcastFormValues) {
     setServerError(null)
     setResult(null)
-    setPendingValues(values)
+    setPendingValues({ ...values, link: values.link ? values.link : undefined })
   }
 
   async function handleConfirm() {
@@ -66,7 +79,7 @@ export function BroadcastForm() {
       const sent = await broadcastMutation.mutateAsync(pendingValues)
       setResult(sent)
       setPendingValues(null)
-      reset({ title: '', body: '' })
+      reset({ title: '', body: '', link: '' })
     } catch (error) {
       setServerError(getApiMessage(error, 'No se pudo enviar la notificación'))
       setPendingValues(null)
@@ -94,6 +107,14 @@ export function BroadcastForm() {
               <p className="text-muted-foreground text-sm">
                 {pendingValues.body}
               </p>
+              {pendingValues.link ? (
+                <p className="text-muted-foreground text-sm">
+                  <span className="text-foreground font-semibold">
+                    Link:
+                  </span>{' '}
+                  {pendingValues.link}
+                </p>
+              ) : null}
             </div>
           </AlertDescription>
         </Alert>
@@ -128,7 +149,11 @@ export function BroadcastForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit(onValidated)} className="space-y-4">
+    <form
+      onSubmit={handleSubmit(onValidated)}
+      noValidate
+      className="space-y-4"
+    >
       {result ? (
         <Alert className="border-emerald-400/40 bg-emerald-400/10">
           <CheckCircle2 className="text-emerald-400" />
@@ -174,6 +199,20 @@ export function BroadcastForm() {
         />
         {errors.body ? (
           <p className="text-celtas-red-light text-xs">{errors.body.message}</p>
+        ) : null}
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="broadcast-link">Link (opcional)</Label>
+        <Input
+          id="broadcast-link"
+          type="url"
+          placeholder="https://celtas.com/promos/dia-del-padre"
+          aria-invalid={Boolean(errors.link)}
+          {...register('link')}
+        />
+        {errors.link ? (
+          <p className="text-celtas-red-light text-xs">{errors.link.message}</p>
         ) : null}
       </div>
 

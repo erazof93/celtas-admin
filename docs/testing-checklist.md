@@ -987,6 +987,80 @@ cambio adicional en `celtas-admin` ni en `celtas-backend`.
 
 Veredicto: LISTO PARA MARCAR COMPLETO
 
+### Adenda (2026-09-17): campo `link` opcional en el broadcast
+
+- [x] Contrato confirmado contra el código fuente real de `backend-celtas` (ruta correcta del
+      repo hermano, no `celtas-backend` como dice erróneamente `CLAUDE.md`), commit `9c97272`
+      ("feat: agregar soporte de links en notificaciones masivas de marketing"), leído con
+      `git show 9c97272` (diff real, no descripción de Swagger): `broadcast-notification.dto.ts`
+      agrega `link?: string` (`@IsOptional() @IsString() @MaxLength(500)`);
+      `marketing-notification.entity.ts` agrega columna `link: string | null`
+      (`@Column({ type: 'varchar', length: 500, nullable: true })`, migración
+      `AddLinkToMarketingNotification1789655754465`); `notifications.controller.ts` reenvía
+      `dto.link` al service; `notifications.service.ts` arma `data.link` en el payload FCM solo
+      si `payload.link` viene con valor (`data: Object.keys(data).length > 0 ? data : undefined`,
+      evita mandar `data.link` vacío al push) y persiste `link: payload.link ?? null` en el
+      historial. **Corrección post-veredicto**: al momento de este reporte, el swagger de
+      producción (`onrender.com/docs-json`) todavía no tenía este commit desplegado. Una
+      verificación posterior en la misma sesión (regenerar `api.d.ts` contra producción y
+      comparar el resultado byte a byte con una segunda regeneración independiente — ambas
+      idénticas, descartando que el diff de `api.d.ts` fuera una edición a mano fabricada)
+      confirmó que Render sí desplegó el commit antes de cerrar esta tarea: `api.d.ts` ya
+      documenta `link` en `BroadcastNotificationDto`.
+- [x] `src/features/marketing/types.ts`: `BroadcastNotificationInput.link?: string` y
+      `MarketingBroadcast.link: string | null` coinciden campo a campo con el DTO/entidad reales;
+      doc-comments explican el estado "no desplegado en prod todavía", mismo patrón que
+      `cancelReason` en Orders.
+- [x] `BroadcastForm.tsx`: Zod `link` opcional
+      (`z.string().trim().url(...).max(500,...).optional().or(z.literal(''))`) + `noValidate` en
+      el `<form>` (bug de clase ya conocido: `type="url"` dispara validación nativa del navegador
+      que bloquea el submit antes de que Zod actúe, igual que `type="number"` en `673261e`).
+      `onValidated` normaliza `link: values.link ? values.link : undefined` para omitir la clave
+      del payload si el campo quedó vacío. El panel de confirmación muestra el link si existe.
+- [x] `hooks.ts`: sin cambios — confirmado por lectura directa que `useSendBroadcast` reenvía
+      `input` completo tal cual a `post('/notifications/broadcast', input)`, sin filtrar ni
+      transformar campos.
+- [x] `type-check` (`tsc -b`), `lint` (`eslint .`), `build`: los tres corridos de forma
+      independiente, cero errores; único warning es el preexistente y ajeno de
+      `StarPromotionForm.tsx` (`react-hooks/incompatible-library` sobre `watch()`).
+- [x] `pnpm run test`: 282/282 en 40 archivos, confirmado de forma independiente.
+- [x] **Mutación real (a) — normalización del payload**: revertí `onValidated` a
+      `setPendingValues({ ...values })` (sin omitir `link` vacío) → 2/282 tests fallaron
+      exactamente como se esperaba (`"link vacío es válido — el payload no incluye la clave"` y
+      el payload base de `"Sí, enviar ahora" llama a la API con el payload correcto`, que no
+      esperaba recibir `link: ''`); restauré el archivo y la suite volvió a 282/282.
+- [x] **Mutación real (b1) — validación de formato**: quité `.url(...)` del schema Zod de `link`
+      → el test `"link inválido muestra error y no pasa a confirmación"` falló exactamente como
+      se esperaba (timeout esperando el texto "El link debe ser una URL válida"); restauré y
+      volvió a verde.
+- [x] **Mutación real (b2) — `noValidate`**: quité `noValidate` del `<form>` → el mismo test de
+      "link inválido" falló exactamente igual (la validación nativa de jsdom para `type="url"`
+      bloquea el evento submit antes de que RHF/Zod corran) — confirma que `noValidate` es
+      necesario para este campo, no cosmético; restauré y volvió a verde.
+- [x] Casos borde de la normalización verificados con un script Node aislado usando el `zod` real
+      del proyecto (`schema.safeParse`, ejecutado en el propio `node_modules` del repo, no una
+      reconstrucción a mano): link solo con espacios (`"   "`) → el `.trim()` interno lo reduce a
+      cadena vacía y el branch `.url()` lo rechaza correctamente con el mensaje "El link debe ser
+      una URL válida" (no cae en un error genérico de unión — el `.or(z.literal(''))` no lo
+      intercepta porque el input crudo no es literalmente `''`); URL válida con espacios
+      alrededor (`"  https://celtas.com  "`) se trimea correctamente al valor final
+      `"https://celtas.com"` antes de llegar al payload; URL de 509 caracteres → rechazada con el
+      mensaje correcto de máximo 500 caracteres. El placeholder del input
+      (`https://celtas.com/promos/dia-del-padre`) coincide con el `example` real del
+      `@ApiPropertyOptional` del DTO backend.
+- [x] Barrido del bug de clase "`id` en el body de un PATCH": no aplica a este cambio — `link` es
+      un campo nuevo en un `POST` sin `id` en el body, sin riesgo de colisión con esa regla.
+
+⚠️ **Hallazgo no bloqueante**: `MarketingBroadcast.link` no se muestra todavía en la tabla
+"Historial de campañas" de `MarketingPage.tsx` (columnas actuales: título/cuerpo/alcance/fecha) —
+confirmado por lectura directa del componente, quedó fuera de alcance a propósito según la sesión
+principal. Vale la pena agregarlo en una próxima ronda (aunque sea truncado o como un ícono de
+enlace clicable) para que el admin pueda confirmar qué link mandó en una campaña pasada sin tener
+que recordarlo de memoria; no es bloqueante porque el campo ya se guarda correctamente en el
+backend y el formulario de envío lo maneja bien de punta a punta.
+
+Veredicto: LISTO PARA MARCAR COMPLETO
+
 ---
 
 ## Reporte de auditoría (formato esperado del @tester)

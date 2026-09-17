@@ -115,6 +115,76 @@ describe('BroadcastForm', () => {
     expect(screen.getByText('10')).toBeInTheDocument()
   })
 
+  it('link inválido muestra error y no pasa a confirmación', async () => {
+    const user = userEvent.setup()
+    render(<BroadcastForm />)
+
+    await user.type(screen.getByLabelText('Título'), 'Título')
+    await user.type(screen.getByLabelText('Cuerpo'), 'Cuerpo')
+    await user.type(screen.getByLabelText('Link (opcional)'), 'texto random')
+    await user.click(screen.getByRole('button', { name: 'Enviar ahora' }))
+
+    expect(
+      await screen.findByText('El link debe ser una URL válida'),
+    ).toBeInTheDocument()
+    expect(mutateAsyncMock).not.toHaveBeenCalled()
+    expect(
+      screen.queryByText(
+        '¿Confirmas enviar esta notificación a todos los clientes?',
+      ),
+    ).not.toBeInTheDocument()
+  })
+
+  it('link vacío es válido — el payload no incluye la clave', async () => {
+    const user = userEvent.setup()
+    mutateAsyncMock.mockResolvedValue({ sent: 1, total: 1 })
+    render(<BroadcastForm />)
+
+    await user.type(screen.getByLabelText('Título'), 'Título')
+    await user.type(screen.getByLabelText('Cuerpo'), 'Cuerpo')
+    await user.click(screen.getByRole('button', { name: 'Enviar ahora' }))
+    await screen.findByText(
+      '¿Confirmas enviar esta notificación a todos los clientes?',
+    )
+    await user.click(screen.getByRole('button', { name: 'Sí, enviar ahora' }))
+
+    await waitFor(() => {
+      expect(mutateAsyncMock).toHaveBeenCalledWith({
+        title: 'Título',
+        body: 'Cuerpo',
+        link: undefined,
+      })
+    })
+  })
+
+  it('un link válido se muestra en la confirmación y se manda en el payload', async () => {
+    const user = userEvent.setup()
+    mutateAsyncMock.mockResolvedValue({ sent: 1, total: 1 })
+    render(<BroadcastForm />)
+
+    await user.type(screen.getByLabelText('Título'), 'Título')
+    await user.type(screen.getByLabelText('Cuerpo'), 'Cuerpo')
+    await user.type(
+      screen.getByLabelText('Link (opcional)'),
+      'https://celtas.com/promos/dia-del-padre',
+    )
+    await user.click(screen.getByRole('button', { name: 'Enviar ahora' }))
+
+    expect(
+      await screen.findByText('https://celtas.com/promos/dia-del-padre'),
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Sí, enviar ahora' }))
+
+    await waitFor(() => {
+      expect(mutateAsyncMock).toHaveBeenCalledWith({
+        title: 'Título',
+        body: 'Cuerpo',
+        link: 'https://celtas.com/promos/dia-del-padre',
+      })
+    })
+  })
+
   it('un error del servidor se muestra y permite reintentar sin perder el formulario', async () => {
     const user = userEvent.setup()
     mutateAsyncMock.mockRejectedValue(new Error('fallo de red'))
