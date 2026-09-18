@@ -131,6 +131,9 @@ function makeItem(overrides: Partial<MenuItem> = {}): MenuItem {
     extraPortions: [],
     extraPortionsGroupRequired: false,
     extraPortionsGroupMaxSelectable: 1,
+    sauceAllowWithout: true,
+    beverageAllowWithout: true,
+    extraPortionsAllowWithout: true,
     createdAt: '2026-08-01T12:00:00.000Z',
     updatedAt: '2026-08-01T12:00:00.000Z',
     ...overrides,
@@ -666,5 +669,132 @@ describe('ItemForm - checklist de porciones extras', () => {
     await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
     const payload = updateMock.mock.calls[0][0] as { extraPortionsGroupRequired: boolean }
     expect(payload.extraPortionsGroupRequired).toBe(true)
+  })
+})
+
+/**
+ * Checkboxes "Permitir 'Sin X'" (sauceAllowWithout/beverageAllowWithout/
+ * extraPortionsAllowWithout). Contrato confirmado contra el código fuente
+ * real de backend-celtas (create-menu-item.dto.ts, menu-item.entity.ts,
+ * commit ae05ede): booleanos opcionales, default true a nivel de columna
+ * (NOT NULL DEFAULT true). Nota: el nombre real del tercer campo es
+ * "extraPortionsAllowWithout" (plural "Portions"), no "extraPortionAllowWithout".
+ */
+describe('ItemForm - checklist "Sin X"', () => {
+  async function selectCategory(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByLabelText('Categoría'))
+    await user.click(await screen.findByRole('option', { name: 'Burgers' }))
+  }
+
+  it('crear un producto nuevo con "Permitir \\"Sin salsas\\"" desmarcado envía sauceAllowWithout=false', async () => {
+    const user = userEvent.setup()
+    createMock.mockResolvedValue(makeItem())
+    saucesState.data = [makeSauce({ id: 's-mayo', name: 'Mayonesa' })]
+
+    render(<ItemForm onClose={() => {}} />)
+
+    await user.type(screen.getByLabelText('Nombre'), 'Celtas Burger Clasica')
+    await user.type(screen.getByLabelText('Precio (S/)'), '24.90')
+    await selectCategory(user)
+
+    expect(
+      screen.getByRole('checkbox', { name: 'Permitir "Sin salsas"' }),
+    ).toBeChecked()
+    await user.click(
+      screen.getByRole('checkbox', { name: 'Permitir "Sin salsas"' }),
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Crear producto' }))
+
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1))
+    const payload = createMock.mock.calls[0][0] as {
+      sauceAllowWithout: boolean
+      beverageAllowWithout: boolean
+      extraPortionsAllowWithout: boolean
+    }
+    expect(payload.sauceAllowWithout).toBe(false)
+    expect(payload.beverageAllowWithout).toBe(true)
+    expect(payload.extraPortionsAllowWithout).toBe(true)
+  })
+
+  it('editar un producto actualiza sauceAllowWithout/beverageAllowWithout/extraPortionsAllowWithout', async () => {
+    const user = userEvent.setup()
+    updateMock.mockResolvedValue(makeItem())
+    saucesState.data = [makeSauce({ id: 's-mayo', name: 'Mayonesa' })]
+    beveragesState.data = [makeBeverage({ id: 'b-coca', name: 'Coca-Cola' })]
+    extraPortionsState.data = [
+      makeExtraPortion({ id: 'ep-papas', name: 'Papas extra' }),
+    ]
+
+    render(
+      <ItemForm
+        item={makeItem({
+          sauces: [],
+          beverages: [],
+          extraPortions: [],
+          sauceAllowWithout: false,
+          beverageAllowWithout: false,
+          extraPortionsAllowWithout: false,
+        })}
+        onClose={() => {}}
+      />,
+    )
+
+    const sauceCheckbox = screen.getByRole('checkbox', {
+      name: 'Permitir "Sin salsas"',
+    })
+    const beverageCheckbox = screen.getByRole('checkbox', {
+      name: 'Permitir "Sin bebida"',
+    })
+    const extraPortionCheckbox = screen.getByRole('checkbox', {
+      name: 'Permitir "Sin porciones extras"',
+    })
+
+    expect(sauceCheckbox).not.toBeChecked()
+    expect(beverageCheckbox).not.toBeChecked()
+    expect(extraPortionCheckbox).not.toBeChecked()
+
+    await user.click(sauceCheckbox)
+    await user.click(beverageCheckbox)
+    await user.click(extraPortionCheckbox)
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
+    const payload = updateMock.mock.calls[0][0] as {
+      sauceAllowWithout: boolean
+      beverageAllowWithout: boolean
+      extraPortionsAllowWithout: boolean
+    }
+    expect(payload.sauceAllowWithout).toBe(true)
+    expect(payload.beverageAllowWithout).toBe(true)
+    expect(payload.extraPortionsAllowWithout).toBe(true)
+  })
+
+  it('por defecto, un producto nuevo sin tocar los checkboxes envía las 3 banderas en true', async () => {
+    const user = userEvent.setup()
+    createMock.mockResolvedValue(makeItem())
+    // Catálogos vacíos a propósito: el default debe viajar en el payload aun
+    // sin que se rendericen los checkboxes de "Sin X" de ningún grupo.
+    saucesState.data = []
+    beveragesState.data = []
+    extraPortionsState.data = []
+
+    render(<ItemForm onClose={() => {}} />)
+
+    await user.type(screen.getByLabelText('Nombre'), 'Arroz Chaufa')
+    await user.type(screen.getByLabelText('Precio (S/)'), '18.50')
+    await selectCategory(user)
+
+    await user.click(screen.getByRole('button', { name: 'Crear producto' }))
+
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1))
+    const payload = createMock.mock.calls[0][0] as {
+      sauceAllowWithout: boolean
+      beverageAllowWithout: boolean
+      extraPortionsAllowWithout: boolean
+    }
+    expect(payload.sauceAllowWithout).toBe(true)
+    expect(payload.beverageAllowWithout).toBe(true)
+    expect(payload.extraPortionsAllowWithout).toBe(true)
   })
 })

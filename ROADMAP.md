@@ -269,6 +269,28 @@ celtas-admin/
       del combo aplique, confirmado contra `menu.service.ts`. **Veredicto de @tester: LISTO**
       (`type-check`/`lint`/`build` limpios, 277/277 tests verificados por mutación real) — detalle
       completo en `docs/testing-checklist.md`, sección "Auditoría: Menu — Bebida gratis en combos".
+- [x] **Checkboxes "Permitir 'Sin X'" por producto** (`sauceAllowWithout`/`beverageAllowWithout`/
+      `extraPortionsAllowWithout` en `MenuItem`/`CreateMenuItemDto`/`UpdateMenuItemDto`, backend
+      commit `ae05ede`): los 3 booleanos opcionales (`@IsOptional @IsBoolean`), default `true` a
+      nivel de columna (`NOT NULL DEFAULT true`, con migración de backfill). `ItemForm.tsx` gana un
+      `<Checkbox>` por grupo (Salsas/Bebidas/Porciones extras), dentro de la misma rama condicional
+      que ya usan "Máximo a elegir"/"Obligatorio" (solo se renderiza con el catálogo no vacío).
+      **Nota de nombre**: el campo real del backend es `extraPortionsAllowWithout` (plural
+      "Portions"), no "extraPortionAllowWithout" como se pidió originalmente — implementado con el
+      nombre real. **Veredicto de @tester: LISTO** (`type-check`/`lint`/`build`/`test` 285/285 en 40
+      archivos, todo repetido de forma independiente; contrato reconfirmado línea por línea contra
+      el DTO/entidad/migración/`menu.service.ts` reales de `backend-celtas`, incluida verificación en
+      vivo contra `GET /menu` en producción). **Verificado por mutación**: quitar los 3 campos del
+      `return` de `buildPayload` en `ItemForm.tsx` hizo fallar los 3 tests nuevos de
+      `ItemForm.test.tsx` exactamente como se esperaba; restaurado y vuelto a verde. Detalle completo
+      en `docs/testing-checklist.md`, sección "Auditoría: Menu — Checkboxes 'Permitir Sin X'".
+      **Hallazgo no bloqueante que requiere acción de la sesión principal**: el reporte original
+      decía que `pnpm run generate:types` contra prod daba diff vacío ("deploy pendiente") — @tester
+      confirmó lo contrario, el backend real en producción **ya** expone y sirve estos 3 campos
+      (diff no vacío en `CreateMenuItemDto`/`UpdateMenuItemDto`, y confirmado con un `curl` directo a
+      `GET /menu` en prod). `src/types/api.d.ts` sigue desactualizado — pendiente de regenerar y
+      commitear por la sesión principal (la funcionalidad del frontend no está afectada, los tipos a
+      mano en `types.ts` ya coinciden exactamente).
 
 ### 5. Pedidos
 - [x] Listado paginado, filtro por estado

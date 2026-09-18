@@ -74,6 +74,25 @@ export interface MenuItem {
   extraPortionsGroupRequired: boolean
   /** Máximo de porciones extras que el cliente puede elegir para este producto. */
   extraPortionsGroupMaxSelectable: number
+  /**
+   * Si la app debe ofrecer la opción explícita "Sin salsas" para este
+   * producto (default true, columna NOT NULL). Independiente de
+   * `sauceGroupRequired`: ese controla si el cliente está obligado a elegir
+   * al menos una; este controla si "ninguna" es una opción visible/elegible.
+   * Sin efecto si `sauces` está vacío. Confirmado contra menu-item.entity.ts
+   * y create-menu-item.dto.ts del backend real (commit ae05ede) y contra
+   * `api.d.ts` regenerado desde el Swagger real de producción.
+   */
+  sauceAllowWithout: boolean
+  /** Si la app debe ofrecer la opción explícita "Sin bebida". Mismo criterio que `sauceAllowWithout`. */
+  beverageAllowWithout: boolean
+  /**
+   * Si la app debe ofrecer la opción explícita "Sin porciones extras". Mismo
+   * criterio que `sauceAllowWithout`. Nombre real del backend es
+   * "extraPortionsAllowWithout" (plural "Portions", como el resto de campos
+   * de este grupo: `extraPortionsGroupRequired`/`extraPortionsGroupMaxSelectable`).
+   */
+  extraPortionsAllowWithout: boolean
   createdAt: string
   updatedAt: string
 }
@@ -174,6 +193,12 @@ export interface CreateMenuItemInput {
   extraPortionsGroupRequired?: boolean
   /** Máximo de porciones extras que el cliente puede elegir para este producto (default 1). */
   extraPortionsGroupMaxSelectable?: number
+  /** Si la app debe ofrecer "Sin salsas" (default true). */
+  sauceAllowWithout?: boolean
+  /** Si la app debe ofrecer "Sin bebida" (default true). */
+  beverageAllowWithout?: boolean
+  /** Si la app debe ofrecer "Sin porciones extras" (default true). */
+  extraPortionsAllowWithout?: boolean
 }
 
 export type UpdateMenuItemInput = Partial<CreateMenuItemInput>

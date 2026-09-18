@@ -70,6 +70,9 @@ const itemSchema = z.object({
     .number()
     .int('Debe ser un número entero')
     .min(1, 'Debe ser al menos 1'),
+  sauceAllowWithout: z.boolean().default(true),
+  beverageAllowWithout: z.boolean().default(true),
+  extraPortionsAllowWithout: z.boolean().default(true),
 })
 
 type ItemFormValues = z.output<typeof itemSchema>
@@ -136,6 +139,9 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
       extraPortionsGroupRequired: item?.extraPortionsGroupRequired ?? false,
       extraPortionsGroupMaxSelectable:
         item?.extraPortionsGroupMaxSelectable ?? 1,
+      sauceAllowWithout: item?.sauceAllowWithout ?? true,
+      beverageAllowWithout: item?.beverageAllowWithout ?? true,
+      extraPortionsAllowWithout: item?.extraPortionsAllowWithout ?? true,
     },
   })
 
@@ -161,6 +167,9 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
       extraPortionIds: values.extraPortionIds,
       extraPortionsGroupRequired: values.extraPortionsGroupRequired,
       extraPortionsGroupMaxSelectable: values.extraPortionsGroupMaxSelectable,
+      sauceAllowWithout: values.sauceAllowWithout,
+      beverageAllowWithout: values.beverageAllowWithout,
+      extraPortionsAllowWithout: values.extraPortionsAllowWithout,
     }
   }
 
@@ -436,6 +445,26 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
                     </div>
                   </div>
                 </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <Controller
+                    control={control}
+                    name="sauceAllowWithout"
+                    render={({ field }) => (
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        id="sauce-allow-without"
+                      />
+                    )}
+                  />
+                  <Label
+                    htmlFor="sauce-allow-without"
+                    className="text-sm font-normal"
+                  >
+                    Permitir "Sin salsas"
+                  </Label>
+                </div>
               </>
             )}
           </div>
@@ -531,6 +560,26 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
                       </span>
                     </div>
                   </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <Controller
+                    control={control}
+                    name="beverageAllowWithout"
+                    render={({ field }) => (
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        id="beverage-allow-without"
+                      />
+                    )}
+                  />
+                  <Label
+                    htmlFor="beverage-allow-without"
+                    className="text-sm font-normal"
+                  >
+                    Permitir "Sin bebida"
+                  </Label>
                 </div>
               </>
             )}
@@ -638,6 +687,26 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
                       </span>
                     </div>
                   </div>
+                </div>
+
+                <div className="flex items-center gap-2 pt-1">
+                  <Controller
+                    control={control}
+                    name="extraPortionsAllowWithout"
+                    render={({ field }) => (
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        id="extra-portions-allow-without"
+                      />
+                    )}
+                  />
+                  <Label
+                    htmlFor="extra-portions-allow-without"
+                    className="text-sm font-normal"
+                  >
+                    Permitir "Sin porciones extras"
+                  </Label>
                 </div>
               </>
             )}

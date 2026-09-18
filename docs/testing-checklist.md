@@ -2005,3 +2005,149 @@ seleccionan combos por texto exacto se ajustaron a un matcher por prefijo (`/^Co
 quedar acoplados al sufijo. Suite completa vuelve a verificarse en 278/278 (40 archivos),
 `type-check`/`lint`/`build` limpios.
 
+## Auditoría: Menu — Checkboxes "Permitir 'Sin X'" (`sauceAllowWithout`/`beverageAllowWithout`/
+`extraPortionsAllowWithout`), commit sin hashear todavía (working tree)
+
+Auditor: @tester (independiente). Fecha: 2026-09-17. Alcance: `src/features/menu/types.ts`,
+`src/features/menu/items/ItemForm.tsx`, `src/features/menu/items/ItemForm.test.tsx`,
+`src/features/menu/beverages/BeverageForm.test.tsx`.
+
+✅ Pasó:
+- `pnpm run type-check` (`tsc -b`): sin salida, cero errores. Corrido de forma independiente.
+- `pnpm run lint` (`eslint .`): `0 errors, 1 warning` — el mismo warning preexistente y ajeno de
+  `StarPromotionForm.tsx` (`react-hooks/incompatible-library` por `watch()`), no relacionado.
+- `pnpm run build`: `✓ built in ~800-900ms`, sin errores. Corrido dos veces (antes y después de la
+  mutación de verificación), ambas limpias.
+- `pnpm run test -- --run --maxWorkers=2`: **285/285** (40 archivos), corrido de forma independiente
+  dos veces (antes y después de la mutación), ambas en verde.
+- **Contrato reconfirmado línea por línea contra el código fuente real de `backend-celtas`**
+  (`D:/proyecto-celtas/backend-celtas/`, working tree limpio, commit `ae05ede` "feat: add
+  allowWithout flags to menu items for 'Sin X' checkboxes"):
+  - `src/modules/menu/dto/create-menu-item.dto.ts` líneas 182-207: `sauceAllowWithout?: boolean`,
+    `beverageAllowWithout?: boolean`, `extraPortionsAllowWithout?: boolean` — los tres
+    `@IsOptional()` + `@IsBoolean({ message: '<campo> debe ser true o false' })`, sin `@Min`/`@Max`
+    ni ninguna otra restricción. **Nombre exacto confirmado: `extraPortionsAllowWithout`, plural
+    "Portions"** (no "extraPortionAllowWithout" como pedía la tarea original) — consistente con
+    `extraPortionsGroupRequired`/`extraPortionsGroupMaxSelectable`, ya existentes en el mismo DTO.
+  - `src/modules/menu/dto/update-menu-item.dto.ts`: `export class UpdateMenuItemDto extends
+    PartialType(CreateMenuItemDto) {}` — una sola línea, sin declarar `id` ni ningún campo propio.
+    Los 3 campos nuevos heredan `@IsOptional()` de forma automática vía `PartialType`.
+  - `src/modules/menu/entities/menu-item.entity.ts` líneas 187-214: las 3 columnas
+    (`sauce_allow_without`/`beverage_allow_without`/`extra_portions_allow_without`) son
+    `@Column({ type: 'boolean', default: true })`, tipadas `boolean` (no `boolean | null`) — el
+    default vive en la columna, no en el DTO ni en el service.
+  - `src/migrations/1789703153546-AddAllowWithoutToMenuItem.ts`: `ALTER TABLE "menu_items" ADD
+    "<columna>" boolean NOT NULL DEFAULT true` para las 3 columnas — confirma el backfill real de
+    filas existentes (ningún producto viejo queda con el campo `null`/`undefined`).
+  - `src/modules/menu/menu.service.ts` (`updateItem`, líneas 274-313): usa
+    `this.itemsRepository.merge(item, rest)` (no `Object.assign`) — un PATCH que omite estos 3
+    campos deja los valores ya guardados intactos; solo se sobreescriben si el body los incluye
+    explícitamente. Coincide con el criterio ya usado en `id` — nunca en el body del PATCH — que
+    `ItemForm.tsx` respeta (el `id` no aparece en ninguno de los 3 campos nuevos ni en el resto del
+    payload de `buildPayload`).
+  - `src/modules/menu/menu.service.ts` (`findPublicMenu`, líneas 32/36/40/70-72/100-176): los 3
+    campos viajan siempre en `GET /menu` (público, sin auth), junto a `sauceGroupRequired`/
+    `beverageGroupRequired`/`extraPortionsGroupRequired`, con el mismo criterio documentado en el
+    JSDoc del service. **Verificado en vivo contra producción** (no solo código): `curl -s
+    https://backend-celtas.onrender.com/menu` devuelve `"sauceAllowWithout":true` en el primer
+    producto real del catálogo ("El Escudo (broaster)") — el backend real en producción ya sirve
+    estos campos, ver hallazgo de contrato abajo.
+  - `src/modules/menu/menu.service.spec.ts` (tests del propio backend, no auditados por mí pero
+    revisados como evidencia adicional): casos explícitos de "expone los 3 campos tal como están en
+    el producto" (líneas 360-372), "crea sin especificarlos: quedan `undefined` en el DTO, el
+    default `true` lo aplica la columna" (líneas 658-671), y "actualiza los 3 campos" (líneas
+    806-819) — confirma que la ausencia del campo en el create/update body no dispara ningún
+    default explícito del lado del service, coincide con `ItemForm.tsx` enviando siempre los 3
+    campos con un valor concreto (nunca `undefined`) en `buildPayload`.
+- **Hallazgo de contrato — corrige la nota "deploy pendiente" del reporte de la sesión
+  principal**: el reporte afirmaba que `pnpm run generate:types` contra
+  `https://backend-celtas.onrender.com/docs-json` daba diff vacío ("el deploy del backend está
+  pendiente"). Volví a correr `pnpm run generate:types` de forma independiente y **el diff NO fue
+  vacío**: `CreateMenuItemDto` y `UpdateMenuItemDto` en `src/types/api.d.ts` ya incluyen
+  `sauceAllowWithout?: boolean` / `beverageAllowWithout?: boolean` /
+  `extraPortionsAllowWithout?: boolean` en el Swagger de producción real (30 líneas agregadas,
+  ambos DTOs). Confirmado además con un `curl` directo a `GET /menu` en producción (ver punto
+  anterior) — el dato ya viaja en respuestas reales, no solo en el schema de Swagger. Es decir: el
+  backend **sí está desplegado** en prod al momento de esta auditoría (2026-09-17), a diferencia de
+  lo que decía el reporte. No es un bug del frontend — el frontend funciona igual de correcto con
+  los tipos a mano que con los generados, porque coinciden exactamente — pero el `api.d.ts` real del
+  repo debe regenerarse y comprometerse por la sesión principal (yo reverta mi corrida de
+  `generate:types` con `git checkout -- src/types/api.d.ts` para no dejar un cambio de producción
+  como efecto colateral de esta auditoría; no es mi rol commitear ese archivo). Acción sugerida para
+  la sesión principal: correr `pnpm run generate:types`, confirmar que el diff es solo el esperado
+  (los 3 campos, sin nada más inesperado) y hacer commit, quitando o ajustando la nota "Swagger de
+  producción todavía NO lo documenta (deploy pendiente)" de `types.ts` (línea 83-84) que ya no es
+  cierta.
+- **Verificado por mutación (1 mutación, Edit puntual + reverso, sin `git checkout` para no perder
+  el resto del diff)**: quité las 3 líneas `sauceAllowWithout`/`beverageAllowWithout`/
+  `extraPortionsAllowWithout` del `return` de `buildPayload` en `ItemForm.tsx` (dejando el schema,
+  `defaultValues` y los 3 `<Checkbox>` intactos — simula el escenario más realista de "se agregó la
+  UI pero se olvidó incluir el campo en el payload"). Los 3 tests nuevos de
+  `ItemForm.test.tsx` (describe `ItemForm - checklist "Sin X"`) **fallaron exactamente como se
+  esperaba**, los 3 con el mismo patrón (`expected undefined to be false/true` — el campo
+  desaparece del payload capturado por el mock de `create`/`update`). Restauré las 3 líneas;
+  `git diff --stat src/features/menu/items/ItemForm.tsx` volvió a `69 insertions(+)`, idéntico al
+  original; re-corrí la suite completa del archivo (25/25) y luego `type-check`/`build`/suite
+  completa (285/285), todo en verde.
+- Confirmé que el checkbox de cada grupo solo se renderiza dentro de la misma rama condicional que
+  ya usan "Máximo a elegir"/"Obligatorio" (`saucesQuery.data && saucesQuery.data.length === 0 ? <p
+  mensaje> : <> ...checkboxes existentes + el nuevo... </>`, líneas 358-380 y análogas para bebidas
+  y porciones extras) — no hay una condición nueva o distinta para el checkbox de "Sin X", es
+  literalmente el mismo bloque JSX extendido. El test "por defecto, un producto nuevo sin tocar los
+  checkboxes envía las 3 banderas en true" ejercita explícitamente el caso donde los 3 catálogos
+  están vacíos (ningún checkbox se renderiza) y confirma que el payload igual lleva `true` en los 3
+  campos — viene de `defaultValues` del `useForm`, no depende de que el `<Checkbox>` esté montado.
+- `sauceAllowWithout`/`beverageAllowWithout`/`extraPortionsAllowWithout` no aparecen en ningún otro
+  archivo del proyecto fuera de los 4 ya modificados (`rg AllowWithout` en `src/` = solo
+  `ItemForm.tsx`, `ItemForm.test.tsx`, `BeverageForm.test.tsx`, `types.ts`) — no hay ningún otro
+  lugar (ej. `ItemsSection.tsx`, columnas de tabla) que debiera reflejar este campo; es coherente
+  con `sauceGroupRequired`/`beverageGroupRequired`/`extraPortionsGroupRequired`, que tampoco
+  aparecen fuera del formulario (a diferencia de `available`/`redeemableWithStars`/`specialReward`,
+  que sí tienen su propio switch en la tabla — pero esos son toggles rápidos de un solo campo
+  booleano de "estado", no config de un grupo de opciones).
+
+❌ Falló:
+- (ninguno bloqueante)
+
+⚠️ Riesgos / casos borde no cubiertos (documentados, no bloqueantes):
+- **Backend ya deployado en prod, `api.d.ts` local desactualizado** (ver hallazgo de contrato
+  arriba) — no es un bug funcional del frontend (los tipos a mano en `types.ts` coinciden
+  exactamente con el contrato real), pero incumple la convención del proyecto de mantener
+  `src/types/api.d.ts` sincronizado con Swagger antes de dar el módulo por cerrado. Acción para la
+  sesión principal: regenerar y commitear.
+- Inconsistencia menor de estilo en el schema Zod: los 3 campos nuevos usan `z.boolean().default(true)`,
+  mientras que los campos booleanos hermanos ya existentes (`sauceGroupRequired`,
+  `beverageGroupRequired`, `extraPortionsGroupRequired`) usan `z.boolean()` sin `.default()` (el
+  default real lo aporta `defaultValues` del `useForm`, no el schema — el `.default()` de Zod nunca
+  llega a activarse en la práctica porque el campo siempre tiene un valor concreto vía
+  `Controller`). No es un bug, solo falta de uniformidad; se documenta para no repetir el patrón
+  mixto si se agregan más campos booleanos en el futuro.
+- Sin test de componente que verifique explícitamente que **no se pierde** un valor `false` ya
+  guardado al reabrir el formulario sin catálogo (ej. producto con `sauceAllowWithout: false` pero
+  el catálogo de salsas queda vacío después — el checkbox no se renderiza, pero el valor debería
+  seguir viajando como `false` en el payload). El test 3 solo cubre el caso simétrico (`true` por
+  defecto con catálogo vacío en un producto **nuevo**); no hay un caso equivalente para edición de
+  un producto existente con `false` guardado y catálogo vacío. Riesgo bajo (mismo mecanismo de
+  `defaultValues` ya verificado que funciona para `true`), pero no está cubierto explícitamente.
+- Sin verificación visual en navegador (Playwright) de esta feature puntual — no había credenciales
+  de admin a mano en esta ronda, mismo motivo ya registrado en la auditoría anterior de este módulo.
+- Sin prueba end-to-end de que el 400 del backend (`sauceAllowWithout debe ser true o false`) se
+  mapea a algo legible en el formulario si por algún bug de cliente llegara a mandarse un valor no
+  booleano — improbable en la práctica porque el `<Checkbox>` de shadcn/Radix solo puede producir
+  `true`/`false` vía `onCheckedChange`, pero no hay un test explícito de ese 400 (mismo hueco que ya
+  existe para otros booleanos del formulario, no es una regresión nueva).
+
+Veredicto: **LISTO**. `type-check`/`lint`/`build`/`test` (285/285, 40 archivos) en verde, todo
+repetido de forma independiente antes y después de la mutación de verificación. Contrato confirmado
+línea por línea contra el código fuente real de `backend-celtas` (DTOs, entidad, migración,
+`menu.service.ts` con `merge()` y `findPublicMenu`), incluido el nombre exacto
+`extraPortionsAllowWithout` (plural) y el `id` correctamente ausente del payload del PATCH.
+Verificado por mutación que el test de regresión nuevo realmente detecta la omisión del campo en el
+payload (el escenario de bug más realista para este tipo de cambio), y que la suite vuelve a verde
+al restaurar. Único hallazgo material: la nota de "deploy pendiente" del reporte de la sesión
+principal ya no es cierta — el backend real en producción ya expone y sirve estos 3 campos
+(confirmado con `pnpm run generate:types` y con un `curl` directo a `GET /menu` en prod) — no
+bloqueante para este veredicto porque el frontend ya funciona correctamente con o sin el
+`api.d.ts` regenerado, pero se deja como acción pendiente explícita para la sesión principal. Los
+demás ítems ⚠️ son de bajo impacto y quedan documentados para referencia futura.
+

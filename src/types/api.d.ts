@@ -1384,6 +1384,21 @@ export interface components {
              * @example 1
              */
             extraPortionsGroupMaxSelectable?: number;
+            /**
+             * @description Si la app debe ofrecer la opción explícita "Sin salsas" para este producto (default true)
+             * @example true
+             */
+            sauceAllowWithout?: boolean;
+            /**
+             * @description Si la app debe ofrecer la opción explícita "Sin bebida" para este producto (default true)
+             * @example true
+             */
+            beverageAllowWithout?: boolean;
+            /**
+             * @description Si la app debe ofrecer la opción explícita "Sin porciones extras" para este producto (default true)
+             * @example true
+             */
+            extraPortionsAllowWithout?: boolean;
         };
         UpdateMenuItemDto: {
             /**
@@ -1477,6 +1492,21 @@ export interface components {
              * @example 1
              */
             extraPortionsGroupMaxSelectable?: number;
+            /**
+             * @description Si la app debe ofrecer la opción explícita "Sin salsas" para este producto (default true)
+             * @example true
+             */
+            sauceAllowWithout?: boolean;
+            /**
+             * @description Si la app debe ofrecer la opción explícita "Sin bebida" para este producto (default true)
+             * @example true
+             */
+            beverageAllowWithout?: boolean;
+            /**
+             * @description Si la app debe ofrecer la opción explícita "Sin porciones extras" para este producto (default true)
+             * @example true
+             */
+            extraPortionsAllowWithout?: boolean;
         };
         CreateSauceDto: {
             /**
