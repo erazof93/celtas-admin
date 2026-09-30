@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { get, patch } from '@/lib/api-client'
+import { get, patch, post } from '@/lib/api-client'
 import type { Order, OrderStatus, PaginatedOrders } from './types'
 import type { DeliveryEstimate, LatLng } from './delivery-estimate'
+import type { CreateOrderAdminInput } from './manual-order'
 
 const ORDERS_LIST_KEY = ['orders', 'list'] as const
 
@@ -92,5 +93,33 @@ export function useDeliveryEstimate(point: LatLng | null) {
     enabled: point !== null,
     // 400/404 son deterministas: reintentar no cambia el resultado.
     retry: false,
+  })
+}
+
+/**
+ * GET /orders/:id (admin ve cualquiera): pedido con `items` y `user` cargados
+ * (findOne usa relations { items, user }). Se usa para abrir el detalle de un
+ * pedido recién creado desde /orders?order=<id>.
+ */
+export function useOrder(id: string | null) {
+  return useQuery({
+    queryKey: ['orders', 'detail', id],
+    queryFn: () => get<Order>(`/orders/${id}`),
+    enabled: Boolean(id),
+  })
+}
+
+/**
+ * POST /orders/admin (solo admin): pedido manual (teléfono/WhatsApp). El
+ * backend calcula precios, delivery y total; devuelve el pedido creado con
+ * `whatsappUrl` al celular del cliente.
+ */
+export function useCreateAdminOrder() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: CreateOrderAdminInput) =>
+      post<Order>('/orders/admin', input),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ORDERS_LIST_KEY }),
   })
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import {
   MapContainer,
   Marker,
@@ -23,6 +23,7 @@ import {
   deliveryErrorMessage,
   GEOCODE_ADDRESS_MAX_LENGTH,
   storeLocationFromSettings,
+  type DeliveryEstimate,
   type LatLng,
   wrapLatLng,
 } from '../delivery-estimate'
@@ -76,15 +77,47 @@ function MapClickHandler({ onPick }: { onPick: (point: LatLng) => void }) {
  * cotiza con GET /delivery/estimate — la tarifa la calcula solo el backend.
  *
  * `settings` se usa únicamente para dibujar el pin del local.
+ *
+ * `onChange` (opcional) permite reutilizarlo dentro de un formulario (ej.
+ * pedido manual): notifica el texto escrito, el punto ubicado y la cotización.
+ * `point` es `null` mientras la dirección escrita no coincida con la última
+ * buscada — si el admin edita el texto, el pin anterior ya no la representa.
  */
-export function DeliveryCalculator() {
+export interface DeliveryLocation {
+  address: string
+  point: LatLng | null
+  estimate: DeliveryEstimate | null
+  /** La cotización del punto ubicado falló (el calculador ya muestra el error y "Reintentar"). */
+  estimateFailed: boolean
+}
+
+interface DeliveryCalculatorProps {
+  onChange?: (location: DeliveryLocation) => void
+}
+
+export function DeliveryCalculator({ onChange }: DeliveryCalculatorProps = {}) {
   const settingsQuery = useSettings()
   const geocodeMutation = useGeocodeAddress()
   const [address, setAddress] = useState('')
+  const [searchedAddress, setSearchedAddress] = useState<string | null>(null)
   const [searchTarget, setSearchTarget] = useState<LatLng | null>(null)
   const [pin, setPin] = useState<LatLng | null>(null)
   const [error, setError] = useState<string | null>(null)
   const estimateQuery = useDeliveryEstimate(pin)
+
+  // Ref: el padre suele pasar una función inline; como dependencia del efecto
+  // dispararía onChange en cada render.
+  const onChangeRef = useRef(onChange)
+  useEffect(() => {
+    onChangeRef.current = onChange
+  })
+  const located = searchedAddress !== null && address.trim() === searchedAddress
+  const point = located ? pin : null
+  const estimateData = located ? (estimateQuery.data ?? null) : null
+  const estimateFailed = located && estimateQuery.isError
+  useEffect(() => {
+    onChangeRef.current?.({ address, point, estimate: estimateData, estimateFailed })
+  }, [address, point, estimateData, estimateFailed])
 
   if (settingsQuery.isLoading) {
     return <LoadingState label="Cargando configuración de delivery…" />
@@ -122,6 +155,7 @@ export function DeliveryCalculator() {
       // dirección (y las coordenadas) sean las mismas que la vez anterior.
       setSearchTarget({ lat, lng })
       setPin({ lat, lng })
+      setSearchedAddress(text)
     } catch (err) {
       setError(deliveryErrorMessage(err, 'geocode'))
     }

@@ -4,7 +4,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AxiosError, AxiosHeaders } from 'axios'
-import { DeliveryCalculator } from './DeliveryCalculator'
+import { DeliveryCalculator, type DeliveryLocation } from './DeliveryCalculator'
 import type { Setting } from '../../settings/types'
 
 /**
@@ -95,13 +95,13 @@ type Params = { address?: string; latitude?: number; longitude?: number }
 let geocodeImpl: (params: Params) => Promise<unknown>
 let estimateImpl: (params: Params) => Promise<unknown>
 
-function renderCalculator() {
+function renderCalculator(onChange?: (location: DeliveryLocation) => void) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   return render(
     <QueryClientProvider client={queryClient}>
-      <DeliveryCalculator />
+      <DeliveryCalculator onChange={onChange} />
     </QueryClientProvider>,
   )
 }
@@ -375,5 +375,84 @@ describe('DeliveryCalculator - mapa desplazado a otra copia del mundo', () => {
       expect(config.params.latitude).toBe(-12.155)
       expect(config.params.longitude).toBeCloseTo(-76.97, 9)
     })
+  })
+})
+
+describe('DeliveryCalculator - onChange (reutilizado en pedido manual)', () => {
+  it('notifica texto, punto ubicado y cotización; editar el texto invalida el punto', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    renderCalculator(onChange)
+
+    await search(user, 'Jr. Carabaya 250, Lima')
+    await screen.findByText('Delivery: S/ 4.00')
+
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith({
+        address: 'Jr. Carabaya 250, Lima',
+        point: { lat: GEOCODED[0], lng: GEOCODED[1] },
+        estimate: { deliveryFee: 4, isFarOrder: false, distanceMeters: 350 },
+        estimateFailed: false,
+      }),
+    )
+
+    // El pin ya no representa la dirección escrita → point/estimate en null.
+    await user.type(screen.getByLabelText('Dirección'), ' 2do piso')
+    expect(onChange).toHaveBeenLastCalledWith({
+      address: 'Jr. Carabaya 250, Lima 2do piso',
+      point: null,
+      estimate: null,
+      estimateFailed: false,
+    })
+  })
+
+  it('mover el pin notifica el punto nuevo con su cotización', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    estimateImpl = (params) =>
+      Promise.resolve(
+        params.latitude === GEOCODED[0]
+          ? { deliveryFee: 4, isFarOrder: false, distanceMeters: 350 }
+          : { deliveryFee: 7, isFarOrder: true, distanceMeters: 2800 },
+      )
+    renderCalculator(onChange)
+    await search(user, 'Jr. Carabaya 250, Lima')
+    await screen.findByText('Delivery: S/ 4.00')
+
+    act(() => leaflet.click?.({ latlng: { lat: -12.14, lng: -76.97 } }))
+
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith({
+        address: 'Jr. Carabaya 250, Lima',
+        point: { lat: -12.14, lng: -76.97 },
+        estimate: { deliveryFee: 7, isFarOrder: true, distanceMeters: 2800 },
+        estimateFailed: false,
+      }),
+    )
+  })
+})
+
+describe('DeliveryCalculator - onChange cuando falla la cotización', () => {
+  it('notifica estimateFailed=true y vuelve a false al reintentar con éxito', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    estimateImpl = () => Promise.reject(httpError(500))
+    renderCalculator(onChange)
+    await search(user, 'Jr. Carabaya 250, Lima')
+
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ estimate: null, estimateFailed: true }),
+      ),
+    )
+
+    estimateImpl = () =>
+      Promise.resolve({ deliveryFee: 4, isFarOrder: false, distanceMeters: 350 })
+    await user.click(await screen.findByRole('button', { name: 'Reintentar' }))
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ estimateFailed: false, estimate: expect.objectContaining({ deliveryFee: 4 }) }),
+      ),
+    )
   })
 })

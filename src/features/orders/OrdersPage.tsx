@@ -1,5 +1,7 @@
 import { lazy, Suspense, useState } from 'react'
-import { Inbox, MapPin } from 'lucide-react'
+import { Link, useSearchParams } from 'react-router-dom'
+import { Inbox, MapPin, Plus } from 'lucide-react'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -27,9 +29,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { getApiMessage } from '@/lib/api-errors'
 import { formatLima } from '@/lib/dates'
 import { cn } from '@/lib/utils'
-import { useOrders } from './hooks'
+import { useOrder, useOrders } from './hooks'
 import { mergeOrderAfterUpdate } from './merge'
 import { OrderDetailDialog } from './OrderDetailDialog'
 import { orderCustomer } from './orders-utils'
@@ -95,6 +98,32 @@ export default function OrdersPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [calculatorOpen, setCalculatorOpen] = useState(false)
 
+  // /orders?order=<id>: abre el detalle de ese pedido (ej. recién creado
+  // desde "Crear pedido manual"). Se pide con GET /orders/:id porque puede
+  // no estar en la página/filtro actual de la lista.
+  const [searchParams, setSearchParams] = useSearchParams()
+  const orderParam = searchParams.get('order')
+  const linkedOrderQuery = useOrder(orderParam)
+  const [openedParam, setOpenedParam] = useState<string | null>(null)
+  if (orderParam && linkedOrderQuery.data && openedParam !== orderParam) {
+    // Ajuste de estado durante el render (patrón de React para derivar de
+    // props/URL) en vez de un efecto: se ejecuta una sola vez por id.
+    setOpenedParam(orderParam)
+    setSelectedOrder(linkedOrderQuery.data)
+    setDialogOpen(true)
+  }
+
+  function handleDialogOpenChange(open: boolean) {
+    setDialogOpen(open)
+    if (!open && orderParam) {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('order')
+        return next
+      })
+    }
+  }
+
   const ordersQuery = useOrders(
     page,
     PAGE_SIZE,
@@ -123,6 +152,12 @@ export default function OrdersPage() {
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
+          <Button asChild>
+            <Link to="/orders/create-manual">
+              <Plus className="size-4" />
+              Crear pedido manual
+            </Link>
+          </Button>
           <Button variant="outline" onClick={() => setCalculatorOpen(true)}>
             <MapPin className="size-4" />
             Cotizar delivery
@@ -145,12 +180,21 @@ export default function OrdersPage() {
         </div>
       </header>
 
+      {orderParam && linkedOrderQuery.isError ? (
+        <Alert variant="destructive">
+          <AlertTitle>No se pudo abrir el pedido</AlertTitle>
+          <AlertDescription>
+            {getApiMessage(linkedOrderQuery.error, 'Revisa tu conexión y vuelve a intentar.')}
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       {isLoading ? (
         <LoadingState label="Cargando pedidos…" />
       ) : isError ? (
         <ErrorState
           title="No se pudieron cargar los pedidos"
-          description="Revisa tu conexión y vuelve a intentar."
+          description='Revisa tu conexión y vuelve a intentar.'
           onRetry={() => refetch()}
         />
       ) : data && data.items.length === 0 ? (
@@ -231,7 +275,7 @@ export default function OrdersPage() {
       <OrderDetailDialog
         order={selectedOrder}
         open={dialogOpen}
-        onOpenChange={setDialogOpen}
+        onOpenChange={handleDialogOpenChange}
         onOrderUpdated={(updated) =>
           // El PATCH devuelve el pedido SIN items (se guarda sin relaciones):
           // mergeOrderAfterUpdate conserva los items del detalle abierto y

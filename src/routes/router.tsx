@@ -15,6 +15,9 @@ const LoginPage = lazy(() => import('@/features/auth/LoginPage'))
 const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage'))
 const MenuPage = lazy(() => import('@/features/menu/MenuPage'))
 const OrdersPage = lazy(() => import('@/features/orders/OrdersPage'))
+const CreateManualOrderPage = lazy(
+  () => import('@/features/orders/pages/CreateManualOrderPage'),
+)
 const CouponsPage = lazy(() => import('@/features/coupons/CouponsPage'))
 const BannersPage = lazy(() => import('@/features/banners/BannersPage'))
 const StarPromotionsPage = lazy(
@@ -72,6 +75,14 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<PageFallback />}>
             <OrdersPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'orders/create-manual',
+        element: (
+          <Suspense fallback={<PageFallback />}>
+            <CreateManualOrderPage />
           </Suspense>
         ),
       },

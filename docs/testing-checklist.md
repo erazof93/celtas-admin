@@ -2352,3 +2352,64 @@ Checklist:
       'slice')`; el detalle vuelve a `order.user.phone` → 4 tests de `OrderDetailDialog` fallan con
       `TypeError ... (reading 'phone')`.
 - [ ] Sin verificar en navegador real contra un backend con pedidos anónimos (solo jsdom).
+
+## Auditoría: Orders — Crear pedido manual (teléfono/WhatsApp, `POST /orders/admin`), working tree sin commitear
+
+Auditor: @tester (independiente). Fecha: 2026-09-30. Alcance: `orders/manual-order.ts` (+ test),
+`orders/components/CustomerPicker.tsx`, `orders/components/AddItemDialog.tsx`,
+`orders/pages/CreateManualOrderPage.tsx` (+ test), `orders/hooks.ts` (`useOrder`,
+`useCreateAdminOrder`), `orders/components/DeliveryCalculator.tsx` (`onChange`), `OrdersPage.tsx`
+(`?order=<id>` + botón), `routes/router.tsx`. `src/types/api.d.ts` sin diff contra HEAD (ya traía
+`CreateOrderAdminDto` desde `d129a85`). Backend de referencia: `D:\proyecto-celtas\backend-celtas`
+commit `dc35681` (leído: `create-order-admin.dto.ts`, `is-customer-contact-valid.ts`,
+`create-order.dto.ts`, `phone.util.ts`, `orders.controller.ts`, `orders.service.ts`
+`createOrderByAdmin`/`placeOrder`/`resolveAddressSnapshot`/`parseAddressCoords`/`buildItems`/
+`resolveSelected*`/`validateGroupSelection`/`resolveBeveragePrices`/`findOne`, `query-users.dto.ts`).
+
+Checklist:
+- [x] `pnpm run type-check` (tsc -b) exit 0.
+- [x] `pnpm run lint`: 0 errores (1 warning preexistente ajeno en `StarPromotionForm.tsx`).
+- [x] `pnpm run build` exit 0 (`CreateManualOrderPage` y `DeliveryCalculator` en chunks lazy).
+- [x] Suite completa: 48 archivos / 395 tests antes de los tests del tester; con ellos 50 / 400.
+- [x] Contrato: `POST /orders/admin` (JwtAuthGuard + RolesGuard ADMIN). Body = `customerId` XOR
+      (`customerName` + `customerPhone`), `addressSnapshot` (JSON string), `items[]` con
+      `menuItemId`, `quantity`, `sauceIds?`/`beverageIds?`/`extraPortionIds?`/`friesTypeIds?`,
+      `comment?`. No se envían `deliveryFee`, `notes`, `selected*`, `addressId`, `couponCode` ni
+      `rewardRedemptionId` (estos 3 últimos dan 400 en anónimo). No existe `/customers` en el backend.
+- [x] **[QA] `manual-order.contract.test.ts` (nuevo)**: `CreateOrderAdminInput` (tipo escrito a
+      mano) es asignable al `CreateOrderAdminDto` generado y no tiene claves fuera del whitelist
+      (`forbidNonWhitelisted`). Verificado: agregar `deliveryFee` al input o `selectedSauces` al
+      ítem, o cambiar `quantity` a string, rompe `tsc -b`.
+- [x] **[QA] `hooks.manual-order.test.tsx` (nuevo)**: `useCreateAdminOrder` hace POST a
+      `/orders/admin` con el body sin modificar e invalida `['orders','list']`; `useOrder` hace GET
+      `/orders/:id` y no dispara request con `null`.
+- [x] Espejos del backend: `normalizePeruMobile` = `phone.util.ts`; `beveragePriceFor` =
+      `resolveBeveragePrices` (`includeFreeTo`); subtotal = `(unit + extras) * qty` con round2;
+      `selectionErrors` = `validateGroupSelection` (requerido / máximo, `null` = sin límite).
+- [x] Tri-state: grupo ofrecido → array (aunque sea `[]`); no ofrecido → omitido.
+- [x] Mutaciones (backup + restore, md5 idéntico al final), todas MATADAS: customerId + customerName
+      juntos (2 fallan); `sauceIds`→`selectedSauces` (2); quitar `includeFreeTo` (1); mandar grupos
+      no ofrecidos (1); colapsar `[]` a omitido (1); celular de 8 dígitos (1); quitar rama `51…` (1);
+      ignorar requerido (2); ignorar máximo (1); coordenadas como string (2); extras sin precio (3);
+      URL `/orders` en vez de `/orders/admin` (1); sin invalidación de la lista (1, test del tester);
+      `?order` no abre el detalle (1); sin alerta de error de `?order` (1); `DeliveryCalculator` no
+      invalida el punto al editar el texto (1); se ofrecen productos no disponibles (1); se ofrecen
+      cuentas admin en el buscador (1); no redirige a `?order=<id>` (1).
+- [x] Estados: menú cargando / error con Reintentar (y "Agregar producto" deshabilitado) / sin
+      productos disponibles / búsqueda sin coincidencias; clientes cargando / error (con alternativa
+      de pedido sin cuenta) / no encontrado; "Creando…" con botón deshabilitado; error del backend
+      mostrado tal cual; mapa lazy con fallback; `?order` con error visible en Pedidos.
+- [x] Cliente registrado al abrir el detalle: `GET /orders/:id` carga `relations { items, user }`;
+      `OrderDetailDialog` usa `orderCustomer()` (ID corto + "Cliente (ID)" + WhatsApp a `user.phone`),
+      ya cubierto por los tests existentes de `OrderDetailDialog`.
+- [ ] (menor, no cubierto) Si el producto ofrece un grupo cuyas opciones están TODAS inactivas, el
+      panel lo trata como "no ofrecido" (omite el campo), pero `validateGroupSelection` del backend
+      cuenta también las inactivas: si ese grupo es obligatorio, el backend responde 400 y no se
+      puede corregir desde la UI. La mutación "contar también las inactivas" SOBREVIVE (ningún test
+      cubre ese caso).
+- [ ] (menor) Si falla la cotización (`GET /delivery/estimate`) con la dirección ya ubicada, el
+      resumen se queda en "Delivery: Calculando…" / "Total: —" (el pedido igual se puede crear).
+- [ ] (UX, preexistente) El detalle de un pedido con cliente registrado muestra solo el ID, no el
+      nombre, aunque `GET /orders/:id` trae `user.fullName`.
+- [ ] Sin verificar en navegador real contra el backend (sin credenciales de admin): creación real,
+      400 de validación reales, Leaflet dentro de la página.

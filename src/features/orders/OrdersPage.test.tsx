@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import OrdersPage from './OrdersPage'
 import type { Order } from './types'
 
@@ -12,10 +13,24 @@ import type { Order } from './types'
  * (8 chars del userId en mayúsculas, mono).
  */
 
-const { useOrdersMock } = vi.hoisted(() => ({ useOrdersMock: vi.fn() }))
+const { useOrdersMock, useOrderMock } = vi.hoisted(() => ({
+  useOrdersMock: vi.fn(),
+  useOrderMock: vi.fn(),
+}))
 
-vi.mock('./hooks', () => ({ useOrders: useOrdersMock }))
-vi.mock('./OrderDetailDialog', () => ({ OrderDetailDialog: () => null }))
+vi.mock('./hooks', () => ({ useOrders: useOrdersMock, useOrder: useOrderMock }))
+vi.mock('./OrderDetailDialog', () => ({
+  OrderDetailDialog: ({ order, open }: { order: Order | null; open: boolean }) =>
+    open && order ? <div data-testid="order-detail">{order.id}</div> : null,
+}))
+
+function renderPage(url = '/orders') {
+  return render(
+    <MemoryRouter initialEntries={[url]}>
+      <OrdersPage />
+    </MemoryRouter>,
+  )
+}
 
 function makeOrder(overrides: Partial<Order> = {}): Order {
   return {
@@ -44,6 +59,7 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
 }
 
 function mockOrders(items: Order[]) {
+  useOrderMock.mockReturnValue({ data: undefined, isError: false, error: null })
   useOrdersMock.mockReturnValue({
     data: {
       items,
@@ -75,7 +91,7 @@ describe('OrdersPage — columna Cliente', () => {
     })
     mockOrders([registered, anon])
 
-    render(<OrdersPage />)
+    renderPage()
 
     const regRow = rowOf(registered.id)
     const regCell = regRow.getByText('ABCDEF12')
@@ -91,10 +107,46 @@ describe('OrdersPage — columna Cliente', () => {
   it('anónimo sin customerName: muestra "—" en vez de crashear', () => {
     mockOrders([makeOrder({ userId: null, user: null, customerName: null })])
 
-    render(<OrdersPage />)
+    renderPage()
 
     const row = rowOf('aaaaaaaa')
     expect(row.getByText('—')).toBeInTheDocument()
     expect(row.getByText('Sin cuenta')).toBeInTheDocument()
+  })
+})
+
+describe('OrdersPage — pedido manual', () => {
+  it('muestra el botón "Crear pedido manual" que lleva a /orders/create-manual', () => {
+    mockOrders([])
+    renderPage()
+    expect(screen.getByRole('link', { name: /Crear pedido manual/ })).toHaveAttribute(
+      'href',
+      '/orders/create-manual',
+    )
+  })
+
+  it('/orders?order=<id> pide ese pedido con useOrder y abre su detalle', () => {
+    mockOrders([])
+    const created = makeOrder({ id: 'cccccccc-0000-4000-8000-000000000003' })
+    useOrderMock.mockReturnValue({ data: created, isError: false, error: null })
+
+    renderPage(`/orders?order=${created.id}`)
+
+    expect(useOrderMock).toHaveBeenCalledWith(created.id)
+    expect(screen.getByTestId('order-detail')).toHaveTextContent(created.id)
+  })
+
+  it('sin ?order no abre ningún detalle', () => {
+    mockOrders([])
+    renderPage()
+    expect(useOrderMock).toHaveBeenLastCalledWith(null)
+    expect(screen.queryByTestId('order-detail')).not.toBeInTheDocument()
+  })
+
+  it('?order=<id> que falla muestra "No se pudo abrir el pedido"', () => {
+    mockOrders([])
+    useOrderMock.mockReturnValue({ data: undefined, isError: true, error: new Error('x') })
+    renderPage('/orders?order=no-existe')
+    expect(screen.getByText('No se pudo abrir el pedido')).toBeInTheDocument()
   })
 })
