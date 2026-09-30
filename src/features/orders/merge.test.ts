@@ -41,6 +41,8 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
   return {
     id: 'order-1',
     userId: 'user-1',
+    customerName: null,
+    customerPhone: null,
     status: 'pendiente',
     addressSnapshot:
       '{"fullAddress":"Av. Lima 123","district":"San Juan de Miraflores"}',
@@ -118,6 +120,31 @@ describe('mergeOrderAfterUpdate', () => {
     const merged = mergeOrderAfterUpdate(current, updated)
 
     expect(merged.user).toEqual(current.user)
-    expect(merged.user.fullName).toBe('Cliente de Prueba')
+    expect(merged.user?.fullName).toBe('Cliente de Prueba')
+  })
+
+  it('pedido anónimo: conserva user null y el contacto (customerName/customerPhone) tras el PATCH', () => {
+    const current = makeOrder({
+      userId: null,
+      user: null,
+      customerName: 'Rosa Quispe',
+      customerPhone: '51987654321',
+    })
+    // El PATCH devuelve la entidad sin relaciones pero CON las columnas propias.
+    const updated: Partial<Order> = {
+      status: 'confirmado',
+      userId: null,
+      customerName: 'Rosa Quispe',
+      customerPhone: '51987654321',
+      items: undefined,
+      user: undefined,
+    }
+
+    const merged = mergeOrderAfterUpdate(current, updated)
+
+    expect(merged.status).toBe('confirmado')
+    expect(merged.user).toBeNull()
+    expect(merged.customerName).toBe('Rosa Quispe')
+    expect(merged.customerPhone).toBe('51987654321')
   })
 })

@@ -1,26 +1,22 @@
+import { getApiMessage, getApiStatus } from '@/lib/api-errors'
 import {
-  parseDeliveryAlertRadiusMeters,
-  parseDeliveryFeeTiers,
   parseStoreLocation,
-  DELIVERY_ALERT_RADIUS_METERS_KEY,
-  DELIVERY_FEE_TIERS_KEY,
   STORE_LOCATION_KEY,
 } from '../settings/settings-utils'
-import type { DeliveryFeeTier, Setting, StoreLocation } from '../settings/types'
+import type { Setting, StoreLocation } from '../settings/types'
 
 /**
- * Cotizador de delivery — capa MOCK temporal.
+ * Cotizador de delivery — contrato real, confirmado contra backend-celtas
+ * (commit 640cd6b) y `api.d.ts` regenerado:
  *
- * El endpoint real es `GET /delivery/estimate?latitude=&longitude=` (JWT),
- * confirmado contra delivery.controller.ts + estimate-delivery-by-coords.dto.ts
- * de backend-celtas (commit be84b73). Todavía NO está desplegado (producción
- * responde 404), así que no está en api.d.ts.
+ * - `GET /orders/geocode?address=` (JWT, 10 req/min por usuario) → `[lat, lng]`.
+ *   400 vacía/larga/no encontrada, 429 rate limit, 503 Geoapify caído.
+ * - `GET /delivery/estimate?latitude=&longitude=` (JWT) →
+ *   `{ deliveryFee, isFarOrder, distanceMeters }`. 400 coords inválidas, 404
+ *   `store_location` sin configurar. Nunca rechaza por distancia.
  *
- * TODO(deploy /delivery/estimate): correr `pnpm run generate:types`, reemplazar
- * `DeliveryEstimate` por el tipo generado y `estimateDeliveryLocally` por un
- * hook de React Query contra `get('/delivery/estimate', { params })`.
- * TODO(geocoding): `mockGeocode` es una tabla fija — reemplazar por
- * geocodificación real (el backend no expone un endpoint de geocoding).
+ * El cálculo (Haversine + tramos) vive SOLO en el backend: el panel ya no lo
+ * replica.
  */
 
 /** Espejo del retorno de `estimateDeliveryByCoords` en orders.service.ts. */
@@ -31,100 +27,67 @@ export interface DeliveryEstimate {
   distanceMeters: number | null
 }
 
-export interface DeliveryConfig {
-  store: StoreLocation
-  tiers: DeliveryFeeTier[]
-  alertRadiusMeters: number
-}
-
 export interface LatLng {
   lat: number
   lng: number
 }
 
-/** Espejo de `DISTANCE_ROUNDING_METERS` en orders.service.ts. */
-const DISTANCE_ROUNDING_METERS = 50
-const EARTH_RADIUS_METERS = 6_371_000
-
-const MOCK_ADDRESSES: Record<string, LatLng> = {
-  'jr. carabaya 250': { lat: -12.1631, lng: -76.97 },
-  'av. arequipa 500': { lat: -12.0656, lng: -76.9736 },
-  'jr. lima 100': { lat: -12.0656, lng: -76.9836 },
-  'calle default': { lat: -12.1631, lng: -76.97 },
-}
-
-/** MOCK: busca la dirección en una tabla fija; `null` = no encontrada. */
-export function mockGeocode(address: string): LatLng | null {
-  const normalized = address.trim().toLowerCase()
-  if (!normalized) return null
-  for (const [key, coords] of Object.entries(MOCK_ADDRESSES)) {
-    if (normalized.includes(key)) return coords
-  }
-  return null
-}
+/** Máximo de `GeocodeAddressDto.address` en el backend. */
+export const GEOCODE_ADDRESS_MAX_LENGTH = 200
 
 /**
- * Config real del cálculo, leída de GET /settings (las mismas claves que usa
- * el backend). Sin `store_location` configurada → `null` (el backend
- * respondería 404: nunca se inventan coordenadas del local).
+ * Ubicación del local desde GET /settings — solo para dibujar su pin en el
+ * mapa (la tarifa la calcula el backend). Sin configurar → `null`: nunca se
+ * inventan coordenadas del local.
  */
-export function deliveryConfigFromSettings(
+export function storeLocationFromSettings(
   settings: Setting[] | undefined,
-): DeliveryConfig | null {
-  const valueOf = (key: string) => settings?.find((s) => s.key === key)?.value
-  const store = parseStoreLocation(valueOf(STORE_LOCATION_KEY))
-  if (!store) return null
-  return {
-    store,
-    tiers: parseDeliveryFeeTiers(valueOf(DELIVERY_FEE_TIERS_KEY)),
-    alertRadiusMeters: parseDeliveryAlertRadiusMeters(
-      valueOf(DELIVERY_ALERT_RADIUS_METERS_KEY),
-    ),
-  }
-}
-
-/** Espejo de `haversineDistanceMeters` (common/utils/geo.util.ts del backend). */
-export function haversineDistanceMeters(a: LatLng, b: LatLng): number {
-  const toRadians = (deg: number) => (deg * Math.PI) / 180
-  const dLat = toRadians(b.lat - a.lat)
-  const dLng = toRadians(b.lng - a.lng)
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRadians(a.lat)) *
-      Math.cos(toRadians(b.lat)) *
-      Math.sin(dLng / 2) ** 2
-  return EARTH_RADIUS_METERS * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
-}
-
-/** Espejo de `feeForDistance`: primer tramo con `distance <= maxMeters`. */
-export function feeForDistance(
-  distanceMeters: number,
-  tiers: DeliveryFeeTier[],
-): number {
-  for (const tier of tiers) {
-    if (tier.maxMeters === null || distanceMeters <= tier.maxMeters)
-      return tier.fee
-  }
-  return tiers[tiers.length - 1]?.fee ?? 0
+): StoreLocation | null {
+  const value = settings?.find((s) => s.key === STORE_LOCATION_KEY)?.value
+  return parseStoreLocation(value)
 }
 
 /**
- * MOCK de `GET /delivery/estimate`: mismo cálculo que `computeDelivery` del
- * backend, con la config real de settings. Tarifa y aviso con la distancia
- * EXACTA; solo la distancia expuesta se redondea a 50 m.
+ * Mensaje para un error de geocoding/cotización. Los 400/404 traen un mensaje
+ * del backend en español que se muestra tal cual; 429/503/5xx/red se traducen
+ * a algo accionable. El 401 lo maneja el interceptor de api-client (refresh o
+ * redirect a /login): si llega acá es porque el refresh también falló.
  */
-export function estimateDeliveryLocally(
-  point: LatLng,
-  config: DeliveryConfig,
-): DeliveryEstimate {
-  const exact = haversineDistanceMeters(
-    { lat: config.store.latitude, lng: config.store.longitude },
-    point,
-  )
-  return {
-    deliveryFee: feeForDistance(exact, config.tiers),
-    isFarOrder: exact > config.alertRadiusMeters,
-    distanceMeters:
-      Math.round(exact / DISTANCE_ROUNDING_METERS) * DISTANCE_ROUNDING_METERS,
+export function deliveryErrorMessage(
+  error: unknown,
+  kind: 'geocode' | 'estimate',
+): string {
+  const status = getApiStatus(error)
+  if (status === 400 || status === 404) {
+    return getApiMessage(
+      error,
+      kind === 'geocode' ? 'Dirección no encontrada' : 'No se pudo cotizar',
+    )
   }
+  if (status === 401) return 'Tu sesión expiró. Vuelve a iniciar sesión.'
+  if (status === 429) {
+    return 'Demasiadas búsquedas seguidas. Espera un minuto y vuelve a intentar.'
+  }
+  if (status === 503) {
+    return 'El servicio de mapas no está disponible en este momento. Intenta más tarde.'
+  }
+  if (status === null) {
+    return 'No se pudo conectar con el servidor. Revisa tu conexión.'
+  }
+  return kind === 'geocode'
+    ? 'No se pudo buscar la dirección. Intenta de nuevo.'
+    : 'No se pudo calcular el delivery. Intenta de nuevo.'
+}
+
+/**
+ * Normaliza la longitud a [-180, 180). Leaflet repite el mundo al desplazar el
+ * mapa horizontalmente: un click en otra "copia" da p. ej. lng 283.03, que el
+ * backend rechaza (400, `@IsLongitude`). Equivale a `L.LatLng.wrap()`.
+ */
+export function wrapLatLng(point: LatLng): LatLng {
+  // Solo se transforma si está fuera de rango: la aritmética en punto flotante
+  // alteraría una longitud válida (-76.97 → -76.97000000000001).
+  if (point.lng >= -180 && point.lng < 180) return point
+  const lng = ((((point.lng + 180) % 360) + 360) % 360) - 180
+  return { lat: point.lat, lng }
 }

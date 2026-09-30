@@ -29,8 +29,8 @@ import {
 } from '../settings/settings-utils'
 import { buildAddressMapUrl, buildGoogleMapsUrl } from '../users/users-utils'
 import {
-  digitsOnly,
   isFarOrder,
+  orderCustomer,
   orderDiscount,
   orderDistanceMeters,
   orderSubtotal,
@@ -154,7 +154,9 @@ export function OrderDetailDialog({
 
   const addressLat = typeof address?.latitude === 'number' ? address.latitude : null
   const addressLng = typeof address?.longitude === 'number' ? address.longitude : null
-  const customerPhoneDigits = order?.user.phone ? digitsOnly(order.user.phone) : null
+  // orderCustomer: único lugar que lee userId/user/customer* (pedido anónimo = null).
+  const customer = order ? orderCustomer(order) : null
+  const customerPhoneDigits = customer?.phoneDigits ?? null
   const subtotal = order ? orderSubtotal(order) : 0
   const discount = order ? orderDiscount(order) : 0
 
@@ -194,7 +196,9 @@ export function OrderDetailDialog({
               </div>
               <DialogDescription>
                 Creado el {formatLima(order.createdAt)} · Cliente{' '}
-                {order.userId.slice(0, 8).toUpperCase()}
+                {customer?.isAnonymous
+                  ? `${customer.name ?? '—'} (sin cuenta)`
+                  : customer?.shortLabel}
               </DialogDescription>
             </DialogHeader>
 
@@ -322,12 +326,27 @@ export function OrderDetailDialog({
 
                 <div className="border-border rounded-lg border p-3 text-sm">
                   <dl className="space-y-1">
-                    <div className="flex justify-between">
-                      <dt className="text-muted-foreground">Cliente (ID)</dt>
-                      <dd className="font-mono text-xs pt-0.5">
-                        {order.userId}
-                      </dd>
-                    </div>
+                    {order.userId === null ? (
+                      <>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Cliente</dt>
+                          <dd>{order.customerName ?? '—'} (sin cuenta)</dd>
+                        </div>
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">Celular</dt>
+                          <dd className="font-mono text-xs pt-0.5">
+                            {order.customerPhone ?? '—'}
+                          </dd>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex justify-between">
+                        <dt className="text-muted-foreground">Cliente (ID)</dt>
+                        <dd className="font-mono text-xs pt-0.5">
+                          {order.userId}
+                        </dd>
+                      </div>
+                    )}
                     {order.deliveredAt ? (
                       <div className="flex justify-between">
                         <dt className="text-muted-foreground">Entregado</dt>

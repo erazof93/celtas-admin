@@ -74,6 +74,8 @@ function makeOrder(items: OrderItem[], overrides: Partial<Order> = {}): Order {
   return {
     id: 'order-1',
     userId: 'user-1',
+    customerName: null,
+    customerPhone: null,
     status: 'pendiente',
     addressSnapshot:
       '{"fullAddress":"Av. Lima 123","district":"San Juan de Miraflores"}',
@@ -348,6 +350,49 @@ describe('OrderDetailDialog — botón "Contactar al cliente por WhatsApp"', () 
     ).not.toBeInTheDocument()
     // El botón existente (mensaje del PEDIDO) sigue ahí, sin confundirse con el nuevo.
     expect(screen.getByRole('link', { name: 'Abrir en WhatsApp' })).toBeInTheDocument()
+  })
+})
+
+/**
+ * Pedido manual ANÓNIMO del admin (POST /orders/admin sin customerId): llega
+ * con `userId` y `user` en null y el contacto en customerName/customerPhone.
+ * Antes de este fix el detalle crasheaba (TypeError en `order.user.phone` y
+ * `order.userId.slice`) — estos tests fallan si se vuelve a leer directo.
+ */
+describe('OrderDetailDialog — pedido manual anónimo (userId/user null)', () => {
+  const anonOrder = () =>
+    makeOrder([makeItem()], {
+      userId: null,
+      user: null,
+      customerName: 'Rosa Quispe',
+      customerPhone: '51987654321',
+      whatsappUrl: 'https://wa.me/51987654321?text=confirma',
+    })
+
+  it('renderiza sin crashear y muestra el nombre + "(sin cuenta)" en vez del ID', () => {
+    renderDialog(anonOrder())
+
+    expect(
+      screen.getByText(/Cliente Rosa Quispe \(sin cuenta\)/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Cliente (ID)')).not.toBeInTheDocument()
+    expect(screen.getByText('51987654321')).toBeInTheDocument()
+  })
+
+  it('"Contactar al cliente por WhatsApp" usa customerPhone', () => {
+    renderDialog(anonOrder())
+
+    expect(
+      screen.getByRole('link', { name: 'Contactar al cliente por WhatsApp' }),
+    ).toHaveAttribute('href', 'https://wa.me/51987654321')
+  })
+
+  it('anónimo sin customerPhone: oculta el botón de contacto, sin crashear', () => {
+    renderDialog({ ...anonOrder(), customerPhone: null })
+
+    expect(
+      screen.queryByRole('link', { name: 'Contactar al cliente por WhatsApp' }),
+    ).not.toBeInTheDocument()
   })
 })
 

@@ -432,6 +432,20 @@ celtas-admin/
         al restaurar; los 9 tests del `describe` de cancelación (incluidos los `getAllByRole(...)
         .at(-1)`) en verde. Riesgos abiertos sin cambio: orden de deploy (backend primero), sin E2E,
         contador `0/500` puramente informativo.
+- [x] **Pedidos manuales anónimos (`userId`/`user` null) sin crashear** — contraparte del nuevo
+      `POST /orders/admin` del backend (desplegar JUNTOS con esa migración). Contrato confirmado
+      contra `order.entity.ts` real: `userId: string | null`, `user: User | null`, + columnas
+      `customerName`/`customerPhone` (`string | null`, celular ya normalizado a `51XXXXXXXXX`).
+      `api.d.ts` regenerado contra el backend local (0 líneas quitadas). Antes, UN solo pedido
+      anónimo tumbaba la lista (`OrdersPage.tsx:165`, `order.userId.slice`) y el detalle
+      (`order?.user.phone`, `order.userId.slice`) con TypeError. Fix de clase: función pura
+      `orderCustomer()` en `orders-utils.ts` como único lector de userId/user/customer*; lista con
+      nombre + badge "Sin cuenta", detalle con nombre/celular y "Contactar al cliente por
+      WhatsApp" a `customerPhone`. Pedidos con cliente registrado: UI sin cambios. `@tester`:
+      **LISTO** — 363 vitest, `tsc -b`/build/lint OK, barrido completo de `src/` sin otros accesos
+      inseguros (`CouponsPage` usa `coupon.userId`, no nullable); mutaciones (volver a
+      `userId.slice` / `user.phone`) fallan con el TypeError real. Pendiente: pantalla para CREAR
+      pedidos manuales desde el panel (este cambio solo los muestra); sin prueba en navegador real.
 
 ### 5.1 Infraestructura de tests
 - [x] Vitest + React Testing Library + jsdom instalados y configurados (script `pnpm run test`,

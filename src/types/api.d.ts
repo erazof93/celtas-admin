@@ -573,6 +573,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orders/admin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Crear un pedido manual (solo admin)
+         * @description Para pedidos tomados fuera de la app (ej. por teléfono). Mismo cálculo que POST /orders (precios snapshot, delivery por distancia, cupón, premios), pero NO se bloquea por horario de atención. Con customerId se asocia a ese cliente (addressId/cupón/premios se validan contra él); sin customerId es anónimo: customerName + customerPhone obligatorios y dirección solo por addressSnapshot (para calcular el delivery, incluir latitude/longitude en el JSON, ej. con GET /orders/geocode). El whatsappUrl apunta al celular del cliente con el resumen para confirmar (si el cliente registrado no tiene celular válido, al número del negocio). Un pedido anónimo entregado no suma totalSpent, estrellas ni cupones.
+         */
+        post: operations["OrdersController_createOrderByAdmin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orders/estimate-delivery-fee": {
         parameters: {
             query?: never;
@@ -587,6 +607,26 @@ export interface paths {
          * @description Mismo cálculo que POST /orders (Haversine contra store_location + tramo de delivery_fee_tiers), sin crear un pedido. Si la dirección no tiene coordenadas: deliveryFee 0, isFarOrder false, distanceMeters null (no bloquea).
          */
         post: operations["OrdersController_estimateDeliveryFee"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orders/geocode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Geocodificar una dirección a coordenadas [lat, lng]
+         * @description Resuelve la dirección con Geoapify (filtrado a Perú). Devuelve [latitude, longitude]. Incluir distrito o ciudad en el texto: "Jr. Carabaya 250" sin ciudad no se encuentra, "Jr. Carabaya 250, Lima" sí. Resultados con confianza < 0.5 se tratan como no encontrados.
+         */
+        get: operations["OrdersController_geocodeAddress"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1829,6 +1869,40 @@ export interface components {
              * @example A1B2C3D4
              */
             couponCode?: string;
+        };
+        CreateOrderAdminDto: {
+            /**
+             * @description UUID de una dirección guardada del usuario; se copia su contenido al addressSnapshot
+             * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+             */
+            addressId?: string;
+            /**
+             * @description JSON string con la dirección si el usuario no tiene direcciones guardadas
+             * @example {"alias":"Casa","fullAddress":"Av. Los Álamos 123","reference":"Portón verde","district":"San Juan de Miraflores"}
+             */
+            addressSnapshot?: string;
+            /** @description Productos del pedido (el total lo calcula el backend) */
+            items: components["schemas"]["CreateOrderItemDto"][];
+            /**
+             * @description Código de cupón opcional. Se valida y canjea dentro de la misma transacción del pedido; si no es válido, el pedido no se crea.
+             * @example A1B2C3D4
+             */
+            couponCode?: string;
+            /**
+             * @description UUID de un cliente registrado. Omitir para un pedido anónimo (requiere customerName y customerPhone).
+             * @example 3fa85f64-5717-4562-b3fc-2c963f66afa6
+             */
+            customerId?: string;
+            /**
+             * @description Nombre de contacto. Obligatorio si no hay customerId.
+             * @example Juan Pérez
+             */
+            customerName?: string;
+            /**
+             * @description Celular peruano de contacto (9 dígitos, acepta +51/espacios/guiones). Obligatorio si no hay customerId. El whatsappUrl del pedido apunta a este número.
+             * @example 987654321
+             */
+            customerPhone?: string;
         };
         EstimateDeliveryFeeDto: {
             /**
@@ -4115,6 +4189,63 @@ export interface operations {
             };
         };
     };
+    OrdersController_createOrderByAdmin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateOrderAdminDto"];
+            };
+        };
+        responses: {
+            /** @description Pedido creado en "pendiente" con whatsappUrl al cliente */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Payload inválido, producto no disponible, falta contacto/dirección, o addressId/cupón/premio en un pedido anónimo */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El usuario no es admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Cliente, producto o dirección no encontrados */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El cupón ya fue usado */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     OrdersController_estimateDeliveryFee: {
         parameters: {
             query?: never;
@@ -4144,6 +4275,57 @@ export interface operations {
             };
             /** @description La dirección no existe, no pertenece al usuario, o store_location no está configurada */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    OrdersController_geocodeAddress: {
+        parameters: {
+            query: {
+                /** @description Dirección en texto libre. Incluir distrito o ciudad: sin eso Geoapify suele no encontrarla. */
+                address: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Coordenadas [latitude, longitude] */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Dirección vacía, demasiado larga o no encontrada */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Más de 10 geocodificaciones por minuto del mismo usuario */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Geoapify no disponible (API key sin configurar, rate limit o caída) */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

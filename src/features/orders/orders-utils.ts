@@ -29,6 +29,41 @@ export function digitsOnly(raw: string): string {
   return raw.replace(/\D/g, '')
 }
 
+export interface OrderCustomer {
+  /** Pedido manual del admin sin cuenta de cliente (`userId === null`). */
+  isAnonymous: boolean
+  /** Para la columna "Cliente" de la lista: 8 chars del userId, o "Sin cuenta". */
+  shortLabel: string
+  /** Nombre a mostrar; `null` si el pedido no trae la relación `user` cargada. */
+  name: string | null
+  /** Dígitos para `wa.me/<dígitos>`, o `null` si no hay teléfono. */
+  phoneDigits: string | null
+}
+
+/**
+ * Datos de contacto del pedido, con o sin cuenta. Único punto que lee
+ * `userId`/`user`/`customerName`/`customerPhone`: un pedido anónimo trae
+ * `userId` y `user` en `null` y el contacto en `customerName`/`customerPhone`
+ * — leer `order.userId.slice()` o `order.user.phone` directo crasheaba la lista
+ * y el detalle de Pedidos (TypeError) apenas existía un pedido anónimo.
+ */
+export function orderCustomer(order: Order): OrderCustomer {
+  if (order.userId === null) {
+    return {
+      isAnonymous: true,
+      shortLabel: 'Sin cuenta',
+      name: order.customerName,
+      phoneDigits: order.customerPhone ? digitsOnly(order.customerPhone) : null,
+    }
+  }
+  return {
+    isAnonymous: false,
+    shortLabel: order.userId.slice(0, 8).toUpperCase(),
+    name: order.user?.fullName ?? null,
+    phoneDigits: order.user?.phone ? digitsOnly(order.user.phone) : null,
+  }
+}
+
 /**
  * Distancia (metros) entre el local y la dirección del pedido, o `null` si
  * falta cualquiera de las dos coordenadas — el backend NO expone

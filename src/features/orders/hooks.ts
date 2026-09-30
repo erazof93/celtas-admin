@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { get, patch } from '@/lib/api-client'
 import type { Order, OrderStatus, PaginatedOrders } from './types'
+import type { DeliveryEstimate, LatLng } from './delivery-estimate'
 
 const ORDERS_LIST_KEY = ['orders', 'list'] as const
 
@@ -61,5 +62,35 @@ export function useUpdateOrderStatus() {
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ORDERS_LIST_KEY }),
+  })
+}
+/**
+ * Geocodifica una dirección de texto libre → `[latitude, longitude]`
+ * (GET /orders/geocode, Geoapify filtrado a Perú). Mutación y no query: se
+ * dispara solo al pulsar "Buscar", y el backend limita a 10 req/min por usuario.
+ */
+export function useGeocodeAddress() {
+  return useMutation({
+    mutationFn: (address: string) =>
+      get<[number, number]>('/orders/geocode', { params: { address } }),
+  })
+}
+
+/**
+ * Cotiza el delivery para un punto (GET /delivery/estimate). Se re-consulta
+ * cada vez que el pin cambia; `null` = todavía no hay pin.
+ */
+export function useDeliveryEstimate(point: LatLng | null) {
+  return useQuery({
+    queryKey: ['delivery', 'estimate', point?.lat, point?.lng],
+    queryFn: () => {
+      if (!point) throw new Error('Sin punto para cotizar')
+      return get<DeliveryEstimate>('/delivery/estimate', {
+        params: { latitude: point.lat, longitude: point.lng },
+      })
+    },
+    enabled: point !== null,
+    // 400/404 son deterministas: reintentar no cambia el resultado.
+    retry: false,
   })
 }

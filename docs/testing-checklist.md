@@ -2279,3 +2279,76 @@ Checklist:
 - [ ] (menor) Con `required=true` huérfano cargado desde el backend y sin tipos, el checkbox
       "Obligatorio" se ve marcado pero deshabilitado hasta guardar (el payload sí manda `false`).
 - [ ] Sin verificar en navegador real contra producción (sin credenciales de admin en esta ronda).
+
+## Auditoría: Orders — `DeliveryCalculator` con backend real (`GET /orders/geocode` + `GET /delivery/estimate`), working tree sin commitear
+
+Auditor: @tester (independiente). Fecha: 2026-09-30. Alcance: `src/types/api.d.ts` (regenerado),
+`orders/delivery-estimate.ts` (+ test), `orders/hooks.ts` (`useGeocodeAddress`,
+`useDeliveryEstimate`), `orders/components/DeliveryCalculator.tsx` (+ test). Backend de
+referencia: `D:\proyecto-celtas\backend-celtas` commit `640cd6b` (leído: `orders.controller.ts`,
+`delivery.controller.ts`, `dto/geocode-address.dto.ts`, `dto/estimate-delivery-by-coords.dto.ts`,
+`orders.service.ts` `geocodeAddress`/`estimateDeliveryByCoords`/`computeDelivery`,
+`geoapify.service.ts`). Producción expone ambas rutas en `/docs-json` y responden 401 sin token.
+
+Checklist:
+- [x] `pnpm run type-check` (tsc -b) exit 0.
+- [x] `pnpm run lint`: 0 errores (1 warning preexistente ajeno en `StarPromotionForm.tsx`).
+- [x] `pnpm run build` exit 0.
+- [x] Suite completa: 45 archivos / 350 tests en verde (antes de los 2 tests del tester; con ellos
+      `src/features/orders` 75/75).
+- [x] Contrato geocode: `GET /orders/geocode?address=` (JwtAuthGuard + UserThrottlerGuard 10/min),
+      `address` string no vacío max 200 -> input con `maxLength=200` y trim en el front; retorno
+      `[result.lat, result.lon]` -> el componente desestructura `[lat, lng]` en ese orden.
+- [x] Contrato estimate: `GET /delivery/estimate?latitude=&longitude=` (JWT) ->
+      `{ deliveryFee, isFarOrder, distanceMeters: number | null }` = `DeliveryEstimate`.
+- [x] Tipos de respuesta manuales justificados: en `api.d.ts` el 200 de geocode es `unknown` y el de
+      estimate `content?: never` (el backend no declara schema). Sin `any` ni castings.
+- [x] `api-client` desenvuelve `{ success, data }` (TransformInterceptor del backend); los hooks usan
+      `get<T>` del cliente, sin axios crudo ni `localStorage` para el token.
+- [x] Sin restos del mock (`mockGeocode`, `estimateDeliveryLocally`, `deliveryConfigFromSettings`,
+      "Modo simulado") en código de producción.
+- [x] Estados: settings loading/error/sin store_location; "Buscando…" (botón deshabilitado);
+      "Calculando delivery…"; error de cotización con Reintentar; resultado con "—" si
+      `distanceMeters` null; aviso `isFarOrder`.
+- [x] Errores: 400/404 mensaje del backend; 401 sesión expirada (el interceptor ya intentó refresh);
+      429 esperar un minuto; 503 servicio de mapas; 500 genérico sin filtrar mensaje interno; red
+      caída "Revisa tu conexión" — unit + componente.
+- [x] Mutaciones (restauradas, verificado con `diff`): URL geocode rota -> 8+ fallan; param
+      `address`->`q` -> falla; URL estimate rota -> 6 fallan; lat/lng invertidos en params -> 2
+      fallan; tupla geocode invertida -> 3 fallan; `retry:false`->`3` -> falla; sin trim -> falla;
+      sin "Buscando…" -> falla (test nuevo del tester).
+- [x] Re-buscar la misma dirección recentra (objeto nuevo por búsqueda) — cierra el pendiente menor
+      de la auditoría MOCK.
+- [ ] (menor) Click en el mapa usa `e.latlng` sin `.wrap()`: si el usuario panea a otra "copia" del
+      mundo la longitud sale de [-180,180] y el backend responde 400 (se muestra el mensaje). Solo
+      alcanzable arrastrando el mapa lejísimos a zoom bajo.
+- [ ] Sin verificar en navegador real contra producción (sin credenciales de admin): Leaflet dentro
+      del Dialog, geocoding real con Geoapify, rate limit 429 real.
+
+## Pedido manual del admin — null-safety de `userId`/`user` (pedidos anónimos de `POST /orders/admin`)
+
+- [x] Type-check (`tsc -b`) OK; lint 0 errores (1 warning previo en `StarPromotionForm.tsx`); build
+      OK; vitest 45 archivos / 363 tests antes del test del tester, más 2 del tester en
+      `OrdersPage.test.tsx`.
+- [x] `src/types/api.d.ts`: 0 líneas quitadas. Lo agregado para esta tarea es `/orders/admin` +
+      `CreateOrderAdminDto` (`customerId?`, `customerName?`, `customerPhone?`); el resto del diff es
+      `/orders/geocode`, que es de la integración de geocode sin commitear.
+- [x] `Order.userId: string | null`, `user: OrderUser | null`, `customerName`/`customerPhone:
+      string | null` coinciden con `order.entity.ts` real del backend.
+- [x] Barrido de todo `src/` buscando `.userId` / `.user`: los únicos accesos a `Order` están en
+      `orders-utils.ts#orderCustomer`, `OrderDetailDialog.tsx` (rama `userId === null`) y `merge.ts`
+      (copia la referencia). `CouponsPage.tsx:189` usa `coupon.userId`, que NO es nullable en
+      `coupon.entity.ts`; `UserOrdersSection` no lee `userId`/`user` (y siempre filtra por usuario);
+      el dashboard no lista pedidos. No queda ningún acceso sin null-safety.
+- [x] Guard de tipos: si se vuelve a poner `order.userId.slice(...)` en la lista, `tsc` falla con
+      TS18047 "'order.userId' is possibly 'null'".
+- [x] Cliente registrado sin cambios: la columna sigue siendo un `<td class="font-mono text-xs">`
+      con 8 caracteres en mayúsculas, el detalle sigue mostrando "Cliente (ID)" y la descripción
+      "Cliente XXXXXXXX", y el WhatsApp sale de `user.phone` (tests existentes + `orderCustomer`).
+- [x] **[QA] `OrdersPage.test.tsx` (nuevo)**: con una lista mixta, el anónimo muestra nombre +
+      "Sin cuenta" y el registrado su ID corto; un anónimo sin `customerName` muestra "—".
+- [x] Mutaciones (backup + restore, md5 idéntico): la columna vuelve a `order.userId.slice` → los 2
+      tests de `OrdersPage` fallan con `TypeError: Cannot read properties of null (reading
+      'slice')`; el detalle vuelve a `order.user.phone` → 4 tests de `OrderDetailDialog` fallan con
+      `TypeError ... (reading 'phone')`.
+- [ ] Sin verificar en navegador real contra un backend con pedidos anónimos (solo jsdom).

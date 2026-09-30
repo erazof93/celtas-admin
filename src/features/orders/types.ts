@@ -60,7 +60,16 @@ export interface OrderUser {
 
 export interface Order {
   id: string
-  userId: string
+  /**
+   * `null` en un pedido manual ANÓNIMO cargado por el admin (POST /orders/admin
+   * sin customerId — confirmado contra order.entity.ts real: `userId: string | null`).
+   * Usar `orderCustomer()` (orders-utils) en vez de leerlo directo.
+   */
+  userId: string | null
+  /** Contacto del pedido anónimo; `null` en todos los pedidos con cliente registrado. */
+  customerName: string | null
+  /** Celular del pedido anónimo, ya normalizado por el backend (`51XXXXXXXXX`). */
+  customerPhone: string | null
   status: OrderStatus
   /** Dirección al momento del pedido (JSON string, no referencia viva). */
   addressSnapshot: string
@@ -89,8 +98,9 @@ export interface Order {
    * devuelve el pedido SIN relaciones (ver merge.ts) — este campo se
    * considera siempre presente en el tipo por consistencia con el resto del
    * módulo, pero el merge conserva el `user` del detalle ya abierto.
+   * `null` en pedidos anónimos (LEFT JOIN sin usuario).
    */
-  user: OrderUser
+  user: OrderUser | null
   createdAt: string
   updatedAt: string
 }

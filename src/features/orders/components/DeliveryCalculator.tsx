@@ -20,12 +20,13 @@ import { Label } from '@/components/ui/label'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { useSettings } from '../../settings/hooks'
 import {
-  deliveryConfigFromSettings,
-  estimateDeliveryLocally,
-  mockGeocode,
-  type DeliveryEstimate,
+  deliveryErrorMessage,
+  GEOCODE_ADDRESS_MAX_LENGTH,
+  storeLocationFromSettings,
   type LatLng,
+  wrapLatLng,
 } from '../delivery-estimate'
+import { useDeliveryEstimate, useGeocodeAddress } from '../hooks'
 
 // Con Vite, Leaflet no resuelve solo las imágenes del ícono por defecto.
 L.Icon.Default.mergeOptions({
@@ -63,26 +64,27 @@ function RecenterOnSearch({ target }: { target: LatLng }) {
 
 function MapClickHandler({ onPick }: { onPick: (point: LatLng) => void }) {
   useMapEvents({
-    click: (e) => onPick({ lat: e.latlng.lat, lng: e.latlng.lng }),
+    click: (e) => onPick(wrapLatLng({ lat: e.latlng.lat, lng: e.latlng.lng })),
   })
   return null
 }
 
 /**
- * Cotiza el delivery de una dirección: la geocodifica, la muestra en un mapa
- * junto al local y permite ajustar el pin (arrastrándolo o haciendo click).
+ * Cotiza el delivery de una dirección: la geocodifica con el backend
+ * (GET /orders/geocode), la muestra en un mapa junto al local y permite
+ * ajustar el pin (arrastrándolo o haciendo click). Cada posición del pin se
+ * cotiza con GET /delivery/estimate — la tarifa la calcula solo el backend.
  *
- * MOCK temporal — ver `delivery-estimate.ts`: la geocodificación es una tabla
- * fija y la estimación replica el cálculo del backend con la config real de
- * Configuración, hasta que `GET /delivery/estimate` esté desplegado.
+ * `settings` se usa únicamente para dibujar el pin del local.
  */
 export function DeliveryCalculator() {
   const settingsQuery = useSettings()
+  const geocodeMutation = useGeocodeAddress()
   const [address, setAddress] = useState('')
   const [searchTarget, setSearchTarget] = useState<LatLng | null>(null)
   const [pin, setPin] = useState<LatLng | null>(null)
-  const [estimate, setEstimate] = useState<DeliveryEstimate | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const estimateQuery = useDeliveryEstimate(pin)
 
   if (settingsQuery.isLoading) {
     return <LoadingState label="Cargando configuración de delivery…" />
@@ -96,8 +98,8 @@ export function DeliveryCalculator() {
     )
   }
 
-  const config = deliveryConfigFromSettings(settingsQuery.data)
-  if (!config) {
+  const storeLocation = storeLocationFromSettings(settingsQuery.data)
+  if (!storeLocation) {
     return (
       <p className="text-muted-foreground text-sm">
         Configura la ubicación del local en Configuración → Delivery para poder
@@ -106,58 +108,55 @@ export function DeliveryCalculator() {
     )
   }
 
-  function placePin(point: LatLng) {
-    if (!config) return
-    setPin(point)
-    setEstimate(estimateDeliveryLocally(point, config))
-  }
-
-  function handleSearch(e: FormEvent) {
+  async function handleSearch(e: FormEvent) {
     e.preventDefault()
     setError(null)
-    if (!address.trim()) {
+    const text = address.trim()
+    if (!text) {
       setError('Escribe una dirección')
       return
     }
-    const coords = mockGeocode(address)
-    if (!coords) {
-      setError('Dirección no encontrada')
-      return
+    try {
+      const [lat, lng] = await geocodeMutation.mutateAsync(text)
+      // Objeto nuevo en cada búsqueda: RecenterOnSearch recentra aunque la
+      // dirección (y las coordenadas) sean las mismas que la vez anterior.
+      setSearchTarget({ lat, lng })
+      setPin({ lat, lng })
+    } catch (err) {
+      setError(deliveryErrorMessage(err, 'geocode'))
     }
-    // Objeto nuevo en cada búsqueda: mockGeocode devuelve la misma referencia
-    // para la misma dirección y RecenterOnSearch no volvería a recentrar.
-    setSearchTarget({ ...coords })
-    placePin(coords)
   }
 
   const store: LatLng = {
-    lat: config.store.latitude,
-    lng: config.store.longitude,
+    lat: storeLocation.latitude,
+    lng: storeLocation.longitude,
   }
+  const estimate = estimateQuery.data
 
   return (
     <div className="space-y-4">
-      <p className="bg-celtas-gold/15 text-celtas-gold rounded-md px-3 py-2 text-xs">
-        Modo simulado: la búsqueda solo reconoce direcciones de prueba (ej. "Jr.
-        Carabaya 250") y la tarifa se calcula en el navegador con tus tramos de
-        Configuración.
-      </p>
-
       <form onSubmit={handleSearch} className="space-y-1.5">
         <Label htmlFor="delivery-address">Dirección</Label>
         <div className="flex gap-2">
           <Input
             id="delivery-address"
             value={address}
+            maxLength={GEOCODE_ADDRESS_MAX_LENGTH}
             onChange={(e) => setAddress(e.target.value)}
-            placeholder="Ej: Jr. Carabaya 250"
+            placeholder="Ej: Jr. Carabaya 250, Lima"
             aria-invalid={Boolean(error)}
           />
-          <Button type="submit">Buscar</Button>
+          <Button type="submit" disabled={geocodeMutation.isPending}>
+            {geocodeMutation.isPending ? 'Buscando…' : 'Buscar'}
+          </Button>
         </div>
         {error ? (
           <p className="text-celtas-red-light text-xs">{error}</p>
-        ) : null}
+        ) : (
+          <p className="text-muted-foreground text-xs">
+            Incluye el distrito o la ciudad (ej. "…, San Juan de Miraflores").
+          </p>
+        )}
       </form>
 
       {searchTarget && pin ? (
@@ -169,7 +168,7 @@ export function DeliveryCalculator() {
           >
             <TileLayer {...tileLayerProps()} />
             <RecenterOnSearch target={searchTarget} />
-            <MapClickHandler onPick={placePin} />
+            <MapClickHandler onPick={setPin} />
             <Marker
               position={[pin.lat, pin.lng]}
               draggable
@@ -177,7 +176,7 @@ export function DeliveryCalculator() {
               eventHandlers={{
                 dragend: (e) => {
                   const { lat, lng } = (e.target as L.Marker).getLatLng()
-                  placePin({ lat, lng })
+                  setPin(wrapLatLng({ lat, lng }))
                 },
               }}
             >
@@ -188,25 +187,41 @@ export function DeliveryCalculator() {
             </Marker>
           </MapContainer>
 
-          {estimate ? (
-            <div
-              className="bg-muted space-y-1 rounded-lg p-4"
-              aria-live="polite"
-            >
-              <p className="text-sm">
-                Distancia aprox.: {estimate.distanceMeters ?? '—'} m
+          <div className="bg-muted space-y-1 rounded-lg p-4" aria-live="polite">
+            {estimateQuery.isPending ? (
+              <p className="text-muted-foreground text-sm">
+                Calculando delivery…
               </p>
-              <p className="text-lg font-bold">
-                Delivery: S/ {estimate.deliveryFee.toFixed(2)}
-              </p>
-              {estimate.isFarOrder ? (
-                <p className="text-celtas-red-light flex items-center gap-1 text-sm font-medium">
-                  <TriangleAlert className="size-4" />
-                  Fuera de zona habitual
+            ) : estimateQuery.isError ? (
+              <div className="space-y-2">
+                <p className="text-celtas-red-light text-sm">
+                  {deliveryErrorMessage(estimateQuery.error, 'estimate')}
                 </p>
-              ) : null}
-            </div>
-          ) : null}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => estimateQuery.refetch()}
+                >
+                  Reintentar
+                </Button>
+              </div>
+            ) : estimate ? (
+              <>
+                <p className="text-sm">
+                  Distancia aprox.: {estimate.distanceMeters ?? '—'} m
+                </p>
+                <p className="text-lg font-bold">
+                  Delivery: S/ {estimate.deliveryFee.toFixed(2)}
+                </p>
+                {estimate.isFarOrder ? (
+                  <p className="text-celtas-red-light flex items-center gap-1 text-sm font-medium">
+                    <TriangleAlert className="size-4" />
+                    Fuera de zona habitual
+                  </p>
+                ) : null}
+              </>
+            ) : null}
+          </div>
         </>
       ) : null}
     </div>

@@ -1,13 +1,17 @@
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { AxiosError, AxiosHeaders } from 'axios'
 import { DeliveryCalculator } from './DeliveryCalculator'
 import type { Setting } from '../../settings/types'
 
 /**
  * Leaflet no renderiza en jsdom: se mockea react-leaflet capturando los
  * handlers de click del mapa y dragend del pin para dispararlos a mano.
+ * La API se mockea en `get` de api-client (los hooks reales corren): así el
+ * test verifica URL y params exactos contra el contrato del backend.
  */
 const leaflet = vi.hoisted(() => ({
   click: null as null | ((e: { latlng: { lat: number; lng: number } }) => void),
@@ -40,6 +44,15 @@ vi.mock('react-leaflet', () => ({
   },
 }))
 
+const { getMock } = vi.hoisted(() => ({ getMock: vi.fn() }))
+
+vi.mock('@/lib/api-client', () => ({
+  get: getMock,
+  patch: vi.fn(),
+  post: vi.fn(),
+  del: vi.fn(),
+}))
+
 const settingsState: {
   data: Setting[] | undefined
   isLoading: boolean
@@ -51,8 +64,8 @@ vi.mock('../../settings/hooks', () => ({
   useSettings: () => settingsState,
 }))
 
-const METERS_PER_DEG_LAT = (Math.PI / 180) * 6_371_000
 const STORE = { lat: -12.1631, lng: -76.97 }
+const GEOCODED: [number, number] = [-12.16, -76.968]
 
 function setting(key: string, value: string): Setting {
   return {
@@ -65,103 +78,229 @@ function setting(key: string, value: string): Setting {
   }
 }
 
-const configuredSettings = [
-  setting('store_location', JSON.stringify({ latitude: STORE.lat, longitude: STORE.lng })),
-  setting(
-    'delivery_fee_tiers',
-    JSON.stringify([
-      { maxMeters: 100, fee: 2 },
-      { maxMeters: 400, fee: 4 },
-      { maxMeters: 1000, fee: 6 },
-      { maxMeters: null, fee: 8 },
-    ]),
-  ),
-  setting('delivery_alert_radius_meters', '2500'),
-]
+function httpError(status: number, message?: string) {
+  const headers = new AxiosHeaders()
+  return new AxiosError('HTTP error', String(status), { headers }, null, {
+    status,
+    statusText: '',
+    headers: {},
+    config: { headers },
+    data: message ? { statusCode: status, message } : {},
+  })
+}
+
+type Params = { address?: string; latitude?: number; longitude?: number }
+
+/** Respuestas por URL; cada test puede sobreescribir una. */
+let geocodeImpl: (params: Params) => Promise<unknown>
+let estimateImpl: (params: Params) => Promise<unknown>
+
+function renderCalculator() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <DeliveryCalculator />
+    </QueryClientProvider>,
+  )
+}
 
 async function search(user: ReturnType<typeof userEvent.setup>, address: string) {
   await user.type(screen.getByLabelText('Dirección'), address)
   await user.click(screen.getByRole('button', { name: 'Buscar' }))
 }
 
+function estimateCalls() {
+  return getMock.mock.calls.filter(([url]) => url === '/delivery/estimate')
+}
+
 beforeEach(() => {
-  settingsState.data = configuredSettings
+  settingsState.data = [
+    setting('store_location', JSON.stringify({ latitude: STORE.lat, longitude: STORE.lng })),
+  ]
   settingsState.isLoading = false
   settingsState.isError = false
   settingsState.refetch = vi.fn()
   leaflet.click = null
   leaflet.dragend = null
   leaflet.map.setView.mockClear()
+
+  geocodeImpl = () => Promise.resolve(GEOCODED)
+  estimateImpl = () =>
+    Promise.resolve({ deliveryFee: 4, isFarOrder: false, distanceMeters: 350 })
+  getMock.mockReset()
+  getMock.mockImplementation((url: string, config?: { params?: Params }) => {
+    const params = config?.params ?? {}
+    if (url === '/orders/geocode') return geocodeImpl(params)
+    if (url === '/delivery/estimate') return estimateImpl(params)
+    return Promise.reject(new Error(`URL inesperada: ${url}`))
+  })
 })
 
-describe('DeliveryCalculator (mocks)', () => {
-  it('"Jr. Carabaya 250" + Buscar → mapa con pin del cliente y del local, y cotización', async () => {
+describe('DeliveryCalculator (backend real)', () => {
+  it('Buscar → GET /orders/geocode con la dirección, pin en las coords devueltas y cotización de GET /delivery/estimate', async () => {
     const user = userEvent.setup()
-    render(<DeliveryCalculator />)
+    renderCalculator()
 
     expect(screen.queryByTestId('map')).not.toBeInTheDocument()
-    await search(user, 'Jr. Carabaya 250')
+    await search(user, '  Jr. Carabaya 250, Lima  ')
 
-    expect(screen.getByTestId('map')).toBeInTheDocument()
+    expect(getMock).toHaveBeenCalledWith('/orders/geocode', {
+      params: { address: 'Jr. Carabaya 250, Lima' },
+    })
+    expect(await screen.findByText('Delivery: S/ 4.00')).toBeInTheDocument()
+    expect(screen.getByText('Distancia aprox.: 350 m')).toBeInTheDocument()
     expect(screen.getByTestId('marker-Cliente')).toHaveAttribute(
+      'data-position',
+      GEOCODED.join(','),
+    )
+    expect(screen.getByTestId('marker-Local')).toHaveAttribute(
       'data-position',
       `${STORE.lat},${STORE.lng}`,
     )
-    expect(screen.getByTestId('marker-Local')).toBeInTheDocument()
-    expect(screen.getByText('Distancia aprox.: 0 m')).toBeInTheDocument()
-    expect(screen.getByText('Delivery: S/ 2.00')).toBeInTheDocument()
+    expect(getMock).toHaveBeenCalledWith('/delivery/estimate', {
+      params: { latitude: GEOCODED[0], longitude: GEOCODED[1] },
+    })
     expect(screen.queryByText('Fuera de zona habitual')).not.toBeInTheDocument()
   })
 
-  it('click en el mapa → mueve el pin y recalcula con los tramos reales', async () => {
+  it('click en el mapa → re-cotiza en tiempo real con las coords nuevas', async () => {
     const user = userEvent.setup()
-    render(<DeliveryCalculator />)
-    await search(user, 'Jr. Carabaya 250')
+    estimateImpl = (params) =>
+      Promise.resolve(
+        params.latitude === GEOCODED[0]
+          ? { deliveryFee: 4, isFarOrder: false, distanceMeters: 350 }
+          : { deliveryFee: 6, isFarOrder: false, distanceMeters: 800 },
+      )
+    renderCalculator()
+    await search(user, 'Jr. Carabaya 250, Lima')
+    await screen.findByText('Delivery: S/ 4.00')
 
-    const point = { lat: STORE.lat + 300 / METERS_PER_DEG_LAT, lng: STORE.lng }
+    const point = { lat: -12.155, lng: -76.97 }
     act(() => leaflet.click?.({ latlng: point }))
 
+    expect(await screen.findByText('Delivery: S/ 6.00')).toBeInTheDocument()
+    expect(screen.getByText('Distancia aprox.: 800 m')).toBeInTheDocument()
     expect(screen.getByTestId('marker-Cliente')).toHaveAttribute(
       'data-position',
       `${point.lat},${point.lng}`,
     )
-    expect(screen.getByText('Distancia aprox.: 300 m')).toBeInTheDocument()
-    expect(screen.getByText('Delivery: S/ 4.00')).toBeInTheDocument()
+    expect(getMock).toHaveBeenLastCalledWith('/delivery/estimate', {
+      params: { latitude: point.lat, longitude: point.lng },
+    })
   })
 
-  it('arrastrar el pin lejos → recalcula y avisa "Fuera de zona habitual"', async () => {
+  it('arrastrar el pin lejos → re-cotiza y avisa "Fuera de zona habitual" (isFarOrder del backend)', async () => {
     const user = userEvent.setup()
-    render(<DeliveryCalculator />)
-    await search(user, 'Jr. Carabaya 250')
+    renderCalculator()
+    await search(user, 'Jr. Carabaya 250, Lima')
+    await screen.findByText('Delivery: S/ 4.00')
 
-    const far = { lat: STORE.lat + 3000 / METERS_PER_DEG_LAT, lng: STORE.lng }
+    estimateImpl = () =>
+      Promise.resolve({ deliveryFee: 8, isFarOrder: true, distanceMeters: 3000 })
+    const far = { lat: -12.136, lng: -76.97 }
     act(() => leaflet.dragend?.({ target: { getLatLng: () => far } }))
 
-    expect(screen.getByText('Delivery: S/ 8.00')).toBeInTheDocument()
+    expect(await screen.findByText('Delivery: S/ 8.00')).toBeInTheDocument()
     expect(screen.getByText('Fuera de zona habitual')).toBeInTheDocument()
   })
 
-  it('dirección inválida → error inline "Dirección no encontrada", sin mapa', async () => {
+  it('distanceMeters null → muestra "—"', async () => {
     const user = userEvent.setup()
-    render(<DeliveryCalculator />)
-    await search(user, 'Av. Inexistente 999')
+    estimateImpl = () =>
+      Promise.resolve({ deliveryFee: 0, isFarOrder: false, distanceMeters: null })
+    renderCalculator()
+    await search(user, 'Jr. Carabaya 250, Lima')
 
-    expect(screen.getByText('Dirección no encontrada')).toBeInTheDocument()
-    expect(screen.getByLabelText('Dirección')).toHaveAttribute('aria-invalid', 'true')
-    expect(screen.queryByTestId('map')).not.toBeInTheDocument()
+    expect(await screen.findByText('Distancia aprox.: — m')).toBeInTheDocument()
   })
 
-  it('búsqueda vacía → pide escribir una dirección', async () => {
+  it('400 del geocoding → mensaje del backend inline, sin mapa ni cotización', async () => {
     const user = userEvent.setup()
-    render(<DeliveryCalculator />)
+    geocodeImpl = () =>
+      Promise.reject(httpError(400, 'Dirección no encontrada: "Av. Inexistente 999"'))
+    renderCalculator()
+    await search(user, 'Av. Inexistente 999')
+
+    expect(
+      await screen.findByText('Dirección no encontrada: "Av. Inexistente 999"'),
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Dirección')).toHaveAttribute('aria-invalid', 'true')
+    expect(screen.queryByTestId('map')).not.toBeInTheDocument()
+    expect(estimateCalls()).toHaveLength(0)
+  })
+
+  it('429 del geocoding → pide esperar un minuto', async () => {
+    const user = userEvent.setup()
+    geocodeImpl = () => Promise.reject(httpError(429))
+    renderCalculator()
+    await search(user, 'Jr. Carabaya 250, Lima')
+
+    expect(await screen.findByText(/Espera un minuto/)).toBeInTheDocument()
+  })
+
+  it('503 del geocoding → servicio de mapas no disponible', async () => {
+    const user = userEvent.setup()
+    geocodeImpl = () => Promise.reject(httpError(503))
+    renderCalculator()
+    await search(user, 'Jr. Carabaya 250, Lima')
+
+    expect(
+      await screen.findByText(/servicio de mapas no está disponible/),
+    ).toBeInTheDocument()
+  })
+
+  it('401 del geocoding (refresh también falló) → sesión expirada', async () => {
+    const user = userEvent.setup()
+    geocodeImpl = () => Promise.reject(httpError(401))
+    renderCalculator()
+    await search(user, 'Jr. Carabaya 250, Lima')
+
+    expect(await screen.findByText(/sesión expiró/)).toBeInTheDocument()
+  })
+
+  it('500 de la cotización → error genérico con Reintentar, que vuelve a consultar', async () => {
+    const user = userEvent.setup()
+    estimateImpl = () => Promise.reject(httpError(500, 'Internal server error'))
+    renderCalculator()
+    await search(user, 'Jr. Carabaya 250, Lima')
+
+    expect(
+      await screen.findByText('No se pudo calcular el delivery. Intenta de nuevo.'),
+    ).toBeInTheDocument()
+    expect(screen.getByTestId('map')).toBeInTheDocument()
+
+    estimateImpl = () =>
+      Promise.resolve({ deliveryFee: 4, isFarOrder: false, distanceMeters: 350 })
+    await user.click(screen.getByRole('button', { name: 'Reintentar' }))
+    expect(await screen.findByText('Delivery: S/ 4.00')).toBeInTheDocument()
+  })
+
+  it('mientras cotiza muestra "Calculando delivery…"', async () => {
+    const user = userEvent.setup()
+    let resolve: (v: unknown) => void = () => {}
+    estimateImpl = () => new Promise((r) => (resolve = r))
+    renderCalculator()
+    await search(user, 'Jr. Carabaya 250, Lima')
+
+    expect(await screen.findByText('Calculando delivery…')).toBeInTheDocument()
+    act(() => resolve({ deliveryFee: 4, isFarOrder: false, distanceMeters: 350 }))
+    expect(await screen.findByText('Delivery: S/ 4.00')).toBeInTheDocument()
+  })
+
+  it('búsqueda vacía → pide escribir una dirección, sin llamar al backend', async () => {
+    const user = userEvent.setup()
+    renderCalculator()
     await user.click(screen.getByRole('button', { name: 'Buscar' }))
 
     expect(screen.getByText('Escribe una dirección')).toBeInTheDocument()
+    expect(getMock).not.toHaveBeenCalled()
   })
 
   it('sin store_location configurada → indica configurarla, sin buscador', () => {
     settingsState.data = [setting('store_location', '')]
-    render(<DeliveryCalculator />)
+    renderCalculator()
 
     expect(screen.getByText(/Configura la ubicación del local/)).toBeInTheDocument()
     expect(screen.queryByLabelText('Dirección')).not.toBeInTheDocument()
@@ -170,7 +309,7 @@ describe('DeliveryCalculator (mocks)', () => {
   it('error cargando settings → ErrorState con reintento', async () => {
     const user = userEvent.setup()
     settingsState.isError = true
-    render(<DeliveryCalculator />)
+    renderCalculator()
 
     expect(
       screen.getByText('No se pudo cargar la configuración de delivery'),
@@ -181,18 +320,60 @@ describe('DeliveryCalculator (mocks)', () => {
 
   it('buscar de nuevo la misma dirección vuelve a recentrar el mapa', async () => {
     const user = userEvent.setup()
-    render(<DeliveryCalculator />)
-    await search(user, 'Jr. Carabaya 250')
+    renderCalculator()
+    await search(user, 'Jr. Carabaya 250, Lima')
+    await screen.findByTestId('map')
     const callsAfterFirst = leaflet.map.setView.mock.calls.length
 
     await user.click(screen.getByRole('button', { name: 'Buscar' }))
 
-    expect(leaflet.map.setView.mock.calls.length).toBeGreaterThan(callsAfterFirst)
-    expect(leaflet.map.setView).toHaveBeenLastCalledWith([STORE.lat, STORE.lng], 15)
+    await waitFor(() =>
+      expect(leaflet.map.setView.mock.calls.length).toBeGreaterThan(callsAfterFirst),
+    )
+    expect(leaflet.map.setView).toHaveBeenLastCalledWith(GEOCODED, 15)
   })
 
-  it('muestra el aviso de modo simulado', () => {
-    render(<DeliveryCalculator />)
-    expect(screen.getByText(/Modo simulado/)).toBeInTheDocument()
+  it('(tester) mientras geocodifica: botón "Buscando…" deshabilitado', async () => {
+    const user = userEvent.setup()
+    let resolve: (v: unknown) => void = () => {}
+    geocodeImpl = () => new Promise((r) => (resolve = r))
+    renderCalculator()
+    await search(user, 'Jr. Carabaya 250, Lima')
+
+    expect(await screen.findByRole('button', { name: 'Buscando…' })).toBeDisabled()
+    act(() => resolve(GEOCODED))
+    expect(await screen.findByRole('button', { name: 'Buscar' })).toBeEnabled()
+  })
+
+  it('(tester) red caída en la cotización → "Revisa tu conexión" con Reintentar', async () => {
+    const user = userEvent.setup()
+    estimateImpl = () => Promise.reject(new AxiosError('Network Error', 'ERR_NETWORK'))
+    renderCalculator()
+    await search(user, 'Jr. Carabaya 250, Lima')
+
+    expect(await screen.findByText(/Revisa tu conexión/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument()
+  })
+
+  it('ya no muestra el aviso de modo simulado', () => {
+    renderCalculator()
+    expect(screen.queryByText(/Modo simulado/)).not.toBeInTheDocument()
+  })
+})
+
+describe('DeliveryCalculator - mapa desplazado a otra copia del mundo', () => {
+  it('click con longitud fuera de rango → se normaliza antes de cotizar (evita 400 del backend)', async () => {
+    const user = userEvent.setup()
+    renderCalculator()
+    await search(user, 'Jr. Carabaya 250, Lima')
+    await screen.findByText('Delivery: S/ 4.00')
+
+    act(() => leaflet.click?.({ latlng: { lat: -12.155, lng: 283.03 } }))
+
+    await waitFor(() => {
+      const [, config] = estimateCalls().at(-1) as [string, { params: Params }]
+      expect(config.params.latitude).toBe(-12.155)
+      expect(config.params.longitude).toBeCloseTo(-76.97, 9)
+    })
   })
 })

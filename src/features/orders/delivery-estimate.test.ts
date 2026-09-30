@@ -1,35 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { AxiosError, AxiosHeaders } from 'axios'
 import {
-  deliveryConfigFromSettings,
-  estimateDeliveryLocally,
-  feeForDistance,
-  haversineDistanceMeters,
-  mockGeocode,
-  type DeliveryConfig,
+  deliveryErrorMessage,
+  storeLocationFromSettings,
+  wrapLatLng,
 } from './delivery-estimate'
 import type { Setting } from '../settings/types'
-
-/** Metros por grado de latitud con R = 6 371 000 m (mismo radio que el backend). */
-const METERS_PER_DEG_LAT = (Math.PI / 180) * 6_371_000
-
-const config: DeliveryConfig = {
-  store: { latitude: -12.1631, longitude: -76.97 },
-  tiers: [
-    { maxMeters: 100, fee: 2 },
-    { maxMeters: 400, fee: 4 },
-    { maxMeters: 1000, fee: 6 },
-    { maxMeters: null, fee: 8 },
-  ],
-  alertRadiusMeters: 2500,
-}
-
-/** Punto a `meters` al norte del local (distancia exacta conocida). */
-function northOfStore(meters: number) {
-  return {
-    lat: config.store.latitude + meters / METERS_PER_DEG_LAT,
-    lng: config.store.longitude,
-  }
-}
 
 function setting(key: string, value: string): Setting {
   return {
@@ -42,106 +18,99 @@ function setting(key: string, value: string): Setting {
   }
 }
 
-describe('haversineDistanceMeters', () => {
-  it('1° de latitud ≈ 111 195 m', () => {
+function httpError(status: number, message?: string) {
+  const headers = new AxiosHeaders()
+  return new AxiosError('HTTP error', String(status), { headers }, null, {
+    status,
+    statusText: '',
+    headers: {},
+    config: { headers },
+    data: message ? { statusCode: status, message } : {},
+  })
+}
+
+describe('storeLocationFromSettings', () => {
+  it('lee store_location de settings', () => {
     expect(
-      haversineDistanceMeters({ lat: 0, lng: 0 }, { lat: 1, lng: 0 }),
-    ).toBeCloseTo(METERS_PER_DEG_LAT, 3)
-  })
-
-  it('mismo punto → 0', () => {
-    expect(haversineDistanceMeters(northOfStore(0), northOfStore(0))).toBe(0)
-  })
-})
-
-describe('feeForDistance (espejo del backend)', () => {
-  it('toma el primer tramo con distance <= maxMeters, bordes inclusivos', () => {
-    expect(feeForDistance(100, config.tiers)).toBe(2)
-    expect(feeForDistance(100.01, config.tiers)).toBe(4)
-    expect(feeForDistance(1000, config.tiers)).toBe(6)
-    expect(feeForDistance(50_000, config.tiers)).toBe(8)
-  })
-
-  it('sin tramo final null usa el último tramo; sin tramos → 0', () => {
-    expect(feeForDistance(5000, [{ maxMeters: 100, fee: 3 }])).toBe(3)
-    expect(feeForDistance(5000, [])).toBe(0)
-  })
-})
-
-describe('estimateDeliveryLocally (mock de GET /delivery/estimate)', () => {
-  it('tarifa con distancia EXACTA, distancia expuesta redondeada a 50 m', () => {
-    // 120 m exactos: tramo S/4 aunque la distancia mostrada redondee a 100.
-    const estimate = estimateDeliveryLocally(northOfStore(120), config)
-    expect(estimate).toEqual({
-      deliveryFee: 4,
-      isFarOrder: false,
-      distanceMeters: 100,
-    })
-  })
-
-  it('isFarOrder solo al superar el radio de aviso (nunca bloquea)', () => {
-    expect(estimateDeliveryLocally(northOfStore(2499), config).isFarOrder).toBe(
-      false,
-    )
-    const far = estimateDeliveryLocally(northOfStore(2600), config)
-    expect(far.isFarOrder).toBe(true)
-    expect(far.deliveryFee).toBe(8)
-  })
-
-  it('isFarOrder usa > estricto: distancia exacta == radio → false (igual que el backend)', () => {
-    const point = northOfStore(1800)
-    const exact = haversineDistanceMeters(
-      { lat: config.store.latitude, lng: config.store.longitude },
-      point,
-    )
-    expect(
-      estimateDeliveryLocally(point, { ...config, alertRadiusMeters: exact })
-        .isFarOrder,
-    ).toBe(false)
-  })
-
-  it('valores consistentes: mismo punto → mismo resultado', () => {
-    const point = northOfStore(350)
-    expect(estimateDeliveryLocally(point, config)).toEqual(
-      estimateDeliveryLocally(point, config),
-    )
-  })
-})
-
-describe('mockGeocode', () => {
-  it('reconoce direcciones de prueba sin importar mayúsculas ni texto extra', () => {
-    expect(mockGeocode('JR. CARABAYA 250, Lima')).toEqual({
-      lat: -12.1631,
-      lng: -76.97,
-    })
-    expect(mockGeocode('  Av. Arequipa 500 ')).toEqual({
-      lat: -12.0656,
-      lng: -76.9736,
-    })
-  })
-
-  it('dirección desconocida o vacía → null', () => {
-    expect(mockGeocode('Av. Inexistente 999')).toBeNull()
-    expect(mockGeocode('   ')).toBeNull()
-  })
-})
-
-describe('deliveryConfigFromSettings', () => {
-  it('lee las 3 claves reales de settings', () => {
-    const result = deliveryConfigFromSettings([
-      setting('store_location', '{"latitude":-12.1,"longitude":-76.9}'),
-      setting('delivery_fee_tiers', '[{"maxMeters":null,"fee":5}]'),
-      setting('delivery_alert_radius_meters', '3000'),
-    ])
-    expect(result).toEqual({
-      store: { latitude: -12.1, longitude: -76.9 },
-      tiers: [{ maxMeters: null, fee: 5 }],
-      alertRadiusMeters: 3000,
-    })
+      storeLocationFromSettings([
+        setting('store_location', '{"latitude":-12.1,"longitude":-76.9}'),
+      ]),
+    ).toEqual({ latitude: -12.1, longitude: -76.9 })
   })
 
   it('sin store_location configurada → null (nunca inventa coordenadas)', () => {
-    expect(deliveryConfigFromSettings([setting('store_location', '')])).toBeNull()
-    expect(deliveryConfigFromSettings(undefined)).toBeNull()
+    expect(storeLocationFromSettings([setting('store_location', '')])).toBeNull()
+    expect(storeLocationFromSettings(undefined)).toBeNull()
+  })
+})
+
+describe('deliveryErrorMessage', () => {
+  it('400 del geocoding → mensaje del backend tal cual', () => {
+    expect(
+      deliveryErrorMessage(
+        httpError(400, 'Dirección no encontrada: "Av. X"'),
+        'geocode',
+      ),
+    ).toBe('Dirección no encontrada: "Av. X"')
+  })
+
+  it('400 sin mensaje → fallback según el tipo', () => {
+    expect(deliveryErrorMessage(httpError(400), 'geocode')).toBe(
+      'Dirección no encontrada',
+    )
+    expect(deliveryErrorMessage(httpError(400), 'estimate')).toBe(
+      'No se pudo cotizar',
+    )
+  })
+
+  it('404 de la cotización (store_location sin configurar) → mensaje del backend', () => {
+    expect(
+      deliveryErrorMessage(
+        httpError(404, 'La ubicación del local no está configurada'),
+        'estimate',
+      ),
+    ).toBe('La ubicación del local no está configurada')
+  })
+
+  it('401 → sesión expirada', () => {
+    expect(deliveryErrorMessage(httpError(401), 'geocode')).toMatch(
+      /sesión expiró/,
+    )
+  })
+
+  it('429 → pide esperar un minuto', () => {
+    expect(deliveryErrorMessage(httpError(429), 'geocode')).toMatch(
+      /Espera un minuto/,
+    )
+  })
+
+  it('503 → servicio de mapas no disponible', () => {
+    expect(deliveryErrorMessage(httpError(503), 'geocode')).toMatch(
+      /servicio de mapas no está disponible/,
+    )
+  })
+
+  it('500 → genérico, sin filtrar el mensaje interno', () => {
+    expect(
+      deliveryErrorMessage(httpError(500, 'Internal server error'), 'estimate'),
+    ).toBe('No se pudo calcular el delivery. Intenta de nuevo.')
+  })
+
+  it('sin respuesta (red caída) → revisa tu conexión', () => {
+    expect(deliveryErrorMessage(new Error('Network Error'), 'geocode')).toMatch(
+      /Revisa tu conexión/,
+    )
+  })
+})
+
+describe('wrapLatLng', () => {
+  it('deja intacta una longitud ya en rango', () => {
+    expect(wrapLatLng({ lat: -12.16, lng: -76.97 })).toEqual({ lat: -12.16, lng: -76.97 })
+  })
+
+  it('una copia del mundo a la derecha/izquierda vuelve a [-180, 180)', () => {
+    expect(wrapLatLng({ lat: -12.16, lng: 283.03 }).lng).toBeCloseTo(-76.97, 9)
+    expect(wrapLatLng({ lat: -12.16, lng: -436.97 }).lng).toBeCloseTo(-76.97, 9)
+    expect(wrapLatLng({ lat: 0, lng: 180 }).lng).toBe(-180)
   })
 })

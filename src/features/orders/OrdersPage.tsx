@@ -32,8 +32,32 @@ import { cn } from '@/lib/utils'
 import { useOrders } from './hooks'
 import { mergeOrderAfterUpdate } from './merge'
 import { OrderDetailDialog } from './OrderDetailDialog'
+import { orderCustomer } from './orders-utils'
 import { ORDER_STATUS_BADGE, ORDER_STATUS_LABELS } from './status'
 import type { Order, OrderStatus } from './types'
+
+/**
+ * Columna "Cliente": ID corto si tiene cuenta (como siempre); nombre + badge
+ * "Sin cuenta" si es un pedido manual anónimo (userId null).
+ */
+function CustomerCell({ order }: { order: Order }) {
+  const customer = orderCustomer(order)
+  if (!customer.isAnonymous) {
+    return (
+      <TableCell className="font-mono text-xs">{customer.shortLabel}</TableCell>
+    )
+  }
+  return (
+    <TableCell className="text-sm">
+      <div className="flex items-center gap-2">
+        <span>{customer.name ?? '—'}</span>
+        <Badge variant="outline" className="text-xs">
+          {customer.shortLabel}
+        </Badge>
+      </div>
+    </TableCell>
+  )
+}
 
 // Lazy: Leaflet (~150 KB) solo se descarga al abrir el cotizador.
 const DeliveryCalculator = lazy(() =>
@@ -161,9 +185,7 @@ export default function OrdersPage() {
                   <TableCell className="font-mono text-xs">
                     #{order.id.slice(0, 8).toUpperCase()}
                   </TableCell>
-                  <TableCell className="font-mono text-xs">
-                    {order.userId.slice(0, 8).toUpperCase()}
-                  </TableCell>
+                  <CustomerCell order={order} />
                   <TableCell className="text-sm">
                     {order.items.length} producto
                     {order.items.length === 1 ? '' : 's'}

@@ -3,6 +3,7 @@ import {
   digitsOnly,
   isFarOrder,
   orderDiscount,
+  orderCustomer,
   orderDistanceMeters,
   orderSubtotal,
 } from './orders-utils'
@@ -29,6 +30,8 @@ function makeOrder(items: OrderItem[], overrides: Partial<Order> = {}): Order {
   return {
     id: 'order-1',
     userId: 'user-1',
+    customerName: null,
+    customerPhone: null,
     status: 'pendiente',
     addressSnapshot: '{}',
     total: 37,
@@ -43,6 +46,58 @@ function makeOrder(items: OrderItem[], overrides: Partial<Order> = {}): Order {
     ...overrides,
   }
 }
+
+describe('orderCustomer', () => {
+  it('pedido anónimo (userId/user null): usa customerName/customerPhone, sin crashear', () => {
+    const order = makeOrder([], {
+      userId: null,
+      user: null,
+      customerName: 'Juan Pérez',
+      customerPhone: '51987654321',
+    })
+
+    expect(orderCustomer(order)).toEqual({
+      isAnonymous: true,
+      shortLabel: 'Sin cuenta',
+      name: 'Juan Pérez',
+      phoneDigits: '51987654321',
+    })
+  })
+
+  it('pedido con cliente: 8 chars del userId en mayúsculas + nombre y teléfono del user', () => {
+    const order = makeOrder([], {
+      userId: 'abcdef12-3456-4789-8abc-def012345678',
+      user: {
+        id: 'abcdef12-3456-4789-8abc-def012345678',
+        fullName: 'Ana Torres',
+        email: 'ana@test.com',
+        phone: '+51 912-345-678',
+      },
+    })
+
+    expect(orderCustomer(order)).toEqual({
+      isAnonymous: false,
+      shortLabel: 'ABCDEF12',
+      name: 'Ana Torres',
+      phoneDigits: '51912345678',
+    })
+  })
+
+  it('pedido con cliente sin teléfono → phoneDigits null (no se muestra el botón de WhatsApp)', () => {
+    expect(orderCustomer(makeOrder([])).phoneDigits).toBeNull()
+  })
+
+  it('pedido con cliente pero sin la relación user cargada → name null, sin crashear', () => {
+    const order = makeOrder([], { user: null })
+
+    expect(orderCustomer(order)).toMatchObject({
+      isAnonymous: false,
+      shortLabel: 'USER-1',
+      name: null,
+      phoneDigits: null,
+    })
+  })
+})
 
 describe('orderSubtotal', () => {
   it('suma los subtotales de todos los items', () => {
