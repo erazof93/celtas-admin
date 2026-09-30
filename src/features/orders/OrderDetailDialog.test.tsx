@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { OrderDetailDialog } from './OrderDetailDialog'
-import type { Order, OrderItem, OrderUser } from './types'
+import type { Order, OrderItem, OrderUser, WhatsappLinks } from './types'
 
 /**
  * Cobertura del tri-state de `selectedSauces` en el detalle de pedido:
@@ -22,7 +22,9 @@ import type { Order, OrderItem, OrderUser } from './types'
  * `order.whatsappUrl` — el mensaje del pedido hacia la tienda).
  */
 
-const { settingsData, updateStatusMock } = vi.hoisted(() => ({
+const { settingsData, updateStatusMock, whatsappLinksMock, markSentMock } = vi.hoisted(() => ({
+  whatsappLinksMock: vi.fn(),
+  markSentMock: { mutateAsync: vi.fn(), isPending: false },
   settingsData: { current: [] as { key: string; value: string }[] },
   updateStatusMock: {
     mutateAsync: vi.fn(),
@@ -32,6 +34,9 @@ const { settingsData, updateStatusMock } = vi.hoisted(() => ({
 
 vi.mock('./hooks', () => ({
   useUpdateOrderStatus: () => updateStatusMock,
+  useOrderWhatsappLinks: (orderId: string | null, enabled: boolean) =>
+    whatsappLinksMock(orderId, enabled),
+  useMarkWhatsappSent: () => markSentMock,
 }))
 
 vi.mock('../settings/hooks', () => ({
@@ -82,6 +87,7 @@ function makeOrder(items: OrderItem[], overrides: Partial<Order> = {}): Order {
     total: 37,
     deliveryFee: 0,
     whatsappUrl: 'https://wa.me/51999999999?text=hola',
+    whatsappSentAt: null,
     deliveredAt: null,
     cancelReason: null,
     items,
@@ -113,6 +119,11 @@ beforeEach(() => {
   settingsData.current = []
   updateStatusMock.mutateAsync = vi.fn().mockResolvedValue(undefined)
   updateStatusMock.isPending = false
+  // Por defecto los links fallan: el diálogo muestra el link original del pedido.
+  whatsappLinksMock.mockReset()
+  whatsappLinksMock.mockReturnValue({ isPending: false, isError: true, data: undefined })
+  markSentMock.mutateAsync = vi.fn()
+  markSentMock.isPending = false
 })
 
 afterEach(() => {
@@ -367,6 +378,7 @@ describe('OrderDetailDialog — pedido manual anónimo (userId/user null)', () =
       customerName: 'Rosa Quispe',
       customerPhone: '51987654321',
       whatsappUrl: 'https://wa.me/51987654321?text=confirma',
+      whatsappSentAt: null,
     })
 
   it('renderiza sin crashear y muestra el nombre + "(sin cuenta)" en vez del ID', () => {
@@ -550,5 +562,122 @@ describe('OrderDetailDialog — cancelar pedido con motivo obligatorio', () => {
 
     expect(screen.getByRole('button', { name: 'Volver' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Cancelando…' })).toBeDisabled()
+  })
+})
+
+describe('OrderDetailDialog - WhatsApp (links cliente/tienda + confirmación)', () => {
+  const links: WhatsappLinks = {
+    orderId: 'order-1',
+    customer: { phone: '51987654321', url: 'https://wa.me/51987654321?text=CONFIRMA' },
+    store: { phone: '51999888777', url: 'https://wa.me/51999888777?text=NUEVO' },
+    whatsappSentAt: null,
+  }
+
+  function linksLoaded(overrides: Partial<WhatsappLinks> = {}) {
+    whatsappLinksMock.mockReturnValue({
+      isPending: false,
+      isError: false,
+      data: { ...links, ...overrides },
+    })
+  }
+
+  it('carga los links: "Enviar a cliente" y "Enviar a tienda" con su teléfono y URL del backend', () => {
+    linksLoaded()
+    const order = makeOrder([makeItem()])
+    renderDialog(order)
+
+    expect(whatsappLinksMock).toHaveBeenCalledWith(order.id, true)
+    expect(screen.getByRole('link', { name: 'Enviar a cliente (+51 987 654 321)' })).toHaveAttribute(
+      'href',
+      'https://wa.me/51987654321?text=CONFIRMA',
+    )
+    expect(screen.getByRole('link', { name: 'Enviar a tienda (+51 999 888 777)' })).toHaveAttribute(
+      'href',
+      links.store.url,
+    )
+    expect(screen.getByText('Aún no enviado')).toBeInTheDocument()
+    // Reemplaza al link original: no se duplica "Abrir en WhatsApp".
+    expect(screen.queryByRole('link', { name: 'Abrir en WhatsApp' })).not.toBeInTheDocument()
+  })
+
+  it('"Ya lo envié" llama a POST .../whatsapp-sent con el id del pedido', async () => {
+    const user = userEvent.setup()
+    linksLoaded()
+    markSentMock.mutateAsync = vi.fn().mockResolvedValue({
+      orderId: 'order-1',
+      whatsappSentAt: '2026-09-30T22:15:00.000Z',
+    })
+    const order = makeOrder([makeItem()])
+    renderDialog(order)
+
+    await user.click(screen.getByRole('button', { name: 'Ya lo envié' }))
+    expect(markSentMock.mutateAsync).toHaveBeenCalledWith(order.id)
+  })
+
+  it('muestra "Enviado el <fecha Lima>" y oculta "Ya lo envié" si whatsappSentAt existe', () => {
+    linksLoaded({ whatsappSentAt: '2026-09-30T16:30:00.000Z' })
+    renderDialog(makeOrder([makeItem()]))
+
+    // 16:30 UTC = 11:30 en Lima.
+    expect(screen.getByText(/Enviado el .*30\/09\/2026.*11:30/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Ya lo envié' })).not.toBeInTheDocument()
+  })
+
+  it('error al marcar → mensaje del backend inline, sin alert()', async () => {
+    const user = userEvent.setup()
+    linksLoaded()
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {})
+    const { AxiosError, AxiosHeaders } = await import('axios')
+    const headers = new AxiosHeaders()
+    markSentMock.mutateAsync = vi.fn().mockRejectedValue(
+      new AxiosError('Conflict', '409', { headers }, null, {
+        status: 409,
+        statusText: 'Conflict',
+        headers: {},
+        config: { headers },
+        data: { statusCode: 409, message: 'El pedido está cancelado: no corresponde mandarle WhatsApp' },
+      }),
+    )
+    renderDialog(makeOrder([makeItem()]))
+
+    await user.click(screen.getByRole('button', { name: 'Ya lo envié' }))
+    expect(
+      await screen.findByText('El pedido está cancelado: no corresponde mandarle WhatsApp'),
+    ).toBeInTheDocument()
+    expect(alertSpy).not.toHaveBeenCalled()
+    alertSpy.mockRestore()
+  })
+
+  it('cliente sin celular válido (customer null) → solo "Enviar a tienda" y un aviso', () => {
+    linksLoaded({ customer: null })
+    renderDialog(makeOrder([makeItem()]))
+
+    expect(screen.queryByRole('link', { name: /Enviar a cliente/ })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /Enviar a tienda/ })).toBeInTheDocument()
+    expect(screen.getByText(/no tiene un celular válido/)).toBeInTheDocument()
+  })
+
+  it('sin links (error del GET) → no muestra los botones nuevos; queda el link original del pedido', () => {
+    const order = makeOrder([makeItem()])
+    renderDialog(order)
+
+    expect(screen.queryByText(/Enviar a cliente/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Ya lo envié' })).not.toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Abrir en WhatsApp' })).toHaveAttribute('href', order.whatsappUrl)
+  })
+
+  it('pedido cancelado → no consulta los links (el backend respondería 409) ni muestra WhatsApp', () => {
+    const order = { ...makeOrder([makeItem()]), status: 'cancelado' as const }
+    renderDialog(order)
+
+    expect(whatsappLinksMock).toHaveBeenCalledWith(order.id, false)
+    expect(screen.queryByRole('region', { name: 'WhatsApp del pedido' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Abrir en WhatsApp' })).not.toBeInTheDocument()
+  })
+
+  it('mientras cargan los links muestra un estado de carga', () => {
+    whatsappLinksMock.mockReturnValue({ isPending: true, isError: false, data: undefined })
+    renderDialog(makeOrder([makeItem()]))
+    expect(screen.getByText('Cargando links de WhatsApp…')).toBeInTheDocument()
   })
 })

@@ -593,6 +593,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/orders/admin/{orderId}/whatsapp-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Links de WhatsApp de un pedido: cliente y tienda (solo admin)
+         * @description El backend NO envía mensajes: devuelve links wa.me que el admin abre desde el panel. Se rearman desde el snapshot del pedido con el número del negocio actual. `customer` ("CONFIRMA TU PEDIDO") sale de customerPhone (anónimo) o del teléfono del cliente; es null si no hay un celular peruano válido. `store` ("NUEVO PEDIDO") siempre viene. Tras mandarlo, el panel llama a POST /orders/admin/:orderId/whatsapp-sent.
+         */
+        get: operations["OrdersController_getWhatsappLinks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orders/admin/{orderId}/whatsapp-sent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Marcar que el admin mandó el WhatsApp del pedido (solo admin)
+         * @description Registra la CONFIRMACIÓN del admin de que ya mandó el WhatsApp (el backend no envía nada). Guarda whatsappSentAt la primera vez; llamadas repetidas devuelven la misma fecha sin pisarla.
+         */
+        post: operations["OrdersController_markWhatsappSent"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/orders/estimate-delivery-fee": {
         parameters: {
             query?: never;
@@ -4238,6 +4278,122 @@ export interface operations {
                 content?: never;
             };
             /** @description El cupón ya fue usado */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    OrdersController_getWhatsappLinks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID del pedido */
+                orderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Links de WhatsApp y whatsappSentAt */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description orderId no es un UUID válido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El usuario no es admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Pedido no encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El pedido está cancelado */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    OrdersController_markWhatsappSent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID del pedido */
+                orderId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fecha de la (primera) confirmación */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description orderId no es un UUID válido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El usuario no es admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Pedido no encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El pedido está cancelado */
             409: {
                 headers: {
                     [name: string]: unknown;

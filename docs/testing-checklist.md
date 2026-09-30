@@ -2516,3 +2516,37 @@ Checklist:
 - [ ] (menor) El blur deja un timeout de 150 ms que no se cancela si el input recupera el foco antes:
       blur + refocus rápido cierra la lista (se reabre al escribir).
 - [ ] Sin verificar en navegador real (Leaflet real, Geoapify con la key real, backend).
+
+## Auditoría: Orders — Botones de WhatsApp en `OrderDetailDialog` (links cliente/tienda + "Ya lo envié"), working tree sin commitear
+
+Contrato confirmado contra el código real de `backend-celtas` @ `6a47dce`:
+`orders.controller.ts` (`@Controller('orders')`, `@Get('admin/:orderId/whatsapp-links')`,
+`@Post('admin/:orderId/whatsapp-sent')` con `@HttpCode(200)` y sin `@Body`), `orders.service.ts`
+(`WhatsappLinks { orderId, customer: WhatsappLink | null, store, whatsappSentAt }`,
+`markWhatsappSent` idempotente y devuelve la primera fecha, `findOrderForWhatsapp` con 404 y 409 si
+el pedido está cancelado), `order.entity.ts` (`whatsappSentAt: timestamptz | null`). Swagger solo
+publica un `example` de la respuesta, así que los tipos escritos a mano en `types.ts` están
+justificados y coinciden con las interfaces del service.
+
+- [x] type-check 0 errores; lint 0 errores (1 warning previo en StarPromotion, no relacionado); build OK.
+- [x] Suite completa: 53 archivos / 474 tests (470 del dev + 4 del tester).
+- [x] GET `/orders/admin/${id}/whatsapp-links` y POST `/orders/admin/${id}/whatsapp-sent` sin body
+      (`post<WhatsappSentResult>(url)`), por `api-client`, sin casts.
+- [x] Estados de UI: cargando, error (vuelve al link original `order.whatsappUrl`), `customer` null
+      (muestra aviso y solo "Enviar a tienda"), cancelado (no hace el GET y no renderiza nada), error
+      del POST inline con el mensaje del backend (sin `alert`).
+- [x] Fecha "Enviado el" con `formatLima` (America/Lima), tomada de la respuesta del backend.
+- [x] **[QA] test nuevo `components/OrderWhatsappSection.test.tsx`** (hooks reales + `api-client`
+      mockeado): al pulsar "Ya lo envié" la sección pasa a "Enviado el 30/09/2026 17:15" y oculta el
+      botón SIN cerrar/abrir el diálogo, con un solo GET (se actualiza por `setQueryData`, sin
+      refetch); la fecha viene del backend; fallback cuando el GET falla; cancelado sin GET.
+- [x] Mutaciones (backup + restore, md5 idéntico al final), todas MATADAS: URL del GET; URL del POST;
+      POST con body; hook sin `!isCancelled`; sin `return null` en cancelado; sin `setQueryData`;
+      sin invalidar `['orders','list']`; fecha en UTC (`toISOString`); "Ya lo envié" siempre visible;
+      sin fallback (31 fallan: la sección crashea con `data` undefined); `retry: 3`.
+- [x] Fixtures con `whatsappSentAt: null` en `UserDetailDialog.test.tsx`, `OrdersPage.test.tsx`,
+      `merge.test.ts`, `orders-utils.test.ts`: todos en verde.
+- [x] "Contactar al cliente por WhatsApp" (chat sin mensaje) se mantiene.
+- [ ] (menor) No hay test de que "Ya lo envié" quede deshabilitado mientras `isPending`.
+- [ ] Sin verificar en navegador real contra el backend desplegado (hay que desplegar primero la
+      migración `AddWhatsappSentAtToOrder`).

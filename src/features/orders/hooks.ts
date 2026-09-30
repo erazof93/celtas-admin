@@ -2,7 +2,13 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { get, patch, post } from '@/lib/api-client'
 import { geoapifyApiKey, geoapifyAutocomplete } from '@/lib/geoapify'
 import { useDebouncedValue } from '@/lib/useDebouncedValue'
-import type { Order, OrderStatus, PaginatedOrders } from './types'
+import type {
+  Order,
+  OrderStatus,
+  PaginatedOrders,
+  WhatsappLinks,
+  WhatsappSentResult,
+} from './types'
 import type { DeliveryEstimate, LatLng } from './delivery-estimate'
 import type { CreateOrderAdminInput } from './manual-order'
 
@@ -149,4 +155,39 @@ export function useGeoapifyAutocomplete(text: string, enabled = true) {
   })
   // Durante el debounce no se muestran sugerencias de un texto anterior.
   return enabled && debounced === trimmed ? (query.data ?? []) : []
+}
+
+const whatsappLinksKey = (orderId: string) => ['orders', 'whatsapp-links', orderId] as const
+
+/**
+ * GET /orders/admin/:orderId/whatsapp-links (solo admin). El backend responde
+ * 409 si el pedido está cancelado — el caller no debe habilitarlo en ese caso.
+ * Sin reintentos: 404/409 son deterministas.
+ */
+export function useOrderWhatsappLinks(orderId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: whatsappLinksKey(orderId ?? 'none'),
+    queryFn: () => get<WhatsappLinks>(`/orders/admin/${orderId}/whatsapp-links`),
+    enabled: enabled && Boolean(orderId),
+    retry: false,
+  })
+}
+
+/**
+ * POST /orders/admin/:orderId/whatsapp-sent (sin body). Actualiza los links en
+ * caché con la fecha que devuelve el backend (la primera, si ya estaba) y
+ * refresca la lista de pedidos, que también trae `whatsappSentAt`.
+ */
+export function useMarkWhatsappSent() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (orderId: string) =>
+      post<WhatsappSentResult>(`/orders/admin/${orderId}/whatsapp-sent`),
+    onSuccess: (result) => {
+      queryClient.setQueryData<WhatsappLinks>(whatsappLinksKey(result.orderId), (prev) =>
+        prev ? { ...prev, whatsappSentAt: result.whatsappSentAt } : prev,
+      )
+      queryClient.invalidateQueries({ queryKey: ORDERS_LIST_KEY })
+    },
+  })
 }

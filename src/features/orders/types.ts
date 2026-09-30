@@ -83,6 +83,12 @@ export interface Order {
   deliveryFee: number
   /** Link de WhatsApp generado al crear el pedido. */
   whatsappUrl: string
+  /**
+   * Cuándo el admin confirmó en el panel que mandó el WhatsApp del pedido
+   * (POST /orders/admin/:id/whatsapp-sent). `null` = sin confirmar. El backend
+   * nunca envía mensajes: solo registra la confirmación (order.entity.ts).
+   */
+  whatsappSentAt: string | null
   /** Solo se setea al pasar a "entregado". */
   deliveredAt: string | null
   /**
@@ -132,4 +138,29 @@ export interface AddressSnapshot {
   district?: string
   latitude?: number | null
   longitude?: number | null
+}
+/** Un destinatario de WhatsApp: celular (51XXXXXXXXX) + link wa.me con el mensaje. */
+export interface WhatsappLink {
+  phone: string
+  url: string
+}
+
+/**
+ * GET /orders/admin/:orderId/whatsapp-links — espejo de `WhatsappLinks` en
+ * orders.service.ts (backend-celtas @ 6a47dce). Los links se rearman desde el
+ * snapshot del pedido con el número del negocio ACTUAL.
+ */
+export interface WhatsappLinks {
+  orderId: string
+  /** "CONFIRMA TU PEDIDO" al cliente; `null` si no hay un celular peruano válido. */
+  customer: WhatsappLink | null
+  /** "NUEVO PEDIDO" al número del negocio; siempre presente. */
+  store: WhatsappLink
+  whatsappSentAt: string | null
+}
+
+/** POST /orders/admin/:orderId/whatsapp-sent. Idempotente: devuelve la PRIMERA fecha. */
+export interface WhatsappSentResult {
+  orderId: string
+  whatsappSentAt: string
 }

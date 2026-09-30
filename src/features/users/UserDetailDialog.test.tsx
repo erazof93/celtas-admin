@@ -88,6 +88,7 @@ function makeOrder(id: string) {
     addressSnapshot: '{}',
     total: 42.5,
     whatsappUrl: 'https://wa.me/51999999999',
+    whatsappSentAt: null,
     deliveredAt: '2026-08-08T12:00:00.000Z',
     items: [],
     createdAt: '2026-08-08T12:00:00.000Z',

@@ -42,6 +42,7 @@ import {
   VALID_ORDER_TRANSITIONS,
 } from './status'
 import { useUpdateOrderStatus } from './hooks'
+import { OrderWhatsappSection } from './components/OrderWhatsappSection'
 import type { AddressSnapshot, Order, OrderStatus } from './types'
 
 const CURRENCY = new Intl.NumberFormat('es-PE', {
@@ -356,22 +357,13 @@ export function OrderDetailDialog({
                   </dl>
                 </div>
 
-                <Button asChild variant="outline" className="w-full">
-                  <a
-                    href={order.whatsappUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <MessageCircle />
-                    Abrir en WhatsApp
-                  </a>
-                </Button>
+                {/* Links cliente/tienda + confirmación de envío (o el link original si fallan). */}
+                <OrderWhatsappSection order={order} open={open} />
 
                 {/*
-                  Distinto de "Abrir en WhatsApp" de arriba (order.whatsappUrl,
-                  el mensaje del PEDIDO hacia la tienda). Este es un chat
-                  directo con el cliente, sin mensaje prellenado — oculto si
-                  no tiene teléfono registrado (campo opcional).
+                  Distinto de la sección de WhatsApp de arriba (mensajes del
+                  PEDIDO prellenados). Este es un chat directo con el cliente,
+                  sin mensaje — oculto si no tiene teléfono registrado.
                 */}
                 {customerPhoneDigits ? (
                   <Button asChild variant="outline" className="w-full">

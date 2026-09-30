@@ -43,6 +43,7 @@ function makeOrder(overrides: Partial<Order> = {}): Order {
     total: 37,
     deliveryFee: 0,
     whatsappUrl: 'https://wa.me/51999999999?text=hola',
+    whatsappSentAt: null,
     deliveredAt: null,
     cancelReason: null,
     items: [],
