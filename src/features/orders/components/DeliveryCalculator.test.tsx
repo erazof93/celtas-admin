@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AxiosError, AxiosHeaders } from 'axios'
@@ -393,6 +393,7 @@ describe('DeliveryCalculator - onChange (reutilizado en pedido manual)', () => {
         point: { lat: GEOCODED[0], lng: GEOCODED[1] },
         estimate: { deliveryFee: 4, isFarOrder: false, distanceMeters: 350 },
         estimateFailed: false,
+        district: null,
       }),
     )
 
@@ -403,6 +404,7 @@ describe('DeliveryCalculator - onChange (reutilizado en pedido manual)', () => {
       point: null,
       estimate: null,
       estimateFailed: false,
+      district: null,
     })
   })
 
@@ -427,6 +429,7 @@ describe('DeliveryCalculator - onChange (reutilizado en pedido manual)', () => {
         point: { lat: -12.14, lng: -76.97 },
         estimate: { deliveryFee: 7, isFarOrder: true, distanceMeters: 2800 },
         estimateFailed: false,
+        district: null,
       }),
     )
   })
@@ -508,5 +511,437 @@ describe('DeliveryCalculator - initialLocation (dirección guardada)', () => {
         expect.objectContaining({ address: 'Av. Sin Coords 1', point: null }),
       ),
     )
+  })
+})
+
+describe('DeliveryCalculator - autocompletado', () => {
+  const geoFeature = {
+    properties: {
+      lat: -12.158,
+      lon: -76.972,
+      formatted: 'Avenida Los Héroes 1080, San Juan de Miraflores, Lima, Perú',
+      street: 'Avenida Los Héroes',
+      housenumber: '1080',
+      city: 'San Juan de Miraflores',
+    },
+  }
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  function renderAuto(props: Partial<Parameters<typeof DeliveryCalculator>[0]> = {}) {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <DeliveryCalculator enableAutocomplete {...props} />
+      </QueryClientProvider>,
+    )
+  }
+
+  beforeEach(() => {
+    vi.stubEnv('VITE_GEOAPIFY_API_KEY', 'test-key')
+    fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ features: [geoFeature] }) })
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+  })
+
+  it('muestra direcciones guardadas que coinciden con lo escrito; elegir una avisa al padre', async () => {
+    const user = userEvent.setup()
+    const onPickSaved = vi.fn()
+    renderAuto({
+      onPickSaved,
+      savedSuggestions: [
+        { id: 'casa', label: 'Casa - Av. Los Álamos 123', fullAddress: 'Av. Los Álamos 123' },
+        { id: 'trabajo', label: 'Trabajo - Jr. Lima 450', fullAddress: 'Jr. Lima 450' },
+      ],
+    })
+
+    await user.type(screen.getByLabelText('Dirección'), 'álamos')
+    const list = await screen.findByRole('listbox', { name: 'Sugerencias de dirección' })
+    expect(within(list).getByText('Casa - Av. Los Álamos 123')).toBeInTheDocument()
+    expect(within(list).queryByText('Trabajo - Jr. Lima 450')).not.toBeInTheDocument()
+    expect(within(list).getByLabelText('Guardada')).toBeInTheDocument()
+
+    await user.click(within(list).getByRole('option', { name: /Casa - Av. Los Álamos 123/ }))
+    expect(onPickSaved).toHaveBeenCalledWith('casa')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  it('muestra sugerencias de Geoapify (con debounce, desde 4 caracteres)', async () => {
+    const user = userEvent.setup()
+    renderAuto()
+
+    await user.type(screen.getByLabelText('Dirección'), 'Av.')
+    await new Promise((r) => setTimeout(r, 500))
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    await user.type(screen.getByLabelText('Dirección'), ' Los Héroes')
+    const list = await screen.findByRole('listbox', { name: 'Sugerencias de dirección' })
+    expect(within(list).getByText('Avenida Los Héroes 1080, San Juan de Miraflores')).toBeInTheDocument()
+    expect(within(list).getByLabelText('Geoapify')).toBeInTheDocument()
+    expect(screen.getByText('Verifica el pin en el mapa y agrega una referencia.')).toBeInTheDocument()
+    // Una sola consulta con el texto final (debounce), no una por tecla.
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(new URL(fetchMock.mock.calls[0][0] as string).searchParams.get('text')).toBe('Av. Los Héroes')
+  })
+
+  it('click en una sugerencia de Geoapify carga sus coordenadas en el mapa y cotiza ese punto', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    renderAuto({ onChange })
+
+    await user.type(screen.getByLabelText('Dirección'), 'Los Héroes')
+    await user.click(
+      await screen.findByRole('option', { name: /Avenida Los Héroes 1080, San Juan de Miraflores/ }),
+    )
+
+    expect(screen.getByLabelText('Dirección')).toHaveValue('Avenida Los Héroes 1080, San Juan de Miraflores')
+    expect(screen.getByTestId('marker-Cliente')).toHaveAttribute('data-position', '-12.158,-76.972')
+    expect(getMock).toHaveBeenCalledWith('/delivery/estimate', {
+      params: { latitude: -12.158, longitude: -76.972 },
+    })
+    // No pasa por el geocoding del backend.
+    expect(getMock).not.toHaveBeenCalledWith('/orders/geocode', expect.anything())
+    expect(await screen.findByText('Delivery: S/ 4.00')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          address: 'Avenida Los Héroes 1080, San Juan de Miraflores',
+          point: { lat: -12.158, lng: -76.972 },
+          district: 'San Juan de Miraflores',
+        }),
+      ),
+    )
+  })
+
+  it('si Geoapify falla no muestra sugerencias y "Buscar" (backend) sigue funcionando', async () => {
+    const user = userEvent.setup()
+    fetchMock.mockResolvedValue({ ok: false, status: 429 })
+    renderAuto()
+
+    await search(user, 'Jr. Carabaya 250, Lima')
+    await new Promise((r) => setTimeout(r, 500))
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(await screen.findByText('Delivery: S/ 4.00')).toBeInTheDocument()
+  })
+
+  it('sin key de Geoapify no consulta el autocompletado', async () => {
+    const user = userEvent.setup()
+    vi.stubEnv('VITE_GEOAPIFY_API_KEY', '')
+    renderAuto()
+    await user.type(screen.getByLabelText('Dirección'), 'Los Héroes 1080')
+    await new Promise((r) => setTimeout(r, 500))
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('DeliveryCalculator - pin manual (allowManualPin)', () => {
+  it('muestra el mapa sin buscar; un click marca el pin, cotiza y lo notifica aunque no haya texto', async () => {
+    const onChange = vi.fn()
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <DeliveryCalculator allowManualPin onChange={onChange} />
+      </QueryClientProvider>,
+    )
+
+    expect(screen.getByTestId('map')).toBeInTheDocument()
+    expect(screen.queryByTestId('marker-Cliente')).not.toBeInTheDocument()
+    expect(screen.getByText('Haz click en el mapa para marcar la ubicación del cliente.')).toBeInTheDocument()
+
+    act(() => leaflet.click?.({ latlng: { lat: -12.17, lng: -76.98 } }))
+
+    expect(screen.getByTestId('marker-Cliente')).toHaveAttribute('data-position', '-12.17,-76.98')
+    expect(await screen.findByText('Delivery: S/ 4.00')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ address: '', point: { lat: -12.17, lng: -76.98 } }),
+      ),
+    )
+  })
+
+  it('sin allowManualPin el mapa sigue apareciendo solo tras buscar', () => {
+    renderCalculator()
+    expect(screen.queryByTestId('map')).not.toBeInTheDocument()
+  })
+})
+
+describe('DeliveryCalculator - auditoría QA (pin adopta texto, distrito, teclado)', () => {
+  const geoFeature = {
+    properties: {
+      lat: -12.158,
+      lon: -76.972,
+      formatted: 'Avenida Los Héroes 1080, San Juan de Miraflores, Lima, Perú',
+      street: 'Avenida Los Héroes',
+      housenumber: '1080',
+      city: 'San Juan de Miraflores',
+    },
+  }
+
+  function renderQa(props: Partial<Parameters<typeof DeliveryCalculator>[0]> = {}) {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <DeliveryCalculator enableAutocomplete {...props} />
+      </QueryClientProvider>,
+    )
+  }
+
+  beforeEach(() => {
+    vi.stubEnv('VITE_GEOAPIFY_API_KEY', 'test-key')
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({ features: [geoFeature] }) }),
+    )
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+  })
+
+  it('arrastrar el pin tras editar el texto adopta el texto nuevo (vuelve a haber punto)', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    renderQa({ onChange })
+    await search(user, 'Jr. Carabaya 250, Lima')
+    await screen.findByText('Delivery: S/ 4.00')
+
+    await user.type(screen.getByLabelText('Dirección'), ' 2do piso')
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ point: null }))
+
+    act(() => leaflet.dragend?.({ target: { getLatLng: () => ({ lat: -12.15, lng: -76.96 }) } }))
+
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          address: 'Jr. Carabaya 250, Lima 2do piso',
+          point: { lat: -12.15, lng: -76.96 },
+        }),
+      ),
+    )
+  })
+
+  it('el distrito de Geoapify se pierde al editar el texto y no revive al mover el pin', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    renderQa({ onChange })
+    await user.type(screen.getByLabelText('Dirección'), 'Los Héroes')
+    await user.click(
+      await screen.findByRole('option', { name: /Avenida Los Héroes 1080, San Juan de Miraflores/ }),
+    )
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ district: 'San Juan de Miraflores' }),
+      ),
+    )
+
+    // Mover el pin sin tocar el texto: el distrito sigue.
+    act(() => leaflet.click?.({ latlng: { lat: -12.159, lng: -76.973 } }))
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ point: { lat: -12.159, lng: -76.973 }, district: 'San Juan de Miraflores' }),
+      ),
+    )
+
+    // Editar el texto y luego mover el pin: el distrito ya no aplica.
+    await user.type(screen.getByLabelText('Dirección'), ' Mz B')
+    // Texto editado sin re-ubicar: ni punto ni distrito de la sugerencia.
+    expect(onChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ point: null, district: null }),
+    )
+    act(() => leaflet.dragend?.({ target: { getLatLng: () => ({ lat: -12.16, lng: -76.97 }) } }))
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          address: 'Avenida Los Héroes 1080, San Juan de Miraflores Mz B',
+          point: { lat: -12.16, lng: -76.97 },
+          district: null,
+        }),
+      ),
+    )
+  })
+
+  it('Escape cierra la lista de sugerencias', async () => {
+    const user = userEvent.setup()
+    renderQa()
+    await user.type(screen.getByLabelText('Dirección'), 'Los Héroes')
+    await screen.findByRole('listbox', { name: 'Sugerencias de dirección' })
+    expect(screen.getByLabelText('Dirección')).toHaveAttribute('aria-expanded', 'true')
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Dirección')).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('perder el foco cierra la lista de sugerencias', async () => {
+    const user = userEvent.setup()
+    renderQa()
+    await user.type(screen.getByLabelText('Dirección'), 'Los Héroes')
+    await screen.findByRole('listbox', { name: 'Sugerencias de dirección' })
+
+    await user.click(document.body)
+    await waitFor(() => expect(screen.queryByRole('listbox')).not.toBeInTheDocument())
+  })
+})
+
+describe('DeliveryCalculator - correcciones de la auditoría del autocompletado', () => {
+  const heroes = {
+    properties: {
+      lat: -12.158,
+      lon: -76.972,
+      formatted: 'Avenida Los Héroes 1080, San Juan de Miraflores, Lima, Perú',
+      street: 'Avenida Los Héroes',
+      housenumber: '1080',
+      city: 'San Juan de Miraflores',
+    },
+  }
+  const carabaya = {
+    properties: { lat: -12.05, lon: -77.03, formatted: 'Jirón Carabaya 250, Lima, Perú' },
+  }
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  function renderWith(props: Partial<Parameters<typeof DeliveryCalculator>[0]> = {}) {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <DeliveryCalculator {...props} />
+      </QueryClientProvider>,
+    )
+  }
+
+  beforeEach(() => {
+    vi.stubEnv('VITE_GEOAPIFY_API_KEY', 'test-key')
+    fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ features: [heroes, carabaya] }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+  })
+
+  it('sin enableAutocomplete (cotizador de Pedidos) no consulta Geoapify aunque haya key', async () => {
+    const user = userEvent.setup()
+    renderWith()
+    await user.type(screen.getByLabelText('Dirección'), 'Los Héroes 1080')
+    await new Promise((r) => setTimeout(r, 500))
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+  })
+
+  it('flechas + Enter eligen la sugerencia resaltada (sin disparar "Buscar")', async () => {
+    const user = userEvent.setup()
+    renderWith({ enableAutocomplete: true })
+    const input = screen.getByLabelText('Dirección')
+
+    await user.type(input, 'Avenida')
+    await screen.findByRole('listbox', { name: 'Sugerencias de dirección' })
+    expect(input).not.toHaveAttribute('aria-activedescendant')
+
+    await user.keyboard('{ArrowDown}{ArrowDown}')
+    const second = screen.getByRole('option', { name: /Jirón Carabaya 250/ })
+    expect(second).toHaveAttribute('aria-selected', 'true')
+    expect(input).toHaveAttribute('aria-activedescendant', second.id)
+
+    await user.keyboard('{Enter}')
+    expect(input).toHaveValue('Jirón Carabaya 250, Lima, Perú')
+    expect(screen.getByTestId('marker-Cliente')).toHaveAttribute('data-position', '-12.05,-77.03')
+    expect(getMock).not.toHaveBeenCalledWith('/orders/geocode', expect.anything())
+  })
+
+  it('ArrowUp desde ninguno resalta la última; Escape cierra y limpia el resaltado', async () => {
+    const user = userEvent.setup()
+    renderWith({ enableAutocomplete: true })
+    const input = screen.getByLabelText('Dirección')
+    await user.type(input, 'Avenida')
+    await screen.findByRole('listbox')
+
+    await user.keyboard('{ArrowUp}')
+    expect(screen.getByRole('option', { name: /Jirón Carabaya 250/ })).toHaveAttribute('aria-selected', 'true')
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(input).not.toHaveAttribute('aria-activedescendant')
+    expect(input).not.toHaveAttribute('aria-controls')
+  })
+
+  it('durante el debounce no muestra sugerencias del texto anterior', async () => {
+    const user = userEvent.setup()
+    renderWith({ enableAutocomplete: true })
+    const input = screen.getByLabelText('Dirección')
+    await user.type(input, 'Avenida')
+    await screen.findByRole('option', { name: /Avenida Los Héroes 1080/ })
+
+    await user.type(input, ' Pachacútec')
+    // Antes de que venza el debounce, las de "Avenida" ya no se ofrecen.
+    expect(screen.queryByRole('option', { name: /Avenida Los Héroes 1080/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('DeliveryCalculator - auditoría QA 2 (teclado del combobox)', () => {
+  const features = [
+    { properties: { lat: -12.158, lon: -76.972, formatted: 'Avenida Los Héroes 1080, Lima, Perú' } },
+    { properties: { lat: -12.05, lon: -77.03, formatted: 'Avenida Carabaya 250, Lima, Perú' } },
+  ]
+
+  function renderQa2() {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <DeliveryCalculator enableAutocomplete />
+      </QueryClientProvider>,
+    )
+  }
+
+  beforeEach(() => {
+    vi.stubEnv('VITE_GEOAPIFY_API_KEY', 'test-key')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ features }) }))
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    vi.unstubAllGlobals()
+  })
+
+  it('el input se expone como combobox con su label', () => {
+    renderQa2()
+    expect(screen.getByRole('combobox', { name: 'Dirección' })).toBeInTheDocument()
+  })
+
+  it('ArrowDown es circular: tras la última vuelve a la primera', async () => {
+    const user = userEvent.setup()
+    renderQa2()
+    await user.type(screen.getByLabelText('Dirección'), 'Avenida')
+    await screen.findByRole('listbox')
+
+    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}')
+    expect(screen.getByRole('option', { name: /Los Héroes 1080/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('option', { name: /Carabaya 250/ })).toHaveAttribute('aria-selected', 'false')
+  })
+
+  it('Enter con la lista abierta pero sin resaltar dispara "Buscar" (backend), no una sugerencia', async () => {
+    const user = userEvent.setup()
+    renderQa2()
+    await user.type(screen.getByLabelText('Dirección'), 'Avenida')
+    await screen.findByRole('listbox')
+
+    await user.keyboard('{Enter}')
+    await waitFor(() =>
+      expect(getMock).toHaveBeenCalledWith('/orders/geocode', { params: { address: 'Avenida' } }),
+    )
+    expect(screen.getByLabelText('Dirección')).toHaveValue('Avenida')
   })
 })

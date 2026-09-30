@@ -327,3 +327,19 @@ describe('buildAddressSnapshot con dirección guardada', () => {
     })
   })
 })
+
+describe('buildAddressSnapshot solo con pin', () => {
+  it('sin texto usa "Ubicación marcada en el mapa" y conserva referencia y coordenadas', () => {
+    expect(
+      JSON.parse(
+        buildAddressSnapshot({ fullAddress: '  ', reference: 'Casa verde', latitude: -12.17, longitude: -76.98 }),
+      ),
+    ).toEqual({
+      alias: 'Pedido manual',
+      fullAddress: 'Ubicación marcada en el mapa',
+      reference: 'Casa verde',
+      latitude: -12.17,
+      longitude: -76.98,
+    })
+  })
+})

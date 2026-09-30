@@ -2459,3 +2459,60 @@ Checklist:
 - [ ] (nota) El backend acepta ids de opciones inactivas; el bloqueo es decisión de UI (no ofrecer
       opciones ocultas), no una restricción del backend.
 - [ ] Sin verificar en navegador real contra el backend (sin credenciales de admin).
+
+## Auditoría: Orders — Pedido manual: autocompletado (Geoapify directo) + referencia en la dirección, working tree sin commitear
+
+Auditor: @tester (independiente). Fecha: 2026-09-30. Alcance (diff sobre `c2e0551`): `lib/geoapify.ts`
+(+test), `lib/useDebouncedValue.ts`, `orders/hooks.ts` (`useGeoapifyAutocomplete`),
+`orders/components/DeliveryCalculator.tsx` (sugerencias, `allowManualPin`, `district`),
+`orders/pages/CreateManualOrderPage.tsx` (referencia Textarea, schema solo-pin), `orders/manual-order.ts`
+(`REFERENCE_MAX_LENGTH`, `MAP_ONLY_ADDRESS`). Referencias leídas: `celtas-app/lib/features/addresses/data/
+geoapify_repository.dart` + `models/geoapify_suggestion.dart`; `backend-celtas @ dc35681`
+`src/modules/orders/orders.service.ts` (`readableAddress`, `mapsLinksBlock`), `dto/create-order.dto.ts`.
+
+Checklist:
+- [x] `pnpm run type-check` exit 0; `pnpm run lint` 0 errores (1 warning preexistente en
+      `StarPromotionForm.tsx`); `pnpm run build` exit 0.
+- [x] Suite: 51 archivos / 445 tests; con los del tester 51 / 449.
+- [x] `geoapify.ts` = app: `lang=es`, `filter=countrycode:pe`, `limit=5`; `bestDistrict` (city → suburb →
+      district) y `bestFullAddress` (calle+número+distrito, fallback `formatted` sin calle o calle = POI)
+      idénticos; descarta features sin lat/lon/formatted; nunca lanza (`!ok` y excepción → `[]`); usa
+      `fetch`, no `api-client`; sin key no consulta (`enabled` en el hook + guard en la función).
+- [x] Referencia en su propio campo del snapshot (no concatenada): backend `readableAddress` arma
+      `fullAddress, district (ref: …)`; `OrderDetailDialog.tsx:297` muestra `Ref:`.
+- [x] Solo-pin: `fullAddress = 'Ubicación marcada en el mapa'` (backend exige snapshot no vacío,
+      `@IsNotEmpty`), coordenadas → links Maps/Waze (`mapsLinksBlock`); exige referencia.
+- [x] **[QA] tests nuevos en `DeliveryCalculator.test.tsx`** ("auditoría QA"): drag tras editar el
+      texto adopta el texto; distrito de Geoapify se pierde al editar el texto (sin re-ubicar y tras
+      mover el pin) y se conserva si solo se mueve el pin; Escape cierra; blur cierra.
+- [x] Mutaciones (backup + restore, md5 idéntico al final), todas MATADAS: sin debounce; sin mínimo 4
+      chars; sin `countrycode:pe`; lanzar en error; `pickGeoapify` vía `/orders/geocode`; drag no adopta
+      texto (test QA — sobrevivía antes); click no adopta texto; sin exigir referencia solo-pin;
+      concatenar referencia (7 fallan); distrito sin gate `located` (test QA — sobrevivía antes);
+      distrito sin reset al mover pin tras editar (test QA — sobrevivía antes); página ignora distrito
+      Geoapify; Escape no cierra (test QA); blur no cierra (test QA); guardadas sin filtrar; mapa siempre
+      visible sin `allowManualPin` (4 fallan); `maxLength` 200.
+- [x] ~~BUG~~ **CORREGIDO (re-auditoría)**: elegir en las sugerencias la guardada ya seleccionada no hacía
+      nada. Fix: `pickNonce` en `calculatorKey` (`${id ?? NEW_ADDRESS}-${pickNonce}`), solo se incrementa en
+      `onPickSaved`. Regresión "tras editar su texto, elegir la misma guardada… la vuelve a cargar" MATA
+      las mutaciones "sin nonce en key" y "nonce no se incrementa". La regla previa sigue: incrementar el
+      nonce al cambiar de cliente rompe "elegir un cliente SIN direcciones guardadas no borra la dirección
+      ya ubicada" (o sea, el nonce actual NO remonta ahí). El reset por opción del Select no cambió (la key
+      cambia por id). Mutación "nonce también en el Select" sobrevive: equivalente (cambiar de opción ya
+      cambia la key).
+- [x] **CORREGIDO**: autocompletado de Geoapify opt-in (`enableAutocomplete`, default false); solo
+      `CreateManualOrderPage` lo activa. `useGeoapifyAutocomplete(text, enabled)` devuelve `[]` durante el
+      debounce. Mutaciones MATADAS: default true; página no lo activa; hook ignora `enabled` en la query;
+      sin gate de debounce.
+- [x] **CORREGIDO (a11y)**: input `role="combobox"` + `aria-activedescendant`; `<li role="option" id
+      aria-selected>` sin `<button>`; ArrowDown/ArrowUp circulares; Enter elige la resaltada sin "Buscar";
+      Escape cierra; `aria-controls` solo abierta; timeout del blur en ref, limpiado al desmontar.
+      **[QA] tests nuevos** ("auditoría QA 2"): role combobox; ArrowDown circular; Enter sin resaltado
+      dispara Buscar (con `options[-1]` crashearía). Mutaciones MATADAS: Enter sin preventDefault; ArrowDown
+      no circular (test QA — sobrevivía); sin activedescendant; aria-controls siempre; aria-selected fijo;
+      Enter elige sin resaltado (test QA — sobrevivía); sin role combobox (test QA — sobrevivía). "Escape no
+      limpia el resaltado" sobrevive: equivalente (la lista solo se reabre escribiendo, y onChange resetea).
+- [x] Re-auditoría: type-check 0, lint 0 errores, build 0, suite 51 / 458 (455 del dev + 3 del tester).
+- [ ] (menor) El blur deja un timeout de 150 ms que no se cancela si el input recupera el foco antes:
+      blur + refocus rápido cierra la lista (se reabre al escribir).
+- [ ] Sin verificar en navegador real (Leaflet real, Geoapify con la key real, backend).

@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { LoadingState } from '@/components/ui/LoadingState'
 import {
@@ -43,6 +44,7 @@ import {
   lineSubtotal,
   manualOrderSubtotal,
   MAX_QUANTITY,
+  REFERENCE_MAX_LENGTH,
   normalizePeruMobile,
   round2,
   type ManualOrderLine,
@@ -97,12 +99,32 @@ const manualOrderSchema = z.object({
     }),
   ]),
   lines: z.array(lineSchema).min(1, 'Agrega al menos un producto'),
-  address: z.object({
-    fullAddress: z.string().trim().min(1, 'Escribe la dirección de entrega'),
-    reference: z.string().max(200, 'Máximo 200 caracteres'),
-    latitude: z.number().nullable(),
-    longitude: z.number().nullable(),
-  }),
+  address: z
+    .object({
+      fullAddress: z.string(),
+      // Sin máximo en el schema: el backend no limita la referencia y una
+      // guardada puede superar los 80 que el textarea deja escribir.
+      reference: z.string(),
+      latitude: z.number().nullable(),
+      longitude: z.number().nullable(),
+    })
+    .superRefine((value, ctx) => {
+      if (value.fullAddress.trim()) return
+      if (value.latitude === null || value.longitude === null) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['fullAddress'],
+          message: 'Escribe la dirección o marca el punto en el mapa',
+        })
+      } else if (!value.reference.trim()) {
+        // Solo pin: el repartidor tendrá el link del mapa, pero necesita una seña.
+        ctx.addIssue({
+          code: 'custom',
+          path: ['reference'],
+          message: 'Sin dirección escrita, agrega una referencia para el repartidor',
+        })
+      }
+    }),
 })
 
 type ManualOrderFormValues = z.infer<typeof manualOrderSchema>
@@ -149,6 +171,8 @@ export default function CreateManualOrderPage() {
   const [addOpen, setAddOpen] = useState(false)
   const [estimate, setEstimate] = useState<DeliveryEstimate | null>(null)
   const [estimateFailed, setEstimateFailed] = useState(false)
+  // Distrito de la sugerencia de Geoapify elegida (null si no vino de una).
+  const [pickedDistrict, setPickedDistrict] = useState<string | null>(null)
   const [serverError, setServerError] = useState<string | null>(null)
 
   const {
@@ -177,6 +201,9 @@ export default function CreateManualOrderPage() {
   const addressesQuery = useUserAddresses(customerId)
   const savedAddresses = customerId ? (addressesQuery.data ?? []) : []
   const [savedChoice, setSavedChoice] = useState<string | null>(null)
+  // Se incrementa en cada elección desde las sugerencias: elegir la guardada que
+  // ya está seleccionada (tras editar su texto) debe volver a cargarla.
+  const [pickNonce, setPickNonce] = useState(0)
   const effectiveChoice =
     savedChoice ?? savedAddresses.find((a) => a.isDefault)?.id ?? NEW_ADDRESS
   const selectedSaved = savedAddresses.find((a) => a.id === effectiveChoice) ?? null
@@ -184,7 +211,7 @@ export default function CreateManualOrderPage() {
   // se lee al montar). "Nueva dirección" usa siempre la misma key: lo que el
   // admin escribió antes de elegir un cliente sin direcciones guardadas no se
   // pierde al elegirlo.
-  const calculatorKey = selectedSaved?.id ?? NEW_ADDRESS
+  const calculatorKey = `${selectedSaved?.id ?? NEW_ADDRESS}-${pickNonce}`
   const appliedKeyRef = useRef<string | null>(null)
 
   const menuById = useMemo(
@@ -215,6 +242,7 @@ export default function CreateManualOrderPage() {
     )
     setEstimate(location.estimate)
     setEstimateFailed(location.estimateFailed)
+    setPickedDistrict(location.district)
   }
 
   function updateLines(next: ManualOrderLine[]) {
@@ -232,10 +260,11 @@ export default function CreateManualOrderPage() {
       menuById,
       address: {
         ...values.address,
-        // Alias/distrito solo si sigue siendo la dirección guardada (sin editar el texto).
+        // Alias/distrito de la guardada solo si no se editó el texto; si no, el
+        // distrito de la sugerencia de Geoapify elegida (si hubo).
         ...(selectedSaved && values.address.fullAddress.trim() === selectedSaved.fullAddress.trim()
           ? { alias: selectedSaved.alias, district: selectedSaved.district }
-          : {}),
+          : { district: pickedDistrict }),
       },
     })
     try {
@@ -438,6 +467,17 @@ export default function CreateManualOrderPage() {
           <DeliveryCalculator
             key={calculatorKey}
             onChange={handleLocationChange}
+            allowManualPin
+            enableAutocomplete
+            savedSuggestions={savedAddresses.map((saved) => ({
+              id: saved.id,
+              label: `${saved.alias} - ${saved.fullAddress}`,
+              fullAddress: saved.fullAddress,
+            }))}
+            onPickSaved={(id) => {
+              setSavedChoice(id)
+              setPickNonce((n) => n + 1)
+            }}
             initialLocation={
               selectedSaved
                 ? {
@@ -458,23 +498,41 @@ export default function CreateManualOrderPage() {
           <p className="text-celtas-gold flex items-start gap-1.5 text-sm">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" />
             Sin ubicar en el mapa el servidor cobra delivery S/ 0.00. Pulsa
-            "Buscar" para calcularlo.
+            "Buscar", elige una sugerencia o marca el punto en el mapa.
           </p>
         ) : null}
-        <div className="space-y-1.5">
-          <Label htmlFor="address-reference">Referencia (opcional)</Label>
+        <div className="border-celtas-orange/40 bg-celtas-orange/5 space-y-1.5 rounded-lg border p-3">
+          <Label htmlFor="address-reference" className="font-semibold">
+            Referencia (ej: Puerta azul, al lado del kiosco)
+          </Label>
           <Controller
             control={control}
             name="address.reference"
             render={({ field }) => (
-              <Input
+              <Textarea
                 id="address-reference"
-                maxLength={200}
-                placeholder="Ej. Portón verde, frente al parque"
+                rows={2}
+                // Limita lo que se escribe; una referencia guardada más larga se
+                // conserva tal cual (el backend no la limita).
+                maxLength={REFERENCE_MAX_LENGTH}
+                placeholder="Puerta azul, al lado del kiosco"
+                aria-invalid={Boolean(errors.address?.reference)}
                 {...field}
               />
             )}
           />
+          <div className="flex justify-between gap-2 text-xs">
+            <span className="text-celtas-red-light">{errors.address?.reference?.message}</span>
+            <span
+              className={
+                address.reference.length > REFERENCE_MAX_LENGTH
+                  ? 'text-celtas-gold'
+                  : 'text-muted-foreground'
+              }
+            >
+              {address.reference.length}/{REFERENCE_MAX_LENGTH}
+            </span>
+          </div>
         </div>
       </Card>
 

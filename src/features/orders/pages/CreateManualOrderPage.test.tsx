@@ -43,8 +43,19 @@ vi.mock('../components/DeliveryCalculator', async () => {
   type Props = {
     onChange: (l: DeliveryLocation) => void
     initialLocation?: { address: string; point: { lat: number; lng: number } | null }
+    savedSuggestions?: { id: string; label: string; fullAddress: string }[]
+    onPickSaved?: (id: string) => void
+    allowManualPin?: boolean
+    enableAutocomplete?: boolean
   }
-  function DeliveryCalculator({ onChange, initialLocation }: Props) {
+  function DeliveryCalculator({
+    onChange,
+    initialLocation,
+    savedSuggestions,
+    onPickSaved,
+    allowManualPin,
+    enableAutocomplete,
+  }: Props) {
     useEffect(() => {
       onChange({
         address: initialLocation?.address ?? '',
@@ -53,6 +64,7 @@ vi.mock('../components/DeliveryCalculator', async () => {
           ? { deliveryFee: 7, isFarOrder: false, distanceMeters: 1500 }
           : null,
         estimateFailed: false,
+        district: null,
       })
       // Solo al montar, como el real con su initialLocation.
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -60,6 +72,13 @@ vi.mock('../components/DeliveryCalculator', async () => {
     return (
       <div>
         <p data-testid="calc-initial">{JSON.stringify(initialLocation ?? null)}</p>
+        <p data-testid="calc-manual-pin">{String(Boolean(allowManualPin))}</p>
+        <p data-testid="calc-autocomplete">{String(Boolean(enableAutocomplete))}</p>
+        {(savedSuggestions ?? []).map((s) => (
+          <button key={s.id} type="button" onClick={() => onPickSaved?.(s.id)}>
+            sugerida: {s.label}
+          </button>
+        ))}
         <button
           type="button"
           onClick={() =>
@@ -68,6 +87,7 @@ vi.mock('../components/DeliveryCalculator', async () => {
               point: { lat: -12.16, lng: -76.97 },
               estimate: { deliveryFee: 5, isFarOrder: false, distanceMeters: 900 },
               estimateFailed: false,
+              district: null,
             })
           }
         >
@@ -76,7 +96,7 @@ vi.mock('../components/DeliveryCalculator', async () => {
         <button
           type="button"
           onClick={() =>
-            onChange({ address: 'Av. Sin Mapa 1', point: null, estimate: null, estimateFailed: false })
+            onChange({ address: 'Av. Sin Mapa 1', point: null, estimate: null, estimateFailed: false, district: null })
           }
         >
           solo-texto
@@ -89,10 +109,39 @@ vi.mock('../components/DeliveryCalculator', async () => {
               point: { lat: -12.16, lng: -76.97 },
               estimate: null,
               estimateFailed: true,
+              district: null,
             })
           }
         >
           cotizacion-falla
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            onChange({
+              address: 'Av. Los Héroes 1080, San Juan de Miraflores',
+              point: { lat: -12.158, lng: -76.972 },
+              estimate: { deliveryFee: 6, isFarOrder: false, distanceMeters: 1200 },
+              estimateFailed: false,
+              district: 'San Juan de Miraflores',
+            })
+          }
+        >
+          sugerencia-geoapify
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            onChange({
+              address: '',
+              point: { lat: -12.17, lng: -76.98 },
+              estimate: { deliveryFee: 4, isFarOrder: false, distanceMeters: 600 },
+              estimateFailed: false,
+              district: null,
+            })
+          }
+        >
+          solo-pin
         </button>
       </div>
     )
@@ -294,7 +343,7 @@ describe('CreateManualOrderPage', () => {
 
     expect(await screen.findByText('Celular peruano de 9 dígitos (ej. 987 654 321)')).toBeInTheDocument()
     expect(screen.getByText('El nombre es obligatorio si el cliente no tiene cuenta')).toBeInTheDocument()
-    expect(screen.getByText('Escribe la dirección de entrega')).toBeInTheDocument()
+    expect(screen.getByText('Escribe la dirección o marca el punto en el mapa')).toBeInTheDocument()
     expect(createMock).not.toHaveBeenCalled()
   })
 
@@ -501,7 +550,7 @@ describe('CreateManualOrderPage - direcciones guardadas del cliente', () => {
         point: { lat: -12.155, lng: -76.965 },
       }),
     )
-    expect(screen.getByLabelText('Referencia (opcional)')).toHaveValue('Portón verde')
+    expect(screen.getByLabelText(/^Referencia/)).toHaveValue('Portón verde')
   })
 
   it('elegir otra dirección la carga en el mapa y recalcula el delivery', async () => {
@@ -520,7 +569,7 @@ describe('CreateManualOrderPage - direcciones guardadas del cliente', () => {
       }),
     )
     // Sin referencia guardada: se limpia la de la dirección anterior.
-    expect(screen.getByLabelText('Referencia (opcional)')).toHaveValue('')
+    expect(screen.getByLabelText(/^Referencia/)).toHaveValue('')
     expect(deliveryValue()).toBe('S/ 7.00')
   })
 
@@ -535,7 +584,7 @@ describe('CreateManualOrderPage - direcciones guardadas del cliente', () => {
     await user.click(await screen.findByRole('option', { name: '+ Nueva dirección' }))
 
     await waitFor(() => expect(calcInitial()).toBeNull())
-    expect(screen.getByLabelText('Referencia (opcional)')).toHaveValue('')
+    expect(screen.getByLabelText(/^Referencia/)).toHaveValue('')
     // Sin dirección ubicada: delivery S/ 0.00 hasta buscar.
     expect(deliveryValue()).toBe('S/ 0.00')
 
@@ -618,13 +667,13 @@ describe('CreateManualOrderPage - direcciones guardadas del cliente', () => {
     await waitFor(() =>
       expect(calcInitial()).toEqual({ address: 'Calle Pedro 9', point: { lat: -12.1, lng: -76.99 } }),
     )
-    expect(screen.getByLabelText('Referencia (opcional)')).toHaveValue('Piso 3')
+    expect(screen.getByLabelText(/^Referencia/)).toHaveValue('Piso 3')
 
     // Pasa a sin cuenta: sin selector, mapa y referencia vacíos.
     await user.click(screen.getByRole('button', { name: 'Quitar cliente' }))
     expect(screen.queryByLabelText('Direcciones guardadas')).not.toBeInTheDocument()
     await waitFor(() => expect(calcInitial()).toBeNull())
-    expect(screen.getByLabelText('Referencia (opcional)')).toHaveValue('')
+    expect(screen.getByLabelText(/^Referencia/)).toHaveValue('')
   })
 
   it('si el admin cambia el texto de la dirección guardada, el snapshot NO lleva alias ni distrito de la guardada', async () => {
@@ -725,14 +774,14 @@ describe('CreateManualOrderPage - dirección escrita antes de elegir cliente', (
     renderPage()
 
     await user.click(await screen.findByRole('button', { name: 'ubicar-dirección' }))
-    await user.type(screen.getByLabelText('Referencia (opcional)'), 'Casa azul')
+    await user.type(screen.getByLabelText(/^Referencia/), 'Casa azul')
     expect(deliveryValue()).toBe('S/ 5.00')
 
     await chooseRosa(user)
 
     // Sin remontar el calculador: sigue la dirección ubicada y su delivery.
     expect(deliveryValue()).toBe('S/ 5.00')
-    expect(screen.getByLabelText('Referencia (opcional)')).toHaveValue('Casa azul')
+    expect(screen.getByLabelText(/^Referencia/)).toHaveValue('Casa azul')
 
     await addProduct(user, 'Celtas Burger')
     await user.click(screen.getByRole('button', { name: 'Crear pedido' }))
@@ -755,5 +804,130 @@ describe('CreateManualOrderPage - dirección escrita antes de elegir cliente', (
 
     await waitFor(() => expect(deliveryValue()).toBe('S/ 7.00'))
     expect(calcInitial()).toMatchObject({ address: 'Av. Los Álamos 123, SJM' })
+  })
+})
+
+describe('CreateManualOrderPage - autocompletado y referencia', () => {
+  it('habilita el pin manual y pasa las direcciones guardadas como sugerencias; elegir una la carga', async () => {
+    const user = userEvent.setup()
+    addressesState.data = [makeAddress(), trabajo()]
+    renderPage()
+    expect(await screen.findByTestId('calc-manual-pin')).toHaveTextContent('true')
+    await chooseRosa(user)
+
+    await user.click(await screen.findByRole('button', { name: 'sugerida: Trabajo - Jr. Lima 450, Cercado' }))
+
+    await waitFor(() =>
+      expect(calcInitial()).toEqual({ address: 'Jr. Lima 450, Cercado', point: { lat: -12.046, lng: -77.03 } }),
+    )
+    expect(screen.getByLabelText('Direcciones guardadas')).toHaveTextContent('Trabajo - Jr. Lima 450, Cercado')
+  })
+
+  it('la referencia es un textarea visible con contador /80 y límite de escritura', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    const reference = await screen.findByLabelText('Referencia (ej: Puerta azul, al lado del kiosco)')
+    expect(reference.tagName).toBe('TEXTAREA')
+    expect(reference).toHaveAttribute('maxLength', '80')
+    await user.type(reference, 'Puerta azul')
+    expect(screen.getByText('11/80')).toBeInTheDocument()
+  })
+
+  it('dirección final: el texto buscado en fullAddress y la referencia en su propio campo del snapshot', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await fillAnonymous(user)
+    await addProduct(user, 'Celtas Burger')
+    await user.click(await screen.findByRole('button', { name: 'ubicar-dirección' }))
+    await user.type(screen.getByLabelText(/^Referencia/), 'Puerta azul, al lado del kiosco')
+    await user.click(screen.getByRole('button', { name: 'Crear pedido' }))
+
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1))
+    const snapshot = JSON.parse(lastPayload().addressSnapshot)
+    // Separados a propósito: el backend ya arma "fullAddress (ref: …)" en el
+    // WhatsApp y el detalle muestra "Ref: …" — concatenar duplicaría la referencia.
+    expect(snapshot).toMatchObject({
+      fullAddress: 'Jr. Carabaya 250, Lima',
+      reference: 'Puerta azul, al lado del kiosco',
+      latitude: -12.16,
+      longitude: -76.97,
+    })
+    expect(snapshot.fullAddress).not.toContain('Puerta azul')
+  })
+
+  it('sugerencia de Geoapify: el snapshot lleva su distrito', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await fillAnonymous(user)
+    await addProduct(user, 'Celtas Burger')
+    await user.click(await screen.findByRole('button', { name: 'sugerencia-geoapify' }))
+    expect(deliveryValue()).toBe('S/ 6.00')
+    await user.click(screen.getByRole('button', { name: 'Crear pedido' }))
+
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1))
+    expect(JSON.parse(lastPayload().addressSnapshot)).toMatchObject({
+      fullAddress: 'Av. Los Héroes 1080, San Juan de Miraflores',
+      district: 'San Juan de Miraflores',
+      latitude: -12.158,
+    })
+  })
+
+  it('sin sugerencia ni texto: el pin manual funciona igual, pero exige una referencia', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await fillAnonymous(user)
+    await addProduct(user, 'Celtas Burger')
+    await user.click(await screen.findByRole('button', { name: 'solo-pin' }))
+    expect(deliveryValue()).toBe('S/ 4.00')
+
+    await user.click(screen.getByRole('button', { name: 'Crear pedido' }))
+    expect(
+      await screen.findByText('Sin dirección escrita, agrega una referencia para el repartidor'),
+    ).toBeInTheDocument()
+    expect(createMock).not.toHaveBeenCalled()
+
+    await user.type(screen.getByLabelText(/^Referencia/), 'Casa verde de 2 pisos, frente al colegio')
+    await user.click(screen.getByRole('button', { name: 'Crear pedido' }))
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1))
+    expect(JSON.parse(lastPayload().addressSnapshot)).toEqual({
+      alias: 'Pedido manual',
+      fullAddress: 'Ubicación marcada en el mapa',
+      reference: 'Casa verde de 2 pisos, frente al colegio',
+      latitude: -12.17,
+      longitude: -76.98,
+    })
+  })
+
+  it('ni texto ni pin → "Escribe la dirección o marca el punto en el mapa"', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await fillAnonymous(user)
+    await addProduct(user, 'Celtas Burger')
+    await user.click(screen.getByRole('button', { name: 'Crear pedido' }))
+    expect(await screen.findByText('Escribe la dirección o marca el punto en el mapa')).toBeInTheDocument()
+    expect(createMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('CreateManualOrderPage - regresión: volver a elegir la guardada ya seleccionada', () => {
+  it('tras editar su texto, elegir la misma guardada en las sugerencias la vuelve a cargar', async () => {
+    const user = userEvent.setup()
+    addressesState.data = [makeAddress()]
+    renderPage()
+    await chooseRosa(user)
+    await waitFor(() => expect(deliveryValue()).toBe('S/ 7.00'))
+
+    // El admin edita el texto: el punto se pierde.
+    await user.click(screen.getByRole('button', { name: 'solo-texto' }))
+    expect(deliveryValue()).toBe('S/ 0.00')
+
+    await user.click(screen.getByRole('button', { name: 'sugerida: Casa - Av. Los Álamos 123, SJM' }))
+    await waitFor(() => expect(deliveryValue()).toBe('S/ 7.00'))
+    expect(calcInitial()).toMatchObject({ address: 'Av. Los Álamos 123, SJM' })
+  })
+
+  it('el pedido manual activa el autocompletado de Geoapify', async () => {
+    renderPage()
+    expect(await screen.findByTestId('calc-autocomplete')).toHaveTextContent('true')
   })
 })

@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { get, patch, post } from '@/lib/api-client'
+import { geoapifyApiKey, geoapifyAutocomplete } from '@/lib/geoapify'
+import { useDebouncedValue } from '@/lib/useDebouncedValue'
 import type { Order, OrderStatus, PaginatedOrders } from './types'
 import type { DeliveryEstimate, LatLng } from './delivery-estimate'
 import type { CreateOrderAdminInput } from './manual-order'
@@ -122,4 +124,29 @@ export function useCreateAdminOrder() {
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ORDERS_LIST_KEY }),
   })
+}
+
+/** Mínimo de caracteres antes de pedir sugerencias (spec: más de 3). */
+export const AUTOCOMPLETE_MIN_LENGTH = 4
+/** Mismo debounce que la app (address_location_picker.dart). */
+export const AUTOCOMPLETE_DEBOUNCE_MS = 400
+
+/**
+ * Sugerencias de Geoapify para el texto escrito (con debounce). Nunca entra en
+ * error: `geoapifyAutocomplete` devuelve [] ante cualquier fallo. Sin key
+ * configurada no consulta nada.
+ */
+export function useGeoapifyAutocomplete(text: string, enabled = true) {
+  const trimmed = text.trim()
+  const debounced = useDebouncedValue(trimmed, AUTOCOMPLETE_DEBOUNCE_MS)
+  const query = useQuery({
+    queryKey: ['geoapify', 'autocomplete', debounced],
+    queryFn: ({ signal }) => geoapifyAutocomplete(debounced, signal),
+    enabled:
+      enabled && geoapifyApiKey() !== null && debounced.length >= AUTOCOMPLETE_MIN_LENGTH,
+    staleTime: 5 * 60_000,
+    retry: false,
+  })
+  // Durante el debounce no se muestran sugerencias de un texto anterior.
+  return enabled && debounced === trimmed ? (query.data ?? []) : []
 }

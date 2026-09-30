@@ -20,6 +20,10 @@ import type { MenuItem } from '../menu/types'
 
 export const MAX_QUANTITY = 99
 export const COMMENT_MAX_LENGTH = 140
+/** Lo que el admin puede escribir en la referencia (spec del panel; el backend no la limita). */
+export const REFERENCE_MAX_LENGTH = 80
+/** fullAddress del snapshot cuando solo se marcó el pin (el backend exige snapshot no vacío). */
+export const MAP_ONLY_ADDRESS = 'Ubicación marcada en el mapa'
 export const CUSTOMER_NAME_MAX_LENGTH = 100
 
 /** Selección de un producto dentro del pedido (una línea de la tabla). */
@@ -211,7 +215,9 @@ export interface ManualOrderAddress {
 export function buildAddressSnapshot(address: ManualOrderAddress): string {
   return JSON.stringify({
     alias: address.alias || 'Pedido manual',
-    fullAddress: address.fullAddress.trim(),
+    // Solo pin: el mensaje de WhatsApp igual trae los links de Maps/Waze por
+    // las coordenadas, más la referencia.
+    fullAddress: address.fullAddress.trim() || MAP_ONLY_ADDRESS,
     reference: address.reference.trim() || null,
     ...(address.district ? { district: address.district } : {}),
     ...(address.latitude !== null && address.longitude !== null
