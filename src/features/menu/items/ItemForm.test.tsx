@@ -18,6 +18,11 @@ import type { Beverage, Category, ExtraPortion, MenuItem, Sauce } from '../types
  *     ni undefined).
  */
 
+// Aislado, el test más lento tarda ~331 ms, pero con la suite completa en
+// paralelo el primero del archivo absorbe la carga del form (~5.4 s) y pasaba
+// el default de 5000 ms. Aplica solo a este archivo.
+vi.setConfig({ testTimeout: 10_000 })
+
 const { createMock, updateMock, uploadMock } = vi.hoisted(() => ({
   createMock: vi.fn(),
   updateMock: vi.fn(),

@@ -2185,3 +2185,42 @@ Checklist:
       error "Indica un máximo o marca "Sin límite"" (queda junto al input deshabilitado hasta el
       próximo submit, que sí funciona y envía `null`). Cubierto por un `it.fails` en
       `ItemForm.test.tsx`.
+
+## Auditoría: Orders — "Cotizar delivery" (Dialog + `DeliveryCalculator` con Leaflet, MOCK), working tree sin commitear
+
+Auditor: @tester (independiente). Fecha: 2026-09-29. Alcance: `OrdersPage.tsx`,
+`orders/components/DeliveryCalculator.tsx` (+ test), `orders/delivery-estimate.ts` (+ test),
+`package.json`/`pnpm-lock.yaml` (leaflet 1.9.4, react-leaflet 5.0.0, @types/leaflet). Backend de
+referencia: `backend-celtas` commit `be84b73` (NO desplegado: `GET /delivery/estimate` no está en
+`api.d.ts`; el tipo `DeliveryEstimate` es manual con TODO).
+
+Checklist:
+- [x] `pnpm run type-check` (tsc -b) exit 0.
+- [x] `pnpm run lint`: 0 errores (1 warning preexistente ajeno en `StarPromotionForm.tsx`).
+- [x] `pnpm run build` exit 0. Leaflet solo en `DeliveryCalculator-*.js` (163.79 kB) +
+      `DeliveryCalculator-*.css`; 0 coincidencias de "leaflet" en `index-*.js` ni `OrdersPage-*.js`.
+- [x] Suite completa: 42 archivos / 321 tests en verde (+1 test de borde agregado por el tester).
+- [x] Réplica vs código REAL del backend (leído): `geo.util.ts` haversine R=6371000 idéntica;
+      `computeDelivery` tarifa e `isFarOrder` con distancia exacta (`>` estricto),
+      `distanceMeters = round(d/50)*50`; `feeForDistance` primer tramo `<=`/`null`, fallback último
+      tramo o 0. Default de tarifas y radio 2500 coinciden con `settings.service.ts`.
+- [x] Mismas claves de settings (`store_location`, `delivery_fee_tiers`,
+      `delivery_alert_radius_meters`) vía los parsers de `settings-utils`.
+- [x] Sin `store_location` válida -> mensaje "Configura la ubicación del local…", sin buscador
+      (equivale al 404 del backend; no inventa coordenadas).
+- [x] Estados de `GET /settings`: loading (`LoadingState`), error (`ErrorState` + reintentar),
+      "vacío" (sin store_location). Suspense fallback "Cargando mapa…" para el chunk lazy.
+- [x] Sin URL de backend hardcodeada (solo tiles Geoapify/OSM de terceros); sin `localStorage`.
+- [x] Aviso visible "Modo simulado" dentro del cotizador (testeado).
+- [x] Mutaciones sobre copia temporal (producción intacta): fee con distancia redondeada -> falla;
+      sin redondeo 50 m -> falla; tramo `<` en vez de `<=` -> falla; R=6378137 -> 2 fallan;
+      `isFarOrder >=` sobrevivía -> agregado test de borde exacto, ahora falla.
+- [ ] (menor, no bloqueante) Divergencia en config degenerada: `delivery_fee_tiers = "[]"` o JSON no
+      array -> backend cobra 0 (`JSON.parse` sin validar + fallback `?? 0`), el mock usa los tramos
+      default (`parseDeliveryFeeTiers`). Solo alcanzable si alguien guarda `[]` saltándose el form.
+- [ ] (menor) Re-buscar la MISMA dirección tras paner el mapa no recentra: `mockGeocode` devuelve la
+      misma referencia de la tabla, `setSearchTarget` hace bail-out y `RecenterOnSearch` no re-corre
+      (el pin sí se resetea, puede quedar fuera de vista).
+- [ ] Sin verificar (requiere navegador real): render de Leaflet dentro del Dialog (animación de
+      Radix / `invalidateSize`), íconos por defecto con `mergeOptions`, altura `h-80`, tiles
+      Geoapify con la key real, drag del pin y click en mapa con Leaflet real (en tests está mockeado).

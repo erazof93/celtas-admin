@@ -1,7 +1,14 @@
-import { useState } from 'react'
-import { Inbox } from 'lucide-react'
+import { lazy, Suspense, useState } from 'react'
+import { Inbox, MapPin } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { LoadingState } from '@/components/ui/LoadingState'
 import { Pagination } from '@/components/ui/Pagination'
@@ -27,6 +34,13 @@ import { mergeOrderAfterUpdate } from './merge'
 import { OrderDetailDialog } from './OrderDetailDialog'
 import { ORDER_STATUS_BADGE, ORDER_STATUS_LABELS } from './status'
 import type { Order, OrderStatus } from './types'
+
+// Lazy: Leaflet (~150 KB) solo se descarga al abrir el cotizador.
+const DeliveryCalculator = lazy(() =>
+  import('./components/DeliveryCalculator').then((m) => ({
+    default: m.DeliveryCalculator,
+  })),
+)
 
 const PAGE_SIZE = 10
 
@@ -55,6 +69,7 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all')
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [calculatorOpen, setCalculatorOpen] = useState(false)
 
   const ordersQuery = useOrders(
     page,
@@ -83,18 +98,27 @@ export default function OrdersPage() {
             Consulta y gestiona el estado de los pedidos de la app.
           </p>
         </div>
-        <Select value={statusFilter} onValueChange={handleFilterChange}>
-          <SelectTrigger className="w-full sm:w-52" aria-label="Filtrar por estado">
-            <SelectValue placeholder="Filtrar por estado" />
-          </SelectTrigger>
-          <SelectContent>
-            {STATUS_FILTERS.map(({ value, label }) => (
-              <SelectItem key={value} value={value}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Button variant="outline" onClick={() => setCalculatorOpen(true)}>
+            <MapPin className="size-4" />
+            Cotizar delivery
+          </Button>
+          <Select value={statusFilter} onValueChange={handleFilterChange}>
+            <SelectTrigger
+              className="w-full sm:w-52"
+              aria-label="Filtrar por estado"
+            >
+              <SelectValue placeholder="Filtrar por estado" />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_FILTERS.map(({ value, label }) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </header>
 
       {isLoading ? (
@@ -195,6 +219,22 @@ export default function OrdersPage() {
           )
         }
       />
+
+      <Dialog open={calculatorOpen} onOpenChange={setCalculatorOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Cotizar delivery</DialogTitle>
+            <DialogDescription>
+              Busca la dirección del cliente y ajusta el pin en el mapa.
+            </DialogDescription>
+          </DialogHeader>
+          {calculatorOpen ? (
+            <Suspense fallback={<LoadingState label="Cargando mapa…" />}>
+              <DeliveryCalculator />
+            </Suspense>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
