@@ -2,7 +2,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ItemForm } from './ItemForm'
-import type { Beverage, Category, ExtraPortion, MenuItem, Sauce } from '../types'
+import type {
+  Beverage,
+  Category,
+  ExtraPortion,
+  FriesType,
+  MenuItem,
+  Sauce,
+} from '../types'
 
 /**
  * Regresión de la mejora "checklist de salsas por producto" del módulo Menú
@@ -47,6 +54,12 @@ const extraPortionsState: {
   isError: boolean
 } = { data: [], isLoading: false, isError: false }
 
+const friesTypesState: {
+  data: FriesType[] | undefined
+  isLoading: boolean
+  isError: boolean
+} = { data: [], isLoading: false, isError: false }
+
 vi.mock('./hooks', () => ({
   useCreateItem: () => ({ mutateAsync: createMock }),
   useUpdateItem: () => ({ mutateAsync: updateMock }),
@@ -75,6 +88,21 @@ vi.mock('../beverages/hooks', () => ({
 vi.mock('../extra-portions/hooks', () => ({
   useExtraPortions: () => extraPortionsState,
 }))
+
+vi.mock('../fries-types/hooks', () => ({
+  useFriesTypes: () => friesTypesState,
+}))
+
+function makeFriesType(overrides: Partial<FriesType> = {}): FriesType {
+  return {
+    id: 'ft-fritas',
+    name: 'Papas fritas',
+    isDefault: true,
+    createdAt: '2026-08-01T12:00:00.000Z',
+    updatedAt: '2026-08-01T12:00:00.000Z',
+    ...overrides,
+  }
+}
 
 function makeSauce(overrides: Partial<Sauce> = {}): Sauce {
   return {
@@ -139,6 +167,9 @@ function makeItem(overrides: Partial<MenuItem> = {}): MenuItem {
     sauceAllowWithout: true,
     beverageAllowWithout: true,
     extraPortionsAllowWithout: true,
+    friesTypes: [],
+    friesTypeGroupRequired: false,
+    friesTypeGroupMaxSelectable: 1,
     createdAt: '2026-08-01T12:00:00.000Z',
     updatedAt: '2026-08-01T12:00:00.000Z',
     ...overrides,
@@ -158,6 +189,9 @@ beforeEach(() => {
   extraPortionsState.data = []
   extraPortionsState.isLoading = false
   extraPortionsState.isError = false
+  friesTypesState.data = []
+  friesTypesState.isLoading = false
+  friesTypesState.isError = false
 })
 
 describe('ItemForm - checklist de salsas', () => {
@@ -1076,6 +1110,9 @@ describe('ItemForm - salsas "Sin límite"', () => {
       'sauceAllowWithout',
       'beverageAllowWithout',
       'extraPortionsAllowWithout',
+      'friesTypeIds',
+      'friesTypeGroupRequired',
+      'friesTypeGroupMaxSelectable',
     ])
     expect(Object.keys(payload).filter((k) => !allowed.has(k))).toEqual([])
   })
@@ -1128,5 +1165,218 @@ describe('ItemForm - salsas "Sin límite"', () => {
         screen.queryByText('Indica un máximo o marca "Sin límite"'),
       ).not.toBeInTheDocument(),
     )
+  })
+})
+
+describe('ItemForm - tipos de papas', () => {
+  const fritas = makeFriesType({ id: 'ft-fritas', name: 'Papas fritas', isDefault: true })
+  const hilo = makeFriesType({ id: 'ft-hilo', name: 'Papas al hilo', isDefault: false })
+
+  async function selectCategory(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByLabelText('Categoría'))
+    await user.click(await screen.findByRole('option', { name: 'Burgers' }))
+  }
+
+  it('crear un producto marcando tipos de papas envía friesTypeIds como string[]', async () => {
+    const user = userEvent.setup()
+    createMock.mockResolvedValue(makeItem())
+    friesTypesState.data = [fritas, hilo]
+
+    render(<ItemForm onClose={() => {}} />)
+
+    await user.type(screen.getByLabelText('Nombre'), 'Celtas Burger Clasica')
+    await user.type(screen.getByLabelText('Precio (S/)'), '24.90')
+    await selectCategory(user)
+    await user.click(screen.getByRole('checkbox', { name: 'Papas fritas (por defecto)' }))
+    await user.click(screen.getByRole('checkbox', { name: 'Papas al hilo' }))
+    await user.click(screen.getByRole('button', { name: 'Crear producto' }))
+
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1))
+    const payload = createMock.mock.calls[0][0] as {
+      friesTypeIds: string[]
+      friesTypeGroupRequired: boolean
+      friesTypeGroupMaxSelectable: number
+    }
+    expect(payload.friesTypeIds).toEqual(['ft-fritas', 'ft-hilo'])
+    expect(payload.friesTypeGroupRequired).toBe(false)
+    expect(payload.friesTypeGroupMaxSelectable).toBe(1)
+  })
+
+  it('editar un producto carga sus friesTypes pre-marcados (desde objetos) y desmarcar uno lo quita del payload', async () => {
+    const user = userEvent.setup()
+    updateMock.mockResolvedValue(makeItem())
+    friesTypesState.data = [fritas, hilo]
+
+    render(
+      <ItemForm
+        item={makeItem({ friesTypes: [fritas, hilo] })}
+        onClose={() => {}}
+      />,
+    )
+
+    expect(screen.getByRole('checkbox', { name: 'Papas fritas (por defecto)' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Papas al hilo' })).toBeChecked()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Papas al hilo' }))
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
+    const payload = updateMock.mock.calls[0][0] as { id: string; friesTypeIds: string[] }
+    expect(payload.id).toBe('item-1')
+    expect(payload.friesTypeIds).toEqual(['ft-fritas'])
+  })
+
+  it('"Obligatorio" + "Máximo a elegir" se reflejan en el payload', async () => {
+    const user = userEvent.setup()
+    updateMock.mockResolvedValue(makeItem())
+    friesTypesState.data = [fritas, hilo]
+
+    render(
+      <ItemForm
+        item={makeItem({ friesTypes: [fritas, hilo], friesTypeGroupMaxSelectable: 1 })}
+        onClose={() => {}}
+      />,
+    )
+
+    await user.clear(screen.getByLabelText('Máximo a elegir'))
+    await user.type(screen.getByLabelText('Máximo a elegir'), '2')
+    await user.click(
+      screen.getByRole('checkbox', { name: 'El cliente debe elegir un tipo de papas' }),
+    )
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
+    const payload = updateMock.mock.calls[0][0] as {
+      friesTypeGroupRequired: boolean
+      friesTypeGroupMaxSelectable: number
+    }
+    expect(payload.friesTypeGroupRequired).toBe(true)
+    expect(payload.friesTypeGroupMaxSelectable).toBe(2)
+  })
+
+  it('al editar, friesTypeGroupRequired=true y máximo 2 cargan tal cual y se conservan sin tocarlos', async () => {
+    const user = userEvent.setup()
+    updateMock.mockResolvedValue(makeItem())
+    friesTypesState.data = [fritas, hilo]
+
+    render(
+      <ItemForm
+        item={makeItem({
+          friesTypes: [fritas],
+          friesTypeGroupRequired: true,
+          friesTypeGroupMaxSelectable: 2,
+        })}
+        onClose={() => {}}
+      />,
+    )
+
+    expect(screen.getByLabelText('Máximo a elegir')).toHaveValue(2)
+    expect(
+      screen.getByRole('checkbox', { name: 'El cliente debe elegir un tipo de papas' }),
+    ).toBeChecked()
+
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+    await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
+    const payload = updateMock.mock.calls[0][0] as {
+      friesTypeGroupRequired: boolean
+      friesTypeGroupMaxSelectable: number
+    }
+    expect(payload.friesTypeGroupRequired).toBe(true)
+    expect(payload.friesTypeGroupMaxSelectable).toBe(2)
+  })
+
+  it('máximo 0 muestra error y no envía', async () => {
+    const user = userEvent.setup()
+    friesTypesState.data = [fritas]
+
+    render(<ItemForm item={makeItem({ friesTypes: [fritas] })} onClose={() => {}} />)
+
+    await user.clear(screen.getByLabelText('Máximo a elegir'))
+    await user.type(screen.getByLabelText('Máximo a elegir'), '0')
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    expect(await screen.findByText('Debe ser al menos 1')).toBeInTheDocument()
+    expect(updateMock).not.toHaveBeenCalled()
+  })
+
+  it('"Obligatorio" está deshabilitado si no hay tipos asignados y se habilita al marcar uno', async () => {
+    const user = userEvent.setup()
+    friesTypesState.data = [fritas, hilo]
+
+    render(<ItemForm item={makeItem({ friesTypes: [] })} onClose={() => {}} />)
+
+    const required = screen.getByRole('checkbox', {
+      name: 'El cliente debe elegir un tipo de papas',
+    })
+    expect(required).toBeDisabled()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Papas al hilo' }))
+    expect(required).toBeEnabled()
+  })
+
+  it('desmarcar el último tipo apaga "Obligatorio", lo deshabilita y manda friesTypeIds=[] con required=false', async () => {
+    const user = userEvent.setup()
+    updateMock.mockResolvedValue(makeItem())
+    friesTypesState.data = [fritas, hilo]
+
+    render(
+      <ItemForm
+        item={makeItem({ friesTypes: [hilo], friesTypeGroupRequired: true })}
+        onClose={() => {}}
+      />,
+    )
+
+    const required = screen.getByRole('checkbox', {
+      name: 'El cliente debe elegir un tipo de papas',
+    })
+    expect(required).toBeChecked()
+
+    await user.click(screen.getByRole('checkbox', { name: 'Papas al hilo' }))
+    expect(required).not.toBeChecked()
+    expect(required).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+    await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
+    const payload = updateMock.mock.calls[0][0] as {
+      friesTypeIds: string[]
+      friesTypeGroupRequired: boolean
+    }
+    expect(payload.friesTypeIds).toEqual([])
+    expect(payload.friesTypeGroupRequired).toBe(false)
+  })
+
+  it('catálogo vacío: mensaje que apunta a la pestaña "Tipos de Papas" y sin config de grupo', () => {
+    friesTypesState.data = []
+    render(<ItemForm onClose={() => {}} />)
+    expect(screen.getByText(/pestaña "Tipos de Papas"/)).toBeInTheDocument()
+    expect(
+      screen.queryByRole('checkbox', { name: 'El cliente debe elegir un tipo de papas' }),
+    ).not.toBeInTheDocument()
+  })
+})
+
+describe('ItemForm - tipos de papas: guard de buildPayload (auditoría @tester)', () => {
+  it('producto guardado con required=true pero sin tipos: el payload manda required=false sin tocar nada', async () => {
+    const user = userEvent.setup()
+    updateMock.mockResolvedValue(makeItem())
+    friesTypesState.data = [
+      makeFriesType({ id: 'ft-fritas', name: 'Papas fritas', isDefault: true }),
+    ]
+
+    render(
+      <ItemForm
+        item={makeItem({ friesTypes: [], friesTypeGroupRequired: true })}
+        onClose={() => {}}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+    await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
+    const payload = updateMock.mock.calls[0][0] as {
+      friesTypeIds: string[]
+      friesTypeGroupRequired: boolean
+    }
+    expect(payload.friesTypeIds).toEqual([])
+    expect(payload.friesTypeGroupRequired).toBe(false)
   })
 })

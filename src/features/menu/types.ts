@@ -93,6 +93,36 @@ export interface MenuItem {
    * de este grupo: `extraPortionsGroupRequired`/`extraPortionsGroupMaxSelectable`).
    */
   extraPortionsAllowWithout: boolean
+  /**
+   * Tipos de papas que este producto ofrece (relación ManyToMany vía
+   * menu_item_fries_types, cargada por GET /menu/items). Vacío = sin selector
+   * de papas en la app. Mismo criterio que `sauces` (confirmado contra
+   * menu-item.entity.ts y menu.service.ts del backend, commit 485ed81).
+   */
+  friesTypes: FriesType[]
+  /**
+   * Si el grupo de papas es obligatorio. Default false A PROPÓSITO en el
+   * backend: la app Flutter publicada aún no manda `friesTypeIds`, y con true
+   * sus pedidos de este producto se rechazarían (400). Sin efecto si
+   * `friesTypes` está vacío.
+   */
+  friesTypeGroupRequired: boolean
+  /** Máximo de tipos de papas elegibles (default 1: fritas O al hilo). */
+  friesTypeGroupMaxSelectable: number
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * Catálogo global de tipos de papas (ej. Papas fritas, Papas al hilo).
+ * Confirmado contra fries-type.entity.ts del backend: nombre único (varchar
+ * 100) y a lo sumo UN `isDefault` en todo el catálogo — marcar uno desmarca
+ * el anterior del lado del servidor (FriesTypesService.clearOtherDefaults).
+ */
+export interface FriesType {
+  id: string
+  name: string
+  isDefault: boolean
   createdAt: string
   updatedAt: string
 }
@@ -202,6 +232,15 @@ export interface CreateMenuItemInput {
   beverageAllowWithout?: boolean
   /** Si la app debe ofrecer "Sin porciones extras" (default true). */
   extraPortionsAllowWithout?: boolean
+  /**
+   * UUIDs de los tipos de papas que este producto ofrece. Omitido o vacío =
+   * sin selector de papas. En PATCH, [] quita todos.
+   */
+  friesTypeIds?: string[]
+  /** Si el grupo de papas es obligatorio (default false). Sin efecto si friesTypeIds queda vacío. */
+  friesTypeGroupRequired?: boolean
+  /** Máximo de tipos de papas elegibles (default 1). */
+  friesTypeGroupMaxSelectable?: number
 }
 
 export type UpdateMenuItemInput = Partial<CreateMenuItemInput>
@@ -236,3 +275,11 @@ export interface CreateExtraPortionInput {
 }
 
 export type UpdateExtraPortionInput = Partial<CreateExtraPortionInput>
+
+/** Espejo de CreateFriesTypeDto: name obligatorio (máx. 100), isDefault opcional. */
+export interface CreateFriesTypeInput {
+  name: string
+  isDefault?: boolean
+}
+
+export type UpdateFriesTypeInput = Partial<CreateFriesTypeInput>

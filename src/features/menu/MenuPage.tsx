@@ -3,6 +3,7 @@ import { cn } from '@/lib/utils'
 import { BeveragesSection } from './beverages/BeveragesSection'
 import { CategoriesSection } from './categories/CategoriesSection'
 import { ExtraPortionsSection } from './extra-portions/ExtraPortionsSection'
+import { FriesTypesSection } from './fries-types/FriesTypesSection'
 import { ItemsSection } from './items/ItemsSection'
 import { SaucesSection } from './sauces/SaucesSection'
 
@@ -12,6 +13,7 @@ const TABS = [
   { key: 'sauces', label: 'Salsas' },
   { key: 'beverages', label: 'Bebidas' },
   { key: 'extra-portions', label: 'Porciones Extras' },
+  { key: 'fries-types', label: 'Tipos de Papas' },
 ] as const
 
 type MenuTab = (typeof TABS)[number]['key']
@@ -61,6 +63,8 @@ export default function MenuPage() {
         <ItemsSection />
       ) : tab === 'sauces' ? (
         <SaucesSection />
+      ) : tab === 'fries-types' ? (
+        <FriesTypesSection />
       ) : tab === 'beverages' ? (
         <BeveragesSection />
       ) : (

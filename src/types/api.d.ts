@@ -435,6 +435,45 @@ export interface paths {
         patch: operations["SaucesController_update"];
         trace?: never;
     };
+    "/fries-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Listar los tipos de papas del catálogo (admin) */
+        get: operations["FriesTypesController_findAll"];
+        put?: never;
+        /** Crear un tipo de papas (admin) */
+        post: operations["FriesTypesController_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/fries-types/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Eliminar un tipo de papas (admin)
+         * @description No afecta pedidos ya creados (guardan un snapshot de texto); solo lo quita de la oferta futura de los productos que lo tenían.
+         */
+        delete: operations["FriesTypesController_remove"];
+        options?: never;
+        head?: never;
+        /** Editar un tipo de papas (admin) */
+        patch: operations["FriesTypesController_update"];
+        trace?: never;
+    };
     "/beverages": {
         parameters: {
             query?: never;
@@ -606,6 +645,26 @@ export interface paths {
          * @description Valida transiciones (pendiente→confirmado→en_camino→entregado; cancelado desde pendiente/confirmado/en_camino). Al pasar a "entregado" suma el total a user.totalSpent en una transacción. Al cancelar un pedido "en_camino" es obligatorio enviar cancelReason; en el resto de transiciones a "cancelado" es opcional.
          */
         patch: operations["OrdersController_updateStatus"];
+        trace?: never;
+    };
+    "/delivery/estimate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Estimar el costo de delivery para unas coordenadas (cliente)
+         * @description Mismo cálculo que POST /orders (Haversine contra store_location + tramo de delivery_fee_tiers) para coordenadas sueltas, ej. el pin del mapa antes de guardar la dirección. Nunca rechaza por distancia: isFarOrder indica si supera delivery_alert_radius_meters.
+         */
+        get: operations["DeliveryController_estimate"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/coupons/generate": {
@@ -1399,6 +1458,23 @@ export interface components {
              * @example true
              */
             extraPortionsAllowWithout?: boolean;
+            /**
+             * @description UUIDs de los tipos de papas que ofrece el producto (catálogo /fries-types). Vacío u omitido al crear = sin selector. En PATCH, omitido = no se toca; [] = quita todos.
+             * @example [
+             *       "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+             *     ]
+             */
+            friesTypeIds?: string[];
+            /**
+             * @description Si el cliente está obligado a elegir un tipo de papas (default false). Sin efecto si friesTypeIds queda vacío.
+             * @example false
+             */
+            friesTypeGroupRequired?: boolean;
+            /**
+             * @description Máximo de tipos de papas elegibles (default 1)
+             * @example 1
+             */
+            friesTypeGroupMaxSelectable?: number;
         };
         UpdateMenuItemDto: {
             /**
@@ -1507,6 +1583,23 @@ export interface components {
              * @example true
              */
             extraPortionsAllowWithout?: boolean;
+            /**
+             * @description UUIDs de los tipos de papas que ofrece el producto (catálogo /fries-types). Vacío u omitido al crear = sin selector. En PATCH, omitido = no se toca; [] = quita todos.
+             * @example [
+             *       "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+             *     ]
+             */
+            friesTypeIds?: string[];
+            /**
+             * @description Si el cliente está obligado a elegir un tipo de papas (default false). Sin efecto si friesTypeIds queda vacío.
+             * @example false
+             */
+            friesTypeGroupRequired?: boolean;
+            /**
+             * @description Máximo de tipos de papas elegibles (default 1)
+             * @example 1
+             */
+            friesTypeGroupMaxSelectable?: number;
         };
         CreateSauceDto: {
             /**
@@ -1541,6 +1634,30 @@ export interface components {
              * @example 1
              */
             sortOrder?: number;
+        };
+        CreateFriesTypeDto: {
+            /**
+             * @description Nombre del tipo de papas
+             * @example Papas al hilo
+             */
+            name: string;
+            /**
+             * @description Si es la opción preseleccionada en la app (default false). Marcar uno como default desmarca el anterior.
+             * @example false
+             */
+            isDefault?: boolean;
+        };
+        UpdateFriesTypeDto: {
+            /**
+             * @description Nombre del tipo de papas
+             * @example Papas al hilo
+             */
+            name?: string;
+            /**
+             * @description Si es la opción preseleccionada en la app (default false). Marcar uno como default desmarca el anterior.
+             * @example false
+             */
+            isDefault?: boolean;
         };
         CreateBeverageDto: {
             /**
@@ -1676,6 +1793,13 @@ export interface components {
              *     ]
              */
             extraPortionIds?: string[];
+            /**
+             * @description UUIDs de los tipos de papas elegidos para este ítem (ej. fritas o al hilo; deben estar entre los que el producto ofrece en GET /menu → friesTypes). Mismo tri-state que sauceIds: omitido = no aplica, [] explícito = ninguno. null → 400.
+             * @example [
+             *       "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+             *     ]
+             */
+            friesTypeIds?: string[];
             /**
              * @description Comentario libre opcional para este ítem (se aplica a las `quantity` unidades del ítem, no una nota por unidad individual). Vacío o solo espacios se trata como ausente.
              * @example Sin cebolla, bien cocida
@@ -3348,6 +3472,190 @@ export interface operations {
             };
         };
     };
+    FriesTypesController_findAll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Lista de tipos de papas */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    FriesTypesController_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFriesTypeDto"];
+            };
+        };
+        responses: {
+            /** @description Tipo de papas creado */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Payload inválido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya existe uno con ese nombre */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    FriesTypesController_remove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID del tipo de papas */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tipo de papas eliminado */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El tipo de papas no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    FriesTypesController_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID del tipo de papas */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateFriesTypeDto"];
+            };
+        };
+        responses: {
+            /** @description Tipo de papas actualizado */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Payload inválido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El tipo de papas no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Ya existe otro con ese nombre */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     BeveragesController_findAll: {
         parameters: {
             query?: never;
@@ -3820,7 +4128,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description deliveryFee, isFarOrder y distanceMeters calculados */
+            /** @description deliveryFee, isFarOrder y distanceMeters calculados (distanceMeters redondeado a múltiplos de 50 m; la tarifa usa la distancia exacta) */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -3958,6 +4266,50 @@ export interface operations {
                 content?: never;
             };
             /** @description El pedido no existe */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    DeliveryController_estimate: {
+        parameters: {
+            query: {
+                /** @description Latitud del punto de entrega */
+                latitude: number;
+                /** @description Longitud del punto de entrega */
+                longitude: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description deliveryFee, isFarOrder y distanceMeters calculados (distanceMeters redondeado a múltiplos de 50 m; la tarifa usa la distancia exacta) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description latitude/longitude faltantes, no numéricas o fuera de rango */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description store_location no está configurada */
             404: {
                 headers: {
                     [name: string]: unknown;

@@ -2224,3 +2224,58 @@ Checklist:
 - [ ] Sin verificar (requiere navegador real): render de Leaflet dentro del Dialog (animación de
       Radix / `invalidateSize`), íconos por defecto con `mergeOptions`, altura `h-80`, tiles
       Geoapify con la key real, drag del pin y click en mapa con Leaflet real (en tests está mockeado).
+
+## Auditoría: Menu — Tipos de papas (catálogo `fries-types` + `friesTypeIds`/`friesTypeGroupRequired`/`friesTypeGroupMaxSelectable` por producto), working tree sin commitear
+
+Auditor: @tester (independiente). Fecha: 2026-09-30. Alcance: `src/types/api.d.ts` (regenerado),
+`src/features/menu/types.ts`, `src/features/menu/fries-types/**`, `MenuPage.tsx` (tab "Tipos de
+Papas"), `items/ItemForm.tsx` (sección "Tipos de papas") + tests. Backend de referencia:
+`D:\proyecto-celtas\backend-celtas` commit `485ed81` (leído: `fries-types/**`,
+`menu/entities/menu-item.entity.ts`, `menu/dto/{create,update}-menu-item.dto.ts`,
+`menu/menu.service.ts`, `main.ts`). Producción ya expone `/fries-types` y
+`friesTypeGroupMaxSelectable` (confirmado con `curl /docs-json`).
+
+Checklist:
+- [x] `pnpm run type-check` (tsc -b) exit 0.
+- [x] `pnpm run lint`: 0 errores (1 warning preexistente ajeno en `StarPromotionForm.tsx`).
+- [x] `pnpm run build` exit 0.
+- [x] Suite completa: 45 archivos / 346 tests en verde (incluye 7 tests nuevos del tester).
+- [x] Contrato `FriesType` = entidad real (`id`, `name` varchar(100) unique, `isDefault`,
+      `createdAt`, `updatedAt`). Zod de `FriesTypeForm` espejo de `CreateFriesTypeDto` (trim,
+      min 1, max 100, `isDefault` boolean).
+- [x] Whitelist (`ValidationPipe` con `whitelist` + `forbidNonWhitelisted` en `main.ts`):
+      POST/PATCH `/fries-types` mandan solo `name`/`isDefault`; toggle en línea manda solo
+      `isDefault`; `ItemForm` manda `friesTypeIds`/`friesTypeGroupRequired`/
+      `friesTypeGroupMaxSelectable`, todos declarados en `CreateMenuItemDto` (PartialType en
+      Update). Test de whitelist de claves de `ItemForm.test.tsx` actualizado.
+- [x] `id` fuera del body en `useUpdateFriesType` (`{ id, ...body }`). **Verificado por mutación**:
+      reemplazar por `const { id } = input; const body = input` -> falla
+      `envía el id SOLO en el path...` ("expected { id: 'ft-1', …(2) } to not have property
+      "id""); restaurado -> 8/8 verdes en `fries-types/`.
+- [x] `friesTypeIds` siempre `string[]`, precargado desde `item.friesTypes` (objetos, como
+      devuelve `findAllItems` con `relations.friesTypes`). `[]` al desmarcar todo (el backend lo
+      interpreta como "quitar todos"; omitido = no tocar).
+- [x] "Obligatorio" deshabilitado sin tipos; desmarcar el último fuerza `required=false`
+      (testeado). Guard de `buildPayload` (`friesTypeIds.length > 0 && required`) cubierto por test
+      nuevo del tester (producto con `required=true` huérfano y `friesTypes: []`). **Verificado por
+      mutación**: quitar el guard -> falla ("expected true to be false"); restaurado.
+- [x] `friesTypeGroupMaxSelectable` entero >= 1 (espejo de `@IsInt @Min(1)`), 0 -> "Debe ser al
+      menos 1" y no envía (testeado).
+- [x] Estados `FriesTypesSection`: loading / error con Reintentar (`refetch`) / vacío / lista, y
+      Alert si falla el toggle "Por defecto" — cubiertos por `FriesTypesSection.test.tsx` (nuevo,
+      6 tests, del tester).
+- [x] Estados de la sección en `ItemForm`: loading (texto), error (Alert, el producto se puede
+      guardar igual y conserva los `friesTypeIds` ya asignados), vacío (mensaje a la pestaña
+      "Tipos de Papas", testeado).
+- [x] Invalidación: update/delete de un tipo invalidan `['menu','fries-types']` y
+      `['menu','items']` (los productos embeben los tipos); create invalida la lista (el backend
+      desmarca el default anterior).
+- [x] 409 "Ya existe un tipo de papas con ese nombre" mapeado al campo `name` (testeado).
+- [ ] (fuera de alcance, requiere acción) `OrderItem.selectedFriesTypes: string[] | null` ya está
+      en `api.d.ts` pero `OrderDetailDialog.tsx` no lo muestra: el admin/cocina no ve qué tipo de
+      papas eligió el cliente.
+- [ ] (menor, heredado) Sin cota de `friesTypeGroupMaxSelectable` contra la cantidad de tipos
+      asignados (mismo criterio que los otros tres grupos; el backend tampoco la tiene).
+- [ ] (menor) Con `required=true` huérfano cargado desde el backend y sin tipos, el checkbox
+      "Obligatorio" se ve marcado pero deshabilitado hasta guardar (el payload sí manda `false`).
+- [ ] Sin verificar en navegador real contra producción (sin credenciales de admin en esta ronda).

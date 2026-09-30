@@ -26,6 +26,7 @@ import {
 import { useCategories } from '../categories/hooks'
 import { useBeverages } from '../beverages/hooks'
 import { useExtraPortions } from '../extra-portions/hooks'
+import { useFriesTypes } from '../fries-types/hooks'
 import { useSauces } from '../sauces/hooks'
 import { useCreateItem, useUpdateItem, useUploadItemImage } from './hooks'
 import { ImageUpload } from '@/components/ui/ImageUpload'
@@ -78,6 +79,12 @@ const itemSchema = z.object({
   sauceAllowWithout: z.boolean().default(true),
   beverageAllowWithout: z.boolean().default(true),
   extraPortionsAllowWithout: z.boolean().default(true),
+  friesTypeIds: z.array(z.string()).default([]),
+  friesTypeGroupRequired: z.boolean().default(false),
+  friesTypeGroupMaxSelectable: z.coerce
+    .number()
+    .int('Debe ser un número entero')
+    .min(1, 'Debe ser al menos 1'),
 }).superRefine((values, ctx) => {
   if (values.sauceLimitless) return
   const max = values.sauceGroupMaxSelectable
@@ -119,6 +126,7 @@ interface ItemFormProps {
 export function ItemForm({ item, onClose }: ItemFormProps) {
   const categoriesQuery = useCategories()
   const saucesQuery = useSauces()
+  const friesTypesQuery = useFriesTypes()
   const beveragesQuery = useBeverages()
   const extraPortionsQuery = useExtraPortions()
   const createMutation = useCreateItem()
@@ -166,6 +174,10 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
       sauceAllowWithout: item?.sauceAllowWithout ?? true,
       beverageAllowWithout: item?.beverageAllowWithout ?? true,
       extraPortionsAllowWithout: item?.extraPortionsAllowWithout ?? true,
+      // El backend devuelve la relación `friesTypes` (objetos), no los ids.
+      friesTypeIds: item?.friesTypes.map((friesType) => friesType.id) ?? [],
+      friesTypeGroupRequired: item?.friesTypeGroupRequired ?? false,
+      friesTypeGroupMaxSelectable: item?.friesTypeGroupMaxSelectable ?? 1,
     },
   })
 
@@ -173,6 +185,8 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
   const beverageIds = useWatch({ control, name: 'beverageIds' })
   const extraPortionIds = useWatch({ control, name: 'extraPortionIds' })
   const sauceLimitless = useWatch({ control, name: 'sauceLimitless' })
+  const friesTypeIds = useWatch({ control, name: 'friesTypeIds' })
+  const hasFriesTypes = (friesTypeIds?.length ?? 0) > 0
 
   function buildPayload(values: ItemFormValues) {
     return {
@@ -197,6 +211,12 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
       sauceAllowWithout: values.sauceAllowWithout,
       beverageAllowWithout: values.beverageAllowWithout,
       extraPortionsAllowWithout: values.extraPortionsAllowWithout,
+      friesTypeIds: values.friesTypeIds,
+      // Sin tipos asignados "Obligatorio" no tiene efecto en el backend; se
+      // manda false para no dejar guardado un true huérfano.
+      friesTypeGroupRequired:
+        values.friesTypeIds.length > 0 && values.friesTypeGroupRequired,
+      friesTypeGroupMaxSelectable: values.friesTypeGroupMaxSelectable,
     }
   }
 
@@ -758,6 +778,113 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
                   >
                     Permitir "Sin porciones extras"
                   </Label>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="space-y-1.5 pt-2">
+            <Label className="text-sm font-medium">Tipos de papas</Label>
+            <p className="text-muted-foreground mb-1 text-xs">
+              Qué tipo de papas puede elegir el cliente (fritas, al hilo...).
+              Sin selección = el producto no muestra selector de papas en la
+              app.
+            </p>
+            {friesTypesQuery.isLoading ? (
+              <p className="text-muted-foreground text-xs">
+                Cargando tipos de papas…
+              </p>
+            ) : friesTypesQuery.isError ? (
+              <Alert variant="destructive">
+                <AlertTitle>No se pudieron cargar los tipos de papas</AlertTitle>
+                <AlertDescription>
+                  Este producto se puede guardar igual, pero no vas a poder
+                  asignarle tipos de papas hasta que recargues la página.
+                </AlertDescription>
+              </Alert>
+            ) : friesTypesQuery.data && friesTypesQuery.data.length === 0 ? (
+              <p className="text-muted-foreground text-xs">
+                Todavía no hay tipos de papas en el catálogo. Créalos primero
+                en la pestaña "Tipos de Papas" del Menú.
+              </p>
+            ) : (
+              <>
+                <div className="grid max-h-48 grid-cols-2 gap-1.5 overflow-y-auto sm:grid-cols-3">
+                  {(friesTypesQuery.data ?? []).map((friesType) => (
+                    <label
+                      key={friesType.id}
+                      className="flex items-center gap-1.5 text-sm"
+                    >
+                      <Checkbox
+                        checked={friesTypeIds?.includes(friesType.id) ?? false}
+                        onCheckedChange={(isChecked) => {
+                          const current = friesTypeIds ?? []
+                          const next = isChecked
+                            ? [...current, friesType.id]
+                            : current.filter((id) => id !== friesType.id)
+                          setValue('friesTypeIds', next)
+                          // Sin tipos asignados, "Obligatorio" no aplica.
+                          if (next.length === 0) {
+                            setValue('friesTypeGroupRequired', false)
+                          }
+                        }}
+                      />
+                      <span>
+                        {friesType.name}
+                        {friesType.isDefault ? ' (por defecto)' : ''}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 pt-1">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="item-fries-type-max">Máximo a elegir</Label>
+                    <Input
+                      id="item-fries-type-max"
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      aria-invalid={Boolean(errors.friesTypeGroupMaxSelectable)}
+                      {...register('friesTypeGroupMaxSelectable')}
+                    />
+                    {errors.friesTypeGroupMaxSelectable ? (
+                      <p className="text-celtas-red-light text-xs">
+                        {errors.friesTypeGroupMaxSelectable.message}
+                      </p>
+                    ) : null}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <span className="text-sm font-medium">Obligatorio</span>
+                    <div className="flex items-center gap-2 pt-0.5">
+                      <Controller
+                        control={control}
+                        name="friesTypeGroupRequired"
+                        render={({ field }) => (
+                          <Checkbox
+                            id="fries-type-required"
+                            checked={field.value}
+                            disabled={!hasFriesTypes}
+                            onCheckedChange={(isChecked) =>
+                              field.onChange(isChecked === true)
+                            }
+                          />
+                        )}
+                      />
+                      <Label
+                        htmlFor="fries-type-required"
+                        className="text-sm font-normal"
+                      >
+                        El cliente debe elegir un tipo de papas
+                      </Label>
+                    </div>
+                    <p className="text-muted-foreground text-xs">
+                      {hasFriesTypes
+                        ? 'Actívalo solo si la app ya soporta el selector de papas.'
+                        : 'Asigna al menos un tipo para poder marcarlo.'}
+                    </p>
+                  </div>
                 </div>
               </>
             )}
