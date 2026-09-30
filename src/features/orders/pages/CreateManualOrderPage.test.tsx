@@ -5,7 +5,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { AxiosError, AxiosHeaders } from 'axios'
 import CreateManualOrderPage from './CreateManualOrderPage'
 import type { Beverage, ExtraPortion, FriesType, MenuItem } from '../../menu/types'
-import type { AdminUser } from '../../users/types'
+import type { AdminUser, UserAddress } from '../../users/types'
 import type { DeliveryLocation } from '../components/DeliveryCalculator'
 import type { CreateOrderAdminInput } from '../manual-order'
 
@@ -22,53 +22,83 @@ const usersState: {
 } = { data: undefined, isLoading: false, isError: false }
 
 vi.mock('../../menu/items/hooks', () => ({ useMenuItems: () => menuState }))
-vi.mock('../../users/hooks', () => ({ useUsers: () => usersState }))
+const addressesState: { data: UserAddress[] | undefined; isLoading: boolean; isError: boolean } =
+  { data: [], isLoading: false, isError: false }
+const { useUserAddressesMock } = vi.hoisted(() => ({ useUserAddressesMock: vi.fn() }))
+
+vi.mock('../../users/hooks', () => ({
+  useUsers: () => usersState,
+  useUserAddresses: useUserAddressesMock,
+}))
 vi.mock('../hooks', () => ({ useCreateAdminOrder: () => ({ mutateAsync: createMock }) }))
 
 /**
  * El mapa real (Leaflet + geocoding) ya tiene sus tests: acá se reemplaza por
- * botones que disparan `onChange` como lo haría el componente real.
+ * botones que disparan `onChange` como lo haría el componente real. Igual que
+ * el real, al montar notifica su `initialLocation` (con cotización si trae
+ * punto: S/ 7.00) y la expone en `calc-initial` para verificar la precarga.
  */
-vi.mock('../components/DeliveryCalculator', () => ({
-  DeliveryCalculator: ({ onChange }: { onChange: (l: DeliveryLocation) => void }) => (
-    <div>
-      <button
-        type="button"
-        onClick={() =>
-          onChange({
-            address: 'Jr. Carabaya 250, Lima',
-            point: { lat: -12.16, lng: -76.97 },
-            estimate: { deliveryFee: 5, isFarOrder: false, distanceMeters: 900 },
-            estimateFailed: false,
-          })
-        }
-      >
-        ubicar-dirección
-      </button>
-      <button
-        type="button"
-        onClick={() =>
-          onChange({ address: 'Av. Sin Mapa 1', point: null, estimate: null, estimateFailed: false })
-        }
-      >
-        solo-texto
-      </button>
-      <button
-        type="button"
-        onClick={() =>
-          onChange({
-            address: 'Jr. Carabaya 250, Lima',
-            point: { lat: -12.16, lng: -76.97 },
-            estimate: null,
-            estimateFailed: true,
-          })
-        }
-      >
-        cotizacion-falla
-      </button>
-    </div>
-  ),
-}))
+vi.mock('../components/DeliveryCalculator', async () => {
+  const { useEffect } = await import('react')
+  type Props = {
+    onChange: (l: DeliveryLocation) => void
+    initialLocation?: { address: string; point: { lat: number; lng: number } | null }
+  }
+  function DeliveryCalculator({ onChange, initialLocation }: Props) {
+    useEffect(() => {
+      onChange({
+        address: initialLocation?.address ?? '',
+        point: initialLocation?.point ?? null,
+        estimate: initialLocation?.point
+          ? { deliveryFee: 7, isFarOrder: false, distanceMeters: 1500 }
+          : null,
+        estimateFailed: false,
+      })
+      // Solo al montar, como el real con su initialLocation.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+    return (
+      <div>
+        <p data-testid="calc-initial">{JSON.stringify(initialLocation ?? null)}</p>
+        <button
+          type="button"
+          onClick={() =>
+            onChange({
+              address: 'Jr. Carabaya 250, Lima',
+              point: { lat: -12.16, lng: -76.97 },
+              estimate: { deliveryFee: 5, isFarOrder: false, distanceMeters: 900 },
+              estimateFailed: false,
+            })
+          }
+        >
+          ubicar-dirección
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            onChange({ address: 'Av. Sin Mapa 1', point: null, estimate: null, estimateFailed: false })
+          }
+        >
+          solo-texto
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            onChange({
+              address: 'Jr. Carabaya 250, Lima',
+              point: { lat: -12.16, lng: -76.97 },
+              estimate: null,
+              estimateFailed: true,
+            })
+          }
+        >
+          cotizacion-falla
+        </button>
+      </div>
+    )
+  }
+  return { DeliveryCalculator }
+})
 
 const TS = '2026-09-01T00:00:00.000Z'
 const coca: Beverage = { id: 'coca', name: 'Coca-Cola', price: 5, active: true, sortOrder: 0, includeFreeTo: null, createdAt: TS, updatedAt: TS }
@@ -143,6 +173,14 @@ function lastPayload(): CreateOrderAdminInput {
 beforeEach(() => {
   createMock.mockReset()
   createMock.mockResolvedValue({ id: 'order-new' })
+  addressesState.data = []
+  addressesState.isLoading = false
+  addressesState.isError = false
+  useUserAddressesMock.mockReset()
+  // Como el hook real: sin userId la query está deshabilitada (sin data).
+  useUserAddressesMock.mockImplementation((userId: string | undefined) =>
+    userId ? addressesState : { data: undefined, isLoading: false, isError: false },
+  )
   menuState.data = [
     makeMenuItem(),
     makeMenuItem({
@@ -375,5 +413,347 @@ describe('CreateManualOrderPage - cotización fallida', () => {
     await user.click(screen.getByRole('button', { name: 'Crear pedido' }))
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1))
     expect(JSON.parse(lastPayload().addressSnapshot)).toMatchObject({ latitude: -12.16, longitude: -76.97 })
+  })
+})
+
+function makeAddress(overrides: Partial<UserAddress> = {}): UserAddress {
+  return {
+    id: 'addr-casa',
+    alias: 'Casa',
+    fullAddress: 'Av. Los Álamos 123, SJM',
+    reference: 'Portón verde',
+    district: 'San Juan de Miraflores',
+    isDefault: true,
+    latitude: -12.155,
+    longitude: -76.965,
+    userId: 'user-rosa',
+    createdAt: TS,
+    updatedAt: TS,
+    ...overrides,
+  }
+}
+
+const trabajo = () =>
+  makeAddress({
+    id: 'addr-trabajo',
+    alias: 'Trabajo',
+    fullAddress: 'Jr. Lima 450, Cercado',
+    reference: null,
+    district: 'Cercado de Lima',
+    isDefault: false,
+    latitude: -12.046,
+    longitude: -77.03,
+  })
+
+async function chooseRosa(user: User) {
+  await user.type(screen.getByLabelText('Buscar cliente registrado'), 'rosa')
+  await user.click(screen.getByRole('button', { name: /Rosa Quispe/ }))
+}
+
+function calcInitial() {
+  return JSON.parse(screen.getByTestId('calc-initial').textContent ?? 'null') as
+    | { address: string; point: { lat: number; lng: number } | null }
+    | null
+}
+
+/** Valor de la fila "Delivery" del resumen. */
+function deliveryValue() {
+  const row = within(summary()).getByText('Delivery').parentElement as HTMLElement
+  return row.querySelector('dd')?.textContent?.trim()
+}
+
+function summary() {
+  return screen.getByRole('heading', { name: '4. Resumen' }).parentElement as HTMLElement
+}
+
+describe('CreateManualOrderPage - direcciones guardadas del cliente', () => {
+  it('cliente sin direcciones guardadas → no muestra el selector', async () => {
+    const user = userEvent.setup()
+    addressesState.data = []
+    renderPage()
+    await chooseRosa(user)
+
+    expect(useUserAddressesMock).toHaveBeenLastCalledWith('user-rosa')
+    expect(screen.queryByLabelText('Direcciones guardadas')).not.toBeInTheDocument()
+    expect(await screen.findByTestId('calc-initial')).toHaveTextContent('null')
+  })
+
+  it('pedido sin cuenta → no consulta direcciones ni muestra el selector', async () => {
+    addressesState.data = [makeAddress()]
+    renderPage()
+    await screen.findByTestId('calc-initial')
+    expect(useUserAddressesMock).toHaveBeenLastCalledWith(undefined)
+    expect(screen.queryByLabelText('Direcciones guardadas')).not.toBeInTheDocument()
+  })
+
+  it('cliente con direcciones → aparece el selector con la principal preseleccionada y cargada en el mapa', async () => {
+    const user = userEvent.setup()
+    addressesState.data = [makeAddress(), trabajo()]
+    renderPage()
+    await chooseRosa(user)
+
+    expect(screen.getByLabelText('Direcciones guardadas')).toHaveTextContent(
+      'Casa - Av. Los Álamos 123, SJM',
+    )
+    await waitFor(() =>
+      expect(calcInitial()).toEqual({
+        address: 'Av. Los Álamos 123, SJM',
+        point: { lat: -12.155, lng: -76.965 },
+      }),
+    )
+    expect(screen.getByLabelText('Referencia (opcional)')).toHaveValue('Portón verde')
+  })
+
+  it('elegir otra dirección la carga en el mapa y recalcula el delivery', async () => {
+    const user = userEvent.setup()
+    addressesState.data = [makeAddress(), trabajo()]
+    renderPage()
+    await chooseRosa(user)
+
+    await user.click(screen.getByLabelText('Direcciones guardadas'))
+    await user.click(await screen.findByRole('option', { name: 'Trabajo - Jr. Lima 450, Cercado' }))
+
+    await waitFor(() =>
+      expect(calcInitial()).toEqual({
+        address: 'Jr. Lima 450, Cercado',
+        point: { lat: -12.046, lng: -77.03 },
+      }),
+    )
+    // Sin referencia guardada: se limpia la de la dirección anterior.
+    expect(screen.getByLabelText('Referencia (opcional)')).toHaveValue('')
+    expect(deliveryValue()).toBe('S/ 7.00')
+  })
+
+  it('"+ Nueva dirección" limpia el mapa y la referencia, y permite buscar', async () => {
+    const user = userEvent.setup()
+    addressesState.data = [makeAddress()]
+    renderPage()
+    await chooseRosa(user)
+    await waitFor(() => expect(calcInitial()).not.toBeNull())
+
+    await user.click(screen.getByLabelText('Direcciones guardadas'))
+    await user.click(await screen.findByRole('option', { name: '+ Nueva dirección' }))
+
+    await waitFor(() => expect(calcInitial()).toBeNull())
+    expect(screen.getByLabelText('Referencia (opcional)')).toHaveValue('')
+    // Sin dirección ubicada: delivery S/ 0.00 hasta buscar.
+    expect(deliveryValue()).toBe('S/ 0.00')
+
+    await user.click(screen.getByRole('button', { name: 'ubicar-dirección' }))
+    expect(deliveryValue()).toBe('S/ 5.00')
+  })
+
+  it('el delivery y el pedido usan la dirección guardada: snapshot con alias, distrito, referencia y coordenadas', async () => {
+    const user = userEvent.setup()
+    addressesState.data = [makeAddress()]
+    renderPage()
+    await chooseRosa(user)
+    await addProduct(user, 'Celtas Burger')
+
+    // 18.90 + delivery 7.00 (cotización del punto guardado) = 25.90
+    await waitFor(() => expect(within(summary()).getByText('S/ 7.00')).toBeInTheDocument())
+    expect(within(summary()).getByText('S/ 25.90')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Crear pedido' }))
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1))
+    const payload = lastPayload()
+    expect(payload.customerId).toBe('user-rosa')
+    expect(payload).not.toHaveProperty('addressId')
+    expect(JSON.parse(payload.addressSnapshot)).toEqual({
+      alias: 'Casa',
+      fullAddress: 'Av. Los Álamos 123, SJM',
+      reference: 'Portón verde',
+      district: 'San Juan de Miraflores',
+      latitude: -12.155,
+      longitude: -76.965,
+    })
+  })
+
+  it('dirección guardada sin coordenadas → precarga solo el texto y avisa que hay que buscarla', async () => {
+    const user = userEvent.setup()
+    addressesState.data = [makeAddress({ latitude: null, longitude: null })]
+    renderPage()
+    await chooseRosa(user)
+
+    await waitFor(() =>
+      expect(calcInitial()).toEqual({ address: 'Av. Los Álamos 123, SJM', point: null }),
+    )
+    expect(screen.getByText(/no tiene ubicación guardada/)).toBeInTheDocument()
+  })
+
+  it('cambiar a otro cliente registrado vuelve a preseleccionar SU principal; pasar a sin cuenta limpia la dirección', async () => {
+    const user = userEvent.setup()
+    const pedro = makeUser({ id: 'user-pedro', fullName: 'Pedro Ramos', email: 'pedro@mail.com', phone: '912345678' })
+    usersState.data = {
+      items: [makeUser(), pedro],
+      meta: { page: 1, limit: 100, total: 2, totalPages: 1 },
+    }
+    const byUser: Record<string, UserAddress[]> = {
+      'user-rosa': [makeAddress(), trabajo()],
+      'user-pedro': [
+        makeAddress({
+          id: 'addr-pedro', alias: 'Depa', fullAddress: 'Calle Pedro 9', reference: 'Piso 3',
+          district: 'Surco', userId: 'user-pedro', latitude: -12.1, longitude: -76.99,
+        }),
+      ],
+    }
+    useUserAddressesMock.mockImplementation((userId: string | undefined) =>
+      userId ? { data: byUser[userId], isLoading: false, isError: false } : { data: undefined, isLoading: false, isError: false },
+    )
+    renderPage()
+    await chooseRosa(user)
+
+    // Rosa: elige explícitamente "Trabajo" (savedChoice deja de ser automático).
+    await user.click(screen.getByLabelText('Direcciones guardadas'))
+    await user.click(await screen.findByRole('option', { name: 'Trabajo - Jr. Lima 450, Cercado' }))
+    await waitFor(() => expect(calcInitial()?.address).toBe('Jr. Lima 450, Cercado'))
+
+    // Cambia a Pedro: debe preseleccionar la principal de Pedro, no arrastrar la elección de Rosa.
+    await user.click(screen.getByRole('button', { name: 'Quitar cliente' }))
+    await user.type(screen.getByLabelText('Buscar cliente registrado'), 'pedro')
+    await user.click(screen.getByRole('button', { name: /Pedro Ramos/ }))
+
+    expect(useUserAddressesMock).toHaveBeenLastCalledWith('user-pedro')
+    expect(screen.getByLabelText('Direcciones guardadas')).toHaveTextContent('Depa - Calle Pedro 9')
+    await waitFor(() =>
+      expect(calcInitial()).toEqual({ address: 'Calle Pedro 9', point: { lat: -12.1, lng: -76.99 } }),
+    )
+    expect(screen.getByLabelText('Referencia (opcional)')).toHaveValue('Piso 3')
+
+    // Pasa a sin cuenta: sin selector, mapa y referencia vacíos.
+    await user.click(screen.getByRole('button', { name: 'Quitar cliente' }))
+    expect(screen.queryByLabelText('Direcciones guardadas')).not.toBeInTheDocument()
+    await waitFor(() => expect(calcInitial()).toBeNull())
+    expect(screen.getByLabelText('Referencia (opcional)')).toHaveValue('')
+  })
+
+  it('si el admin cambia el texto de la dirección guardada, el snapshot NO lleva alias ni distrito de la guardada', async () => {
+    const user = userEvent.setup()
+    addressesState.data = [makeAddress()]
+    renderPage()
+    await chooseRosa(user)
+    await addProduct(user, 'Celtas Burger')
+    await waitFor(() => expect(calcInitial()).not.toBeNull())
+
+    // El calculador reporta otra dirección (texto editado + nueva búsqueda).
+    await user.click(screen.getByRole('button', { name: 'ubicar-dirección' }))
+    await user.click(screen.getByRole('button', { name: 'Crear pedido' }))
+
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1))
+    const snapshot = JSON.parse(lastPayload().addressSnapshot)
+    expect(snapshot).toMatchObject({
+      alias: 'Pedido manual',
+      fullAddress: 'Jr. Carabaya 250, Lima',
+      latitude: -12.16,
+      longitude: -76.97,
+    })
+    expect(snapshot).not.toHaveProperty('district')
+  })
+
+  it('cargando direcciones → aviso de carga y sin selector', async () => {
+    const user = userEvent.setup()
+    addressesState.data = undefined
+    addressesState.isLoading = true
+    renderPage()
+    await chooseRosa(user)
+
+    expect(screen.getByText('Cargando direcciones guardadas…')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Direcciones guardadas')).not.toBeInTheDocument()
+  })
+
+  it('error cargando direcciones → aviso y el mapa queda para una dirección nueva', async () => {
+    const user = userEvent.setup()
+    addressesState.data = undefined
+    addressesState.isError = true
+    renderPage()
+    await chooseRosa(user)
+
+    expect(screen.getByText(/No se pudieron cargar las direcciones guardadas/)).toBeInTheDocument()
+    expect(screen.queryByLabelText('Direcciones guardadas')).not.toBeInTheDocument()
+  })
+})
+
+describe('CreateManualOrderPage - grupos obligatorios sin opciones disponibles', () => {
+  const inactiveCoca: Beverage = { ...coca, id: 'coca-off', name: 'Coca apagada', active: false }
+
+  it('bebidas obligatorias con todas inactivas → aviso en la lista, error rojo y "Agregar" deshabilitado', async () => {
+    const user = userEvent.setup()
+    menuState.data = [
+      makeMenuItem({
+        id: 'combo-off', name: 'Combo sin bebidas', beverages: [inactiveCoca], beverageGroupRequired: true,
+      }),
+    ]
+    renderPage()
+
+    await user.click(screen.getByRole('button', { name: 'Agregar producto' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Sin opciones disponibles para bebidas')).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: /Combo sin bebidas/ }))
+    expect(within(dialog).getByText('No hay opciones disponibles para bebidas')).toBeInTheDocument()
+    expect(within(dialog).queryByRole('checkbox', { name: /Coca apagada/ })).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Agregar al pedido' })).toBeDisabled()
+  })
+
+  it('con una bebida activa el ítem se desbloquea al elegirla', async () => {
+    const user = userEvent.setup()
+    menuState.data = [
+      makeMenuItem({
+        id: 'combo-ok', name: 'Combo con bebida', beverages: [inactiveCoca, coca], beverageGroupRequired: true,
+      }),
+    ]
+    renderPage()
+
+    await user.click(screen.getByRole('button', { name: 'Agregar producto' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).queryByText(/Sin opciones disponibles/)).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: /Combo con bebida/ }))
+
+    expect(within(dialog).queryByText(/No hay opciones disponibles/)).not.toBeInTheDocument()
+    expect(within(dialog).getByText('Elige al menos una bebida')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Agregar al pedido' })).toBeDisabled()
+
+    await user.click(within(dialog).getByRole('checkbox', { name: /Coca-Cola/ }))
+    expect(within(dialog).getByRole('button', { name: 'Agregar al pedido' })).toBeEnabled()
+  })
+})
+
+describe('CreateManualOrderPage - dirección escrita antes de elegir cliente', () => {
+  it('elegir un cliente SIN direcciones guardadas no borra la dirección ya ubicada ni la referencia', async () => {
+    const user = userEvent.setup()
+    addressesState.data = []
+    renderPage()
+
+    await user.click(await screen.findByRole('button', { name: 'ubicar-dirección' }))
+    await user.type(screen.getByLabelText('Referencia (opcional)'), 'Casa azul')
+    expect(deliveryValue()).toBe('S/ 5.00')
+
+    await chooseRosa(user)
+
+    // Sin remontar el calculador: sigue la dirección ubicada y su delivery.
+    expect(deliveryValue()).toBe('S/ 5.00')
+    expect(screen.getByLabelText('Referencia (opcional)')).toHaveValue('Casa azul')
+
+    await addProduct(user, 'Celtas Burger')
+    await user.click(screen.getByRole('button', { name: 'Crear pedido' }))
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1))
+    expect(JSON.parse(lastPayload().addressSnapshot)).toMatchObject({
+      fullAddress: 'Jr. Carabaya 250, Lima',
+      reference: 'Casa azul',
+      latitude: -12.16,
+    })
+  })
+
+  it('elegir un cliente CON dirección principal sí la reemplaza (preselección)', async () => {
+    const user = userEvent.setup()
+    addressesState.data = [makeAddress()]
+    renderPage()
+
+    await user.click(await screen.findByRole('button', { name: 'ubicar-dirección' }))
+    expect(deliveryValue()).toBe('S/ 5.00')
+    await chooseRosa(user)
+
+    await waitFor(() => expect(deliveryValue()).toBe('S/ 7.00'))
+    expect(calcInitial()).toMatchObject({ address: 'Av. Los Álamos 123, SJM' })
   })
 })

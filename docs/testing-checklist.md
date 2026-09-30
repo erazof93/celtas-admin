@@ -2413,3 +2413,49 @@ Checklist:
       nombre, aunque `GET /orders/:id` trae `user.fullName`.
 - [ ] Sin verificar en navegador real contra el backend (sin credenciales de admin): creación real,
       400 de validación reales, Leaflet dentro de la página.
+
+## Auditoría: Orders — Pedido manual: grupos obligatorios sin opciones disponibles + direcciones guardadas del cliente, working tree sin commitear
+
+Auditor: @tester (independiente). Fecha: 2026-09-30. Alcance (diff sobre `62cda8c`):
+`orders/manual-order.ts` (`groupRules`, `blockedRequiredGroups`, `selectionErrors`,
+`buildAddressSnapshot` con `alias`/`district`), `orders/components/AddItemDialog.tsx`,
+`orders/components/DeliveryCalculator.tsx` (`initialLocation`), `orders/pages/CreateManualOrderPage.tsx`
+(`useUserAddresses`, Select "Direcciones guardadas", `key`, `appliedKeyRef`). Backend de referencia
+leído: `D:\proyecto-celtas\backend-celtas\src\modules\orders\orders.service.ts`
+(`resolveAddressSnapshot`, `buildItems`, `resolveSelected*`, `validateGroupSelection`), entidades
+`sauce`/`beverage`/`extra-portion`/`fries-type`/`address`.
+
+Checklist:
+- [x] `pnpm run type-check` exit 0; `pnpm run lint` 0 errores (1 warning preexistente ajeno en
+      `StarPromotionForm.tsx`); `pnpm run build` exit 0.
+- [x] Suite completa: 50 archivos / 420 tests antes de los tests del tester; con ellos 50 / 423.
+- [x] Semántica vs backend: `buildItems` carga `sauces/beverages/extraPortions/friesTypes` por
+      relación SIN filtrar `active`, y `validateGroupSelection` solo retorna temprano si `offered`
+      está vacío → `total` = todas las asignadas es correcto; grupo requerido sin asignadas NO
+      bloquea (correcto). `Sauce`/`Beverage`/`ExtraPortion` tienen `active`; `FriesType` no
+      (`available = total`, correcto). La adaptación del spec (`inactive` → `active`, no bloquear
+      papas vacías) es correcta.
+- [x] `resolveAddressSnapshot`: con `addressId` copia `latitude/longitude` de la fila guardada (ignora
+      cualquier ajuste del pin) → mandar `addressSnapshot` en vez de `addressId` es correcto. Claves
+      del snapshot (`alias/fullAddress/reference/district/latitude/longitude`) = las que copia el backend.
+- [x] Estados de direcciones: cargando ("Cargando direcciones guardadas…"), error (aviso + dirección
+      nueva), vacío (sin selector), sin coordenadas (solo texto + aviso), pedido sin cuenta (no consulta).
+- [x] **[QA] tests nuevos en `CreateManualOrderPage.test.tsx`**: cambio de cliente registrado a otro
+      (preselecciona SU principal y su referencia) y luego a sin cuenta (sin selector, mapa y
+      referencia vacíos); texto editado → snapshot con alias `Pedido manual` y sin `district`;
+      estado de carga de direcciones.
+- [x] Mutaciones (backup + restore, `cmp` idéntico al final), todas MATADAS: `total` cuenta solo
+      activas (3 fallan); bloquear requerido sin asignadas (2); no resetear `savedChoice` al cambiar
+      cliente (1, test del tester — SOBREVIVÍA antes); mandar alias/distrito aunque se editó el texto
+      (1, test del tester — SOBREVIVÍA antes); quitar `key` (4); ignorar `initialLocation` en el
+      estado inicial (2); no precargar la referencia (2); quitar la rama de carga (1, test del tester).
+- [x] Item abierto de la auditoría anterior ("grupo con TODAS las opciones inactivas → 400 sin
+      poder corregir") queda resuelto: el producto se marca y "Agregar al pedido" se deshabilita.
+- [ ] (UX, menor) Cualquier cambio de cliente cambia la `key` del calculador (`new-anon` →
+      `new-<id>` / id guardada) y lo remonta: si el admin escribió/ubicó la dirección ANTES de
+      elegir el cliente, se pierde (y la referencia se limpia).
+- [ ] (UX, menor) Si el admin reemplaza la dirección guardada por otra, la referencia precargada de
+      la guardada se conserva (solo se limpia al cambiar de opción en el Select).
+- [ ] (nota) El backend acepta ids de opciones inactivas; el bloqueo es decisión de UI (no ofrecer
+      opciones ocultas), no una restricción del backend.
+- [ ] Sin verificar en navegador real contra el backend (sin credenciales de admin).

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useRef, useState } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -19,8 +19,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { getApiMessage } from '@/lib/api-errors'
 import { useMenuItems } from '../../menu/items/hooks'
+import { useUserAddresses } from '../../users/hooks'
 import type { MenuItem } from '../../menu/types'
 import type { AdminUser } from '../../users/types'
 import { AddItemDialog } from '../components/AddItemDialog'
@@ -117,6 +125,9 @@ function optionsLabel(menuItem: MenuItem | undefined, line: ManualOrderLine): st
   return names.length > 0 ? names.join(', ') : '—'
 }
 
+/** Valor del Select para "escribir una dirección nueva" (no es un id real). */
+const NEW_ADDRESS = 'new'
+
 let lineCounter = 0
 function nextLineKey() {
   lineCounter += 1
@@ -157,6 +168,24 @@ export default function CreateManualOrderPage() {
 
   const lines = useWatch({ control, name: 'lines' })
   const address = useWatch({ control, name: 'address' })
+  const customer = useWatch({ control, name: 'customer' })
+
+  // Direcciones guardadas del cliente registrado (GET /users/:id/addresses,
+  // principal primero). `savedChoice` null = "automático": la principal si la
+  // hay; se vuelve a null al cambiar de cliente.
+  const customerId = customer.mode === 'registered' ? customer.customer.id : undefined
+  const addressesQuery = useUserAddresses(customerId)
+  const savedAddresses = customerId ? (addressesQuery.data ?? []) : []
+  const [savedChoice, setSavedChoice] = useState<string | null>(null)
+  const effectiveChoice =
+    savedChoice ?? savedAddresses.find((a) => a.isDefault)?.id ?? NEW_ADDRESS
+  const selectedSaved = savedAddresses.find((a) => a.id === effectiveChoice) ?? null
+  // Remonta el calculador solo cuando cambia la dirección elegida (initialLocation
+  // se lee al montar). "Nueva dirección" usa siempre la misma key: lo que el
+  // admin escribió antes de elegir un cliente sin direcciones guardadas no se
+  // pierde al elegirlo.
+  const calculatorKey = selectedSaved?.id ?? NEW_ADDRESS
+  const appliedKeyRef = useRef<string | null>(null)
 
   const menuById = useMemo(
     () => new Map((menuQuery.data ?? []).map((item) => [item.id, item])),
@@ -168,10 +197,15 @@ export default function CreateManualOrderPage() {
   const total = deliveryFee === null ? null : round2(subtotal + deliveryFee)
 
   function handleLocationChange(location: DeliveryLocation) {
+    // Primera notificación de un calculador recién montado: precarga la
+    // referencia de la dirección guardada elegida (o la limpia si es nueva).
+    const firstForKey = appliedKeyRef.current !== calculatorKey
+    appliedKeyRef.current = calculatorKey
     setValue(
       'address',
       {
         ...getValues('address'),
+        ...(firstForKey ? { reference: selectedSaved?.reference ?? '' } : {}),
         fullAddress: location.address,
         latitude: location.point?.lat ?? null,
         longitude: location.point?.lng ?? null,
@@ -196,7 +230,13 @@ export default function CreateManualOrderPage() {
           : values.customer,
       lines: values.lines,
       menuById,
-      address: values.address,
+      address: {
+        ...values.address,
+        // Alias/distrito solo si sigue siendo la dirección guardada (sin editar el texto).
+        ...(selectedSaved && values.address.fullAddress.trim() === selectedSaved.fullAddress.trim()
+          ? { alias: selectedSaved.alias, district: selectedSaved.district }
+          : {}),
+      },
     })
     try {
       const created = await createMutation.mutateAsync(payload)
@@ -243,7 +283,11 @@ export default function CreateManualOrderPage() {
           render={({ field }) => (
             <CustomerPicker
               value={field.value}
-              onChange={field.onChange}
+              onChange={(next) => {
+                // Otro cliente → vuelve a preseleccionar su dirección principal.
+                setSavedChoice(null)
+                field.onChange(next)
+              }}
               nameError={customerErrors?.customerName?.message}
               phoneError={customerErrors?.customerPhone?.message}
             />
@@ -359,8 +403,53 @@ export default function CreateManualOrderPage() {
 
       <Card className="space-y-4 p-5">
         <h2 className="text-lg font-semibold">3. Dirección de entrega</h2>
+        {customerId && addressesQuery.isLoading ? (
+          <p className="text-muted-foreground text-xs">Cargando direcciones guardadas…</p>
+        ) : customerId && addressesQuery.isError ? (
+          <p className="text-muted-foreground text-xs">
+            No se pudieron cargar las direcciones guardadas del cliente. Escribe
+            una dirección nueva.
+          </p>
+        ) : savedAddresses.length > 0 ? (
+          <div className="space-y-1.5">
+            <Label htmlFor="saved-address">Direcciones guardadas</Label>
+            <Select value={effectiveChoice} onValueChange={setSavedChoice}>
+              <SelectTrigger id="saved-address" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NEW_ADDRESS}>+ Nueva dirección</SelectItem>
+                {savedAddresses.map((saved) => (
+                  <SelectItem key={saved.id} value={saved.id}>
+                    {saved.alias} - {saved.fullAddress}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedSaved && (selectedSaved.latitude === null || selectedSaved.longitude === null) ? (
+              <p className="text-celtas-gold text-xs">
+                Esta dirección no tiene ubicación guardada: pulsa "Buscar" para
+                ubicarla y calcular el delivery.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <Suspense fallback={<LoadingState label="Cargando mapa…" />}>
-          <DeliveryCalculator onChange={handleLocationChange} />
+          <DeliveryCalculator
+            key={calculatorKey}
+            onChange={handleLocationChange}
+            initialLocation={
+              selectedSaved
+                ? {
+                    address: selectedSaved.fullAddress,
+                    point:
+                      selectedSaved.latitude !== null && selectedSaved.longitude !== null
+                        ? { lat: selectedSaved.latitude, lng: selectedSaved.longitude }
+                        : null,
+                  }
+                : undefined
+            }
+          />
         </Suspense>
         {errors.address?.fullAddress?.message ? (
           <p className="text-celtas-red-light text-sm">{errors.address.fullAddress.message}</p>

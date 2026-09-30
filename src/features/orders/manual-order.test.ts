@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Beverage, ExtraPortion, FriesType, MenuItem, Sauce } from '../menu/types'
 import {
   buildAddressSnapshot,
+  blockedRequiredGroups,
   buildCreateOrderAdminPayload,
   lineSubtotal,
   lineUnitPrice,
@@ -259,5 +260,70 @@ describe('buildCreateOrderAdminPayload (contrato de CreateOrderAdminDto)', () =>
       expect(Object.keys(it).filter((k) => !allowedItemKeys.has(k))).toEqual([])
     }
     expect(typeof payload.addressSnapshot).toBe('string')
+  })
+})
+
+describe('grupos obligatorios sin opciones disponibles (todas inactivas)', () => {
+  const offBeverage = { ...beverage('off', 5), active: false }
+
+  it('bebidas obligatorias con todas inactivas → bloqueado, con mensaje propio', () => {
+    const item = makeMenuItem({ beverages: [offBeverage], beverageGroupRequired: true })
+    expect(blockedRequiredGroups(item)).toEqual(['bebidas'])
+    expect(selectionErrors(item, line())).toEqual(['No hay opciones disponibles para bebidas'])
+  })
+
+  it('reporta cada grupo bloqueado (salsas y porciones extras)', () => {
+    const item = makeMenuItem({
+      sauces: [sauce('a', false)],
+      sauceGroupRequired: true,
+      extraPortions: [{ ...extra('q', 3), active: false }],
+      extraPortionsGroupRequired: true,
+    })
+    expect(blockedRequiredGroups(item)).toEqual(['salsas', 'porciones extras'])
+  })
+
+  it('con al menos una opción activa no está bloqueado (pide elegirla)', () => {
+    const item = makeMenuItem({
+      beverages: [offBeverage, beverage('on', 5)],
+      beverageGroupRequired: true,
+    })
+    expect(blockedRequiredGroups(item)).toEqual([])
+    expect(selectionErrors(item, line())).toEqual(['Elige al menos una bebida'])
+  })
+
+  it('grupo opcional con todas inactivas no bloquea', () => {
+    const item = makeMenuItem({ beverages: [offBeverage], beverageGroupRequired: false })
+    expect(blockedRequiredGroups(item)).toEqual([])
+    expect(selectionErrors(item, line())).toEqual([])
+  })
+
+  it('grupo obligatorio SIN opciones asignadas no bloquea (el backend no lo exige)', () => {
+    const item = makeMenuItem({ beverages: [], beverageGroupRequired: true, friesTypes: [], friesTypeGroupRequired: true })
+    expect(blockedRequiredGroups(item)).toEqual([])
+    expect(selectionErrors(item, line())).toEqual([])
+  })
+})
+
+describe('buildAddressSnapshot con dirección guardada', () => {
+  it('usa alias y distrito de la dirección guardada', () => {
+    expect(
+      JSON.parse(
+        buildAddressSnapshot({
+          fullAddress: 'Av. Los Álamos 123',
+          reference: 'Portón verde',
+          latitude: -12.1,
+          longitude: -76.9,
+          alias: 'Casa',
+          district: 'San Juan de Miraflores',
+        }),
+      ),
+    ).toEqual({
+      alias: 'Casa',
+      fullAddress: 'Av. Los Álamos 123',
+      reference: 'Portón verde',
+      district: 'San Juan de Miraflores',
+      latitude: -12.1,
+      longitude: -76.9,
+    })
   })
 })

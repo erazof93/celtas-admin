@@ -456,3 +456,57 @@ describe('DeliveryCalculator - onChange cuando falla la cotización', () => {
     )
   })
 })
+
+describe('DeliveryCalculator - initialLocation (dirección guardada)', () => {
+  function renderWithInitial(
+    initialLocation: { address: string; point: { lat: number; lng: number } | null },
+    onChange = vi.fn(),
+  ) {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <DeliveryCalculator initialLocation={initialLocation} onChange={onChange} />
+      </QueryClientProvider>,
+    )
+    return onChange
+  }
+
+  it('con punto: muestra el mapa y cotiza sin buscar ni geocodificar', async () => {
+    const onChange = renderWithInitial({
+      address: 'Av. Los Álamos 123',
+      point: { lat: -12.155, lng: -76.965 },
+    })
+
+    expect(screen.getByLabelText('Dirección')).toHaveValue('Av. Los Álamos 123')
+    expect(screen.getByTestId('marker-Cliente')).toHaveAttribute('data-position', '-12.155,-76.965')
+    expect(await screen.findByText('Delivery: S/ 4.00')).toBeInTheDocument()
+    expect(getMock).toHaveBeenCalledWith('/delivery/estimate', {
+      params: { latitude: -12.155, longitude: -76.965 },
+    })
+    expect(getMock).not.toHaveBeenCalledWith('/orders/geocode', expect.anything())
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          address: 'Av. Los Álamos 123',
+          point: { lat: -12.155, lng: -76.965 },
+          estimate: expect.objectContaining({ deliveryFee: 4 }),
+        }),
+      ),
+    )
+  })
+
+  it('sin punto: precarga solo el texto, sin mapa ni cotización', async () => {
+    const onChange = renderWithInitial({ address: 'Av. Sin Coords 1', point: null })
+
+    expect(screen.getByLabelText('Dirección')).toHaveValue('Av. Sin Coords 1')
+    expect(screen.queryByTestId('map')).not.toBeInTheDocument()
+    expect(estimateCalls()).toHaveLength(0)
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({ address: 'Av. Sin Coords 1', point: null }),
+      ),
+    )
+  })
+})

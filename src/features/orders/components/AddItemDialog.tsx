@@ -18,6 +18,7 @@ import {
   activeExtraPortions,
   activeSauces,
   beveragePriceFor,
+  blockedRequiredGroups,
   COMMENT_MAX_LENGTH,
   lineUnitPrice,
   MAX_QUANTITY,
@@ -178,7 +179,14 @@ export function AddItemDialog({ open, onOpenChange, menuItems, onAdd }: AddItemD
                       className="hover:bg-muted flex w-full justify-between gap-3 px-3 py-2 text-left text-sm"
                       onClick={() => setSelected(item)}
                     >
-                      <span>{item.name}</span>
+                      <span>
+                        {item.name}
+                        {blockedRequiredGroups(item).length > 0 ? (
+                          <span className="text-celtas-red-light block text-xs">
+                            Sin opciones disponibles para {blockedRequiredGroups(item).join(', ')}
+                          </span>
+                        ) : null}
+                      </span>
                       <span className="text-muted-foreground">{formatPrice(item.price)}</span>
                     </button>
                   </li>

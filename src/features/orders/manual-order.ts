@@ -92,12 +92,67 @@ export function manualOrderSubtotal(
 }
 
 interface GroupRule {
-  label: { one: string; many: string }
-  offered: number
+  label: { one: string; many: string; group: string }
+  /** Opciones asignadas al producto, activas o no (lo que cuenta el backend). */
+  total: number
+  /** Opciones que el admin puede elegir (solo activas). */
+  available: number
   selected: number
   required: boolean
   /** null = sin límite. */
   max: number | null
+}
+
+function groupRules(menuItem: MenuItem, selection: ManualOrderSelection): GroupRule[] {
+  return [
+    {
+      label: { one: 'una salsa', many: 'salsa(s)', group: 'salsas' },
+      total: menuItem.sauces.length,
+      available: activeSauces(menuItem).length,
+      selected: selection.sauceIds.length,
+      required: menuItem.sauceGroupRequired,
+      max: menuItem.sauceGroupMaxSelectable,
+    },
+    {
+      label: { one: 'una bebida', many: 'bebida(s)', group: 'bebidas' },
+      total: menuItem.beverages.length,
+      available: activeBeverages(menuItem).length,
+      selected: selection.beverageIds.length,
+      required: menuItem.beverageGroupRequired,
+      max: menuItem.beverageGroupMaxSelectable,
+    },
+    {
+      label: { one: 'una porción extra', many: 'porción extra(s)', group: 'porciones extras' },
+      total: menuItem.extraPortions.length,
+      available: activeExtraPortions(menuItem).length,
+      selected: selection.extraPortionIds.length,
+      required: menuItem.extraPortionsGroupRequired,
+      max: menuItem.extraPortionsGroupMaxSelectable,
+    },
+    {
+      // FriesType no tiene `active`: todas las asignadas son elegibles.
+      label: { one: 'un tipo de papas', many: 'tipo(s) de papas', group: 'tipos de papas' },
+      total: menuItem.friesTypes.length,
+      available: menuItem.friesTypes.length,
+      selected: selection.friesTypeIds.length,
+      required: menuItem.friesTypeGroupRequired,
+      max: menuItem.friesTypeGroupMaxSelectable,
+    },
+  ]
+}
+
+/**
+ * Grupos obligatorios que el admin NO puede cumplir: el producto tiene
+ * opciones asignadas pero todas están ocultas (inactive). El backend cuenta
+ * también las inactivas (validateGroupSelection), así que exigiría elegir una
+ * y respondería 400. Un grupo sin ninguna opción asignada no cuenta: el
+ * backend no lo exige. Devuelve los nombres de los grupos bloqueados.
+ */
+export function blockedRequiredGroups(menuItem: MenuItem): string[] {
+  const empty = { sauceIds: [], beverageIds: [], extraPortionIds: [], friesTypeIds: [], menuItemId: menuItem.id }
+  return groupRules(menuItem, empty)
+    .filter((g) => g.required && g.total > 0 && g.available === 0)
+    .map((g) => g.label.group)
 }
 
 /**
@@ -106,39 +161,13 @@ interface GroupRule {
  * → sin reglas. Devuelve los mensajes (vacío = válido).
  */
 export function selectionErrors(menuItem: MenuItem, selection: ManualOrderSelection): string[] {
-  const groups: GroupRule[] = [
-    {
-      label: { one: 'una salsa', many: 'salsa(s)' },
-      offered: activeSauces(menuItem).length,
-      selected: selection.sauceIds.length,
-      required: menuItem.sauceGroupRequired,
-      max: menuItem.sauceGroupMaxSelectable,
-    },
-    {
-      label: { one: 'una bebida', many: 'bebida(s)' },
-      offered: activeBeverages(menuItem).length,
-      selected: selection.beverageIds.length,
-      required: menuItem.beverageGroupRequired,
-      max: menuItem.beverageGroupMaxSelectable,
-    },
-    {
-      label: { one: 'una porción extra', many: 'porción extra(s)' },
-      offered: activeExtraPortions(menuItem).length,
-      selected: selection.extraPortionIds.length,
-      required: menuItem.extraPortionsGroupRequired,
-      max: menuItem.extraPortionsGroupMaxSelectable,
-    },
-    {
-      label: { one: 'un tipo de papas', many: 'tipo(s) de papas' },
-      offered: menuItem.friesTypes.length,
-      selected: selection.friesTypeIds.length,
-      required: menuItem.friesTypeGroupRequired,
-      max: menuItem.friesTypeGroupMaxSelectable,
-    },
-  ]
   const errors: string[] = []
-  for (const group of groups) {
-    if (group.offered === 0) continue
+  for (const group of groupRules(menuItem, selection)) {
+    if (group.total === 0) continue
+    if (group.required && group.available === 0) {
+      errors.push(`No hay opciones disponibles para ${group.label.group}`)
+      continue
+    }
     if (group.required && group.selected === 0) {
       errors.push(`Elige al menos ${group.label.one}`)
     }
@@ -164,6 +193,9 @@ export interface ManualOrderAddress {
   reference: string
   latitude: number | null
   longitude: number | null
+  /** Alias y distrito de la dirección guardada elegida; `null` = dirección nueva. */
+  alias?: string | null
+  district?: string | null
 }
 
 /**
@@ -171,12 +203,17 @@ export interface ManualOrderAddress {
  * claves que `resolveAddressSnapshot` copia de una dirección guardada, para que
  * OrderDetailDialog lo muestre igual. Sin coordenadas el backend cobra
  * delivery 0 (parseAddressCoords → null), así que solo se incluyen si existen.
+ *
+ * Con una dirección guardada se manda igualmente como snapshot (no `addressId`):
+ * el admin puede ajustar el pin en el mapa, y con `addressId` el backend
+ * copiaría las coordenadas guardadas ignorando el ajuste.
  */
 export function buildAddressSnapshot(address: ManualOrderAddress): string {
   return JSON.stringify({
-    alias: 'Pedido manual',
+    alias: address.alias || 'Pedido manual',
     fullAddress: address.fullAddress.trim(),
     reference: address.reference.trim() || null,
+    ...(address.district ? { district: address.district } : {}),
     ...(address.latitude !== null && address.longitude !== null
       ? { latitude: address.latitude, longitude: address.longitude }
       : {}),

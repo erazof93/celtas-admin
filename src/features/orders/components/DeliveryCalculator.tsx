@@ -93,15 +93,25 @@ export interface DeliveryLocation {
 
 interface DeliveryCalculatorProps {
   onChange?: (location: DeliveryLocation) => void
+  /**
+   * Dirección precargada (ej. una guardada del cliente). Solo se lee al montar:
+   * para cambiarla, el padre remonta el componente con otra `key`. Con `point`
+   * el mapa y la cotización aparecen sin buscar; sin `point` (dirección
+   * guardada sin coordenadas) solo se precarga el texto y hay que pulsar Buscar.
+   */
+  initialLocation?: { address: string; point: LatLng | null }
 }
 
-export function DeliveryCalculator({ onChange }: DeliveryCalculatorProps = {}) {
+export function DeliveryCalculator({ onChange, initialLocation }: DeliveryCalculatorProps = {}) {
   const settingsQuery = useSettings()
   const geocodeMutation = useGeocodeAddress()
-  const [address, setAddress] = useState('')
-  const [searchedAddress, setSearchedAddress] = useState<string | null>(null)
-  const [searchTarget, setSearchTarget] = useState<LatLng | null>(null)
-  const [pin, setPin] = useState<LatLng | null>(null)
+  const initialPoint = initialLocation?.point ?? null
+  const [address, setAddress] = useState(initialLocation?.address ?? '')
+  const [searchedAddress, setSearchedAddress] = useState<string | null>(
+    initialPoint ? (initialLocation?.address.trim() ?? null) : null,
+  )
+  const [searchTarget, setSearchTarget] = useState<LatLng | null>(initialPoint)
+  const [pin, setPin] = useState<LatLng | null>(initialPoint)
   const [error, setError] = useState<string | null>(null)
   const estimateQuery = useDeliveryEstimate(pin)
 
