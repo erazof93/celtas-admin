@@ -2151,3 +2151,37 @@ bloqueante para este veredicto porque el frontend ya funciona correctamente con 
 `api.d.ts` regenerado, pero se deja como acción pendiente explícita para la sesión principal. Los
 demás ítems ⚠️ son de bajo impacto y quedan documentados para referencia futura.
 
+
+## Auditoría: Menu — Salsas "Sin límite" (`sauceGroupMaxSelectable: number | null`), working tree sin commitear
+
+Auditor: @tester (independiente). Fecha: 2026-09-29. Alcance: `src/types/api.d.ts`,
+`src/features/menu/types.ts`, `src/features/menu/items/ItemForm.tsx`,
+`src/features/menu/items/ItemForm.test.tsx`. Backend: `backend-celtas` commit `03699d7`.
+
+Checklist:
+- [x] `pnpm run type-check` sin errores.
+- [x] `pnpm run lint`: 0 errores (1 warning preexistente ajeno en `StarPromotionForm.tsx`).
+- [x] `pnpm run build` sin errores.
+- [x] Suite completa en verde: 301 passed + 1 expected fail (`it.fails` que documenta el bug menor
+      de abajo). Nota: en la primera corrida completa el primer test de `ItemForm.test.tsx` dio
+      timeout de 5000ms (flaky por carga en paralelo); pasó en las dos corridas siguientes.
+- [x] Contrato confirmado contra código real (`create-menu-item.dto.ts` `@IsOptional @IsInt @Min(1)`
+      `number | null`; entidad `int nullable default null`; `UpdateMenuItemDto` con
+      `skipNullProperties: false`; `updateItem` usa `merge`) y contra Swagger de producción
+      (`/docs-json` ya expone `"nullable": true`).
+- [x] `api.d.ts` regenerado: `sauceGroupMaxSelectable?: number | null` en Create/Update DTO.
+- [x] Ningún otro consumidor de `sauceGroupMaxSelectable` en `src/` (solo `ItemForm.tsx`, tipos y tests).
+- [x] `sauceLimitless` nunca viaja en el payload de create ni de update (tests + mutación).
+- [x] Payload de update solo con claves del whitelist de `UpdateMenuItemDto` (+ `id`, que separa
+      `useUpdateItem` y va en el path).
+- [x] Producto nuevo arranca con "Sin límite" marcado y envía `null` al crear.
+- [x] RHF 7.84 + input con atributo `disabled`: marcar y desmarcar conserva el valor (el original y
+      uno editado antes de marcar).
+- [x] Un valor inválido en el input deshabilitado no bloquea guardar con "Sin límite".
+- [x] Bebidas/extras sin checkbox "Sin límite".
+- [x] Mutaciones (temporales, restauradas con `cmp` OK): payload con `sauceLimitless` -> 5 tests
+      fallan; default `false` -> 5 fallan; sin `disabled` -> 3 fallan; superRefine siempre -> 2 fallan.
+- [ ] (menor, no bloqueante) Tras un submit fallido por input vacío, marcar "Sin límite" NO limpia el
+      error "Indica un máximo o marca "Sin límite"" (queda junto al input deshabilitado hasta el
+      próximo submit, que sí funciona y envía `null`). Cubierto por un `it.fails` en
+      `ItemForm.test.tsx`.

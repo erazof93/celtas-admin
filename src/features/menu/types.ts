@@ -52,8 +52,8 @@ export interface MenuItem {
   sauces: Sauce[]
   /** Si el grupo de salsas es obligatorio. Sin efecto si `sauces` está vacío. */
   sauceGroupRequired: boolean
-  /** Máximo de salsas que el cliente puede elegir para este producto. */
-  sauceGroupMaxSelectable: number
+  /** Máximo de salsas que el cliente puede elegir. `null` = sin límite. */
+  sauceGroupMaxSelectable: number | null
   /**
    * Bebidas que este producto ofrece (relación ManyToMany, cargada por GET
    * /menu/items). Vacío = sin selector de bebidas en la app. Mismo criterio
@@ -172,8 +172,11 @@ export interface CreateMenuItemInput {
   sauceIds?: string[]
   /** Si el grupo de salsas es obligatorio (default false). Sin efecto si sauceIds queda vacío. */
   sauceGroupRequired?: boolean
-  /** Máximo de salsas que el cliente puede elegir para este producto (default 1). */
-  sauceGroupMaxSelectable?: number
+  /**
+   * Máximo de salsas que el cliente puede elegir. `null` u omitido al crear =
+   * sin límite (default del backend); en PATCH, `null` quita el límite.
+   */
+  sauceGroupMaxSelectable?: number | null
   specialReward?: boolean
   /**
    * UUIDs de las bebidas del catálogo que este producto ofrece. Omitido o

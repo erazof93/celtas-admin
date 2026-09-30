@@ -1346,10 +1346,10 @@ export interface components {
              */
             sauceGroupRequired?: boolean;
             /**
-             * @description Máximo de salsas que el cliente puede elegir para este producto (default 1)
+             * @description Máximo de salsas que el cliente puede elegir para este producto. null u omitido al crear = sin límite (default). En PATCH, null quita el límite.
              * @example 1
              */
-            sauceGroupMaxSelectable?: number;
+            sauceGroupMaxSelectable?: number | null;
             /**
              * @description UUIDs de las bebidas del catálogo que este producto ofrece (vacío u omitido = sin selector de bebidas)
              * @example [
@@ -1454,10 +1454,10 @@ export interface components {
              */
             sauceGroupRequired?: boolean;
             /**
-             * @description Máximo de salsas que el cliente puede elegir para este producto (default 1)
+             * @description Máximo de salsas que el cliente puede elegir para este producto. null u omitido al crear = sin límite (default). En PATCH, null quita el límite.
              * @example 1
              */
-            sauceGroupMaxSelectable?: number;
+            sauceGroupMaxSelectable?: number | null;
             /**
              * @description UUIDs de las bebidas del catálogo que este producto ofrece (vacío u omitido = sin selector de bebidas)
              * @example [

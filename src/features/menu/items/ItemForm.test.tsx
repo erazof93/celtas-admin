@@ -798,3 +798,330 @@ describe('ItemForm - checklist "Sin X"', () => {
     expect(payload.extraPortionsAllowWithout).toBe(true)
   })
 })
+
+/**
+ * "Sin límite" de salsas: el backend (commit 03699d7 de backend-celtas) hizo
+ * sauceGroupMaxSelectable nullable — null = sin límite, default al crear, y en
+ * PATCH null quita el límite. Bebidas/extras siguen siendo NOT NULL (sin
+ * checkbox). `sauceLimitless` es solo del form: nunca viaja en el payload.
+ */
+describe('ItemForm - salsas "Sin límite"', () => {
+  const sauces = [makeSauce({ id: 's-mayo', name: 'Mayonesa' })]
+  const limitlessLabel = 'Sin límite (clientes pueden elegir todas)'
+
+  beforeEach(() => {
+    saucesState.data = sauces
+    updateMock.mockResolvedValue(makeItem())
+  })
+
+  async function submitAndGetPayload(user: ReturnType<typeof userEvent.setup>) {
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+    await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
+    return updateMock.mock.calls[0][0] as Record<string, unknown>
+  }
+
+  it('con "Sin límite" desmarcado, el payload manda el número', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        item={makeItem({ sauces, sauceGroupMaxSelectable: 2 })}
+        onClose={() => {}}
+      />,
+    )
+
+    expect(screen.getByLabelText(limitlessLabel)).not.toBeChecked()
+    const payload = await submitAndGetPayload(user)
+    expect(payload.sauceGroupMaxSelectable).toBe(2)
+    expect(payload).not.toHaveProperty('sauceLimitless')
+  })
+
+  it('al marcar "Sin límite", el payload manda null', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        item={makeItem({ sauces, sauceGroupMaxSelectable: 2 })}
+        onClose={() => {}}
+      />,
+    )
+
+    await user.click(screen.getByLabelText(limitlessLabel))
+    const payload = await submitAndGetPayload(user)
+    expect(payload.sauceGroupMaxSelectable).toBeNull()
+    expect(payload).not.toHaveProperty('sauceLimitless')
+  })
+
+  it('editar un producto con null → checkbox marcado, input deshabilitado y se conserva null', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        item={makeItem({ sauces, sauceGroupMaxSelectable: null })}
+        onClose={() => {}}
+      />,
+    )
+
+    expect(screen.getByLabelText(limitlessLabel)).toBeChecked()
+    expect(screen.getByLabelText('Máximo a elegir')).toBeDisabled()
+    const payload = await submitAndGetPayload(user)
+    expect(payload.sauceGroupMaxSelectable).toBeNull()
+  })
+
+  it('editar un producto con número → checkbox desmarcado e input habilitado', () => {
+    render(
+      <ItemForm
+        item={makeItem({ sauces, sauceGroupMaxSelectable: 3 })}
+        onClose={() => {}}
+      />,
+    )
+
+    expect(screen.getByLabelText(limitlessLabel)).not.toBeChecked()
+    expect(screen.getByLabelText('Máximo a elegir')).toBeEnabled()
+    expect(screen.getByLabelText('Máximo a elegir')).toHaveValue(3)
+  })
+
+  it('alternar el checkbox deshabilita/habilita el input', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        item={makeItem({ sauces, sauceGroupMaxSelectable: 3 })}
+        onClose={() => {}}
+      />,
+    )
+
+    const input = screen.getByLabelText('Máximo a elegir')
+    await user.click(screen.getByLabelText(limitlessLabel))
+    expect(input).toBeDisabled()
+    await user.click(screen.getByLabelText(limitlessLabel))
+    expect(input).toBeEnabled()
+  })
+
+  it('pasar de null a número: desmarcar, escribir 4 → payload 4', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        item={makeItem({ sauces, sauceGroupMaxSelectable: null })}
+        onClose={() => {}}
+      />,
+    )
+
+    await user.click(screen.getByLabelText(limitlessLabel))
+    const input = screen.getByLabelText('Máximo a elegir')
+    expect(input).toHaveValue(1)
+    await user.clear(input)
+    await user.type(input, '4')
+    const payload = await submitAndGetPayload(user)
+    expect(payload.sauceGroupMaxSelectable).toBe(4)
+  })
+
+  it('un valor inválido en el input deshabilitado no bloquea guardar con "Sin límite"', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        item={makeItem({ sauces, sauceGroupMaxSelectable: 2 })}
+        onClose={() => {}}
+      />,
+    )
+
+    await user.clear(screen.getByLabelText('Máximo a elegir'))
+    await user.type(screen.getByLabelText('Máximo a elegir'), '0')
+    await user.click(screen.getByLabelText(limitlessLabel))
+    const payload = await submitAndGetPayload(user)
+    expect(payload.sauceGroupMaxSelectable).toBeNull()
+  })
+
+  it('sin "Sin límite" y con el input vacío, muestra error y no envía', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        item={makeItem({ sauces, sauceGroupMaxSelectable: 2 })}
+        onClose={() => {}}
+      />,
+    )
+
+    await user.clear(screen.getByLabelText('Máximo a elegir'))
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+    expect(
+      await screen.findByText('Indica un máximo o marca "Sin límite"'),
+    ).toBeInTheDocument()
+    expect(updateMock).not.toHaveBeenCalled()
+  })
+
+  it('un producto nuevo arranca con "Sin límite" marcado (default null del backend)', () => {
+    render(<ItemForm onClose={() => {}} />)
+
+    expect(screen.getByLabelText(limitlessLabel)).toBeChecked()
+    expect(screen.getByLabelText('Máximo a elegir')).toBeDisabled()
+  })
+
+  it('bebidas y extras no tienen checkbox "Sin límite"', () => {
+    beveragesState.data = [makeBeverage()]
+    extraPortionsState.data = [makeExtraPortion()]
+    render(
+      <ItemForm
+        item={makeItem({ sauces, sauceGroupMaxSelectable: 2 })}
+        onClose={() => {}}
+      />,
+    )
+
+    expect(screen.getAllByLabelText(/Sin límite/)).toHaveLength(1)
+  })
+
+  // --- Añadidos por QA (auditoría "Sin límite") ---
+
+  it('QA: marcar y desmarcar "Sin límite" conserva el valor previo del input (RHF + disabled)', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        item={makeItem({ sauces, sauceGroupMaxSelectable: 3 })}
+        onClose={() => {}}
+      />,
+    )
+
+    await user.click(screen.getByLabelText(limitlessLabel))
+    await user.click(screen.getByLabelText(limitlessLabel))
+    expect(screen.getByLabelText('Máximo a elegir')).toHaveValue(3)
+    const payload = await submitAndGetPayload(user)
+    expect(payload.sauceGroupMaxSelectable).toBe(3)
+  })
+
+  it('QA: editar el input, marcar y desmarcar "Sin límite" conserva el valor editado', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        item={makeItem({ sauces, sauceGroupMaxSelectable: 3 })}
+        onClose={() => {}}
+      />,
+    )
+
+    const input = screen.getByLabelText('Máximo a elegir')
+    await user.clear(input)
+    await user.type(input, '5')
+    await user.click(screen.getByLabelText(limitlessLabel))
+    await user.click(screen.getByLabelText(limitlessLabel))
+    expect(input).toHaveValue(5)
+    const payload = await submitAndGetPayload(user)
+    expect(payload.sauceGroupMaxSelectable).toBe(5)
+  })
+
+  it('QA: crear producto nuevo sin tocar "Sin límite" envía sauceGroupMaxSelectable=null y nunca sauceLimitless', async () => {
+    const user = userEvent.setup()
+    createMock.mockResolvedValue(makeItem())
+    render(<ItemForm onClose={() => {}} />)
+
+    await user.type(screen.getByLabelText('Nombre'), 'Celtas Burger Clasica')
+    await user.type(screen.getByLabelText('Precio (S/)'), '24.90')
+    await user.click(screen.getByLabelText('Categoría'))
+    await user.click(await screen.findByRole('option', { name: 'Burgers' }))
+    await user.click(screen.getByRole('button', { name: 'Crear producto' }))
+
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1))
+    const payload = createMock.mock.calls[0][0] as Record<string, unknown>
+    expect(payload).toHaveProperty('sauceGroupMaxSelectable', null)
+    expect(payload).not.toHaveProperty('sauceLimitless')
+    expect(payload).not.toHaveProperty('id')
+  })
+
+  it('QA: crear producto nuevo desmarcando "Sin límite" y escribiendo 2 envía 2', async () => {
+    const user = userEvent.setup()
+    createMock.mockResolvedValue(makeItem())
+    render(<ItemForm onClose={() => {}} />)
+
+    await user.type(screen.getByLabelText('Nombre'), 'Celtas Burger Clasica')
+    await user.type(screen.getByLabelText('Precio (S/)'), '24.90')
+    await user.click(screen.getByLabelText('Categoría'))
+    await user.click(await screen.findByRole('option', { name: 'Burgers' }))
+    await user.click(screen.getByLabelText(limitlessLabel))
+    const input = screen.getByLabelText('Máximo a elegir')
+    await user.clear(input)
+    await user.type(input, '2')
+    await user.click(screen.getByRole('button', { name: 'Crear producto' }))
+
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1))
+    const payload = createMock.mock.calls[0][0] as Record<string, unknown>
+    expect(payload.sauceGroupMaxSelectable).toBe(2)
+    expect(payload).not.toHaveProperty('sauceLimitless')
+  })
+
+  it('QA: el payload de update solo contiene claves del whitelist de UpdateMenuItemDto (+ id que separa el hook)', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        item={makeItem({ sauces, sauceGroupMaxSelectable: null })}
+        onClose={() => {}}
+      />,
+    )
+    const payload = await submitAndGetPayload(user)
+    const allowed = new Set([
+      'id',
+      'name',
+      'description',
+      'price',
+      'categoryId',
+      'available',
+      'redeemableWithStars',
+      'specialReward',
+      'sauceIds',
+      'sauceGroupRequired',
+      'sauceGroupMaxSelectable',
+      'beverageIds',
+      'beverageGroupRequired',
+      'beverageGroupMaxSelectable',
+      'extraPortionIds',
+      'extraPortionsGroupRequired',
+      'extraPortionsGroupMaxSelectable',
+      'sauceAllowWithout',
+      'beverageAllowWithout',
+      'extraPortionsAllowWithout',
+    ])
+    expect(Object.keys(payload).filter((k) => !allowed.has(k))).toEqual([])
+  })
+
+  it('QA: tras un error de validación, marcar "Sin límite" y guardar envía null', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        item={makeItem({ sauces, sauceGroupMaxSelectable: 2 })}
+        onClose={() => {}}
+      />,
+    )
+
+    await user.clear(screen.getByLabelText('Máximo a elegir'))
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+    expect(
+      await screen.findByText('Indica un máximo o marca "Sin límite"'),
+    ).toBeInTheDocument()
+    expect(updateMock).not.toHaveBeenCalled()
+    await user.click(screen.getByLabelText(limitlessLabel))
+    const payload = await submitAndGetPayload(user)
+    expect(payload.sauceGroupMaxSelectable).toBeNull()
+    expect(
+      screen.queryByText('Indica un máximo o marca "Sin límite"'),
+    ).not.toBeInTheDocument()
+  })
+
+  // BUG conocido (reportado por QA, no bloqueante): con reValidateMode
+  // 'onChange' + resolver, cambiar `sauceLimitless` solo re-evalúa el error de
+  // ESE campo, así que el error viejo de sauceGroupMaxSelectable queda visible
+  // junto al input deshabilitado hasta el próximo submit. Corregido con
+  // clearErrors en el onCheckedChange del checkbox.
+  it('QA: tras un error de validación, marcar "Sin límite" limpia el error del input', async () => {
+    const user = userEvent.setup()
+    render(
+      <ItemForm
+        item={makeItem({ sauces, sauceGroupMaxSelectable: 2 })}
+        onClose={() => {}}
+      />,
+    )
+
+    await user.clear(screen.getByLabelText('Máximo a elegir'))
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+    expect(
+      await screen.findByText('Indica un máximo o marca "Sin límite"'),
+    ).toBeInTheDocument()
+    await user.click(screen.getByLabelText(limitlessLabel))
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Indica un máximo o marca "Sin límite"'),
+      ).not.toBeInTheDocument(),
+    )
+  })
+})

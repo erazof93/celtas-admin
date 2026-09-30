@@ -38,7 +38,9 @@ import type { MenuItem } from '../types'
  * (undefined/[] = sin selector en la app, ej. arroz chaufa) — acá se
  * normalizan siempre a array, nunca undefined, para no tener que distinguir
  * "no tocado" de "vacío" en un formulario de UI. Los *GroupMaxSelectable son
- * enteros >= 1 (default 1) y *GroupRequired son booleanos (default false) —
+ * enteros >= 1 (default 1), salvo sauceGroupMaxSelectable que además acepta
+ * null = sin límite (checkbox sauceLimitless, solo del form, no viaja al
+ * backend). *GroupRequired son booleanos (default false) —
  * ambos sin efecto si el catálogo elegido queda vacío (confirmado contra
  * create-menu-item.dto.ts del backend).
  */
@@ -54,10 +56,13 @@ const itemSchema = z.object({
   available: z.boolean(),
   sauceIds: z.array(z.string()).default([]),
   sauceGroupRequired: z.boolean(),
-  sauceGroupMaxSelectable: z.coerce
-    .number()
-    .int('Debe ser un número entero')
-    .min(1, 'Debe ser al menos 1'),
+  // Se valida en el superRefine de abajo: solo aplica si sauceLimitless=false
+  // (con el input deshabilitado, un valor viejo inválido no debe bloquear).
+  sauceGroupMaxSelectable: z.preprocess(
+    (v) => (v === '' || v == null ? undefined : Number(v)),
+    z.number().optional(),
+  ),
+  sauceLimitless: z.boolean().default(false),
   beverageIds: z.array(z.string()).default([]),
   beverageGroupRequired: z.boolean(),
   beverageGroupMaxSelectable: z.coerce
@@ -73,6 +78,21 @@ const itemSchema = z.object({
   sauceAllowWithout: z.boolean().default(true),
   beverageAllowWithout: z.boolean().default(true),
   extraPortionsAllowWithout: z.boolean().default(true),
+}).superRefine((values, ctx) => {
+  if (values.sauceLimitless) return
+  const max = values.sauceGroupMaxSelectable
+  const path = ['sauceGroupMaxSelectable']
+  if (max === undefined || Number.isNaN(max)) {
+    ctx.addIssue({
+      code: 'custom',
+      path,
+      message: 'Indica un máximo o marca "Sin límite"',
+    })
+  } else if (!Number.isInteger(max)) {
+    ctx.addIssue({ code: 'custom', path, message: 'Debe ser un número entero' })
+  } else if (max < 1) {
+    ctx.addIssue({ code: 'custom', path, message: 'Debe ser al menos 1' })
+  }
 })
 
 type ItemFormValues = z.output<typeof itemSchema>
@@ -119,6 +139,7 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
     control,
     setValue,
     setError,
+    clearErrors,
     formState: { errors, isSubmitting },
   } = useForm<ItemFormInputValues, unknown, ItemFormValues>({
     resolver: zodResolver(itemSchema),
@@ -131,6 +152,9 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
       sauceIds: item?.sauces.map((sauce) => sauce.id) ?? [],
       sauceGroupRequired: item?.sauceGroupRequired ?? false,
       sauceGroupMaxSelectable: item?.sauceGroupMaxSelectable ?? 1,
+      // null = sin límite (default del backend al crear, por eso un producto
+      // nuevo arranca con el checkbox marcado).
+      sauceLimitless: item?.sauceGroupMaxSelectable == null,
       beverageIds: item?.beverages.map((beverage) => beverage.id) ?? [],
       beverageGroupRequired: item?.beverageGroupRequired ?? false,
       beverageGroupMaxSelectable: item?.beverageGroupMaxSelectable ?? 1,
@@ -148,6 +172,7 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
   const sauceIds = useWatch({ control, name: 'sauceIds' })
   const beverageIds = useWatch({ control, name: 'beverageIds' })
   const extraPortionIds = useWatch({ control, name: 'extraPortionIds' })
+  const sauceLimitless = useWatch({ control, name: 'sauceLimitless' })
 
   function buildPayload(values: ItemFormValues) {
     return {
@@ -160,7 +185,9 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
       available: values.available,
       sauceIds: values.sauceIds,
       sauceGroupRequired: values.sauceGroupRequired,
-      sauceGroupMaxSelectable: values.sauceGroupMaxSelectable,
+      sauceGroupMaxSelectable: values.sauceLimitless
+        ? null
+        : values.sauceGroupMaxSelectable,
       beverageIds: values.beverageIds,
       beverageGroupRequired: values.beverageGroupRequired,
       beverageGroupMaxSelectable: values.beverageGroupMaxSelectable,
@@ -415,6 +442,7 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
                       type="number"
                       inputMode="numeric"
                       min={1}
+                      disabled={sauceLimitless}
                       aria-invalid={Boolean(errors.sauceGroupMaxSelectable)}
                       {...register('sauceGroupMaxSelectable')}
                     />
@@ -423,6 +451,29 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
                         {errors.sauceGroupMaxSelectable.message}
                       </p>
                     ) : null}
+                    <div className="mt-2 flex items-center gap-2">
+                      <Controller
+                        control={control}
+                        name="sauceLimitless"
+                        render={({ field }) => (
+                          <Checkbox
+                            id="sauce-limitless"
+                            checked={field.value}
+                            onCheckedChange={(isChecked) => {
+                              field.onChange(isChecked === true)
+                              // reValidate solo toca el campo que cambió: el
+                              // error del input (ya deshabilitado) se limpia acá.
+                              if (isChecked === true) {
+                                clearErrors('sauceGroupMaxSelectable')
+                              }
+                            }}
+                          />
+                        )}
+                      />
+                      <Label htmlFor="sauce-limitless" className="text-sm">
+                        Sin límite (clientes pueden elegir todas)
+                      </Label>
+                    </div>
                   </div>
 
                   <div className="space-y-1.5">
