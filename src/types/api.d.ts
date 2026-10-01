@@ -1327,6 +1327,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/reports/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Resumen por canal y por período (solo admin)
+         * @description Base: pedidos ENTREGADOS en el rango (por deliveredAt, días completos en America/Lima). Canal app = POST /orders; phone = cargado desde el panel (POST /orders/admin). Cliente = userId, o el cliente registrado con el mismo celular si el pedido fue anónimo. `data` trae un elemento por período del rango (incluye los vacíos); `period` es el inicio del período: el día, el lunes (week) o el día 1 (month).
+         */
+        get: operations["ReportsController_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/reports/comparison": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Comparación entre dos períodos (solo admin)
+         * @description Base: pedidos ENTREGADOS en el rango (por deliveredAt, días completos en America/Lima). Canal app = POST /orders; phone = cargado desde el panel (POST /orders/admin). Cliente = userId, o el cliente registrado con el mismo celular si el pedido fue anónimo. Los cambios son porcentajes con 1 decimal y signo ("+11.6%"); null si el período anterior es 0.
+         */
+        get: operations["ReportsController_comparison"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/reports/top-products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Productos más vendidos con desglose por canal (solo admin)
+         * @description Base: pedidos ENTREGADOS en el rango (por deliveredAt, días completos en America/Lima). Canal app = POST /orders; phone = cargado desde el panel (POST /orders/admin). Cliente = userId, o el cliente registrado con el mismo celular si el pedido fue anónimo. Revenue de producto = unitPrice × quantity (sin delivery ni extras), nombre del snapshot del pedido. Porcentajes sobre el total del canal pedido. Orden: quantity y luego revenue, descendente; empates por nombre.
+         */
+        get: operations["ReportsController_topProducts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/reports/conversion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Conversión de clientes de teléfono a la app (solo admin)
+         * @description Base: pedidos ENTREGADOS en el rango (por deliveredAt, días completos en America/Lima). Canal app = POST /orders; phone = cargado desde el panel (POST /orders/admin). Cliente = userId, o el cliente registrado con el mismo celular si el pedido fue anónimo. Convertido = cliente con pedido por teléfono entregado en el rango que después de su primer pedido por teléfono del rango hizo un pedido por app entregado (hasta hoy). Un anónimo solo se convierte si su celular coincide con el de un cliente registrado.
+         */
+        get: operations["ReportsController_conversion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/reports/daily-metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Métricas día por día (solo admin)
+         * @description Base: pedidos ENTREGADOS en el rango (por deliveredAt, días completos en America/Lima). Canal app = POST /orders; phone = cargado desde el panel (POST /orders/admin). Cliente = userId, o el cliente registrado con el mismo celular si el pedido fue anónimo. Un elemento por día del rango (incluye los vacíos). Con includeStatus=true agrega deliveredOrders/pendingOrders/cancelledOrders: pedidos CREADOS ese día según su estado actual (pending = pendiente, confirmado o en_camino).
+         */
+        get: operations["ReportsController_dailyMetrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -6264,6 +6364,234 @@ export interface operations {
                 content?: never;
             };
             /** @description days fuera de rango (1-90) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ReportsController_summary: {
+        parameters: {
+            query: {
+                /** @description Fecha inicial (YYYY-MM-DD, America/Lima). */
+                startDate: string;
+                /** @description Fecha final (YYYY-MM-DD, America/Lima). Máximo 366 días desde startDate. */
+                endDate: string;
+                /** @description Agrupación de `data`: day, week (desde el lunes) o month (desde el día 1). */
+                groupBy?: "day" | "week" | "month";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description { period: { start, end }, summary: { totalRevenue, totalOrders, totalCustomers, averageTicket }, byChannel: { app, phone }, data: [...] } */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Fechas inválidas, rango invertido o > 366 días, groupBy inválido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ReportsController_comparison: {
+        parameters: {
+            query: {
+                /** @description Período actual: YYYY-MM-DD:YYYY-MM-DD (America/Lima). */
+                current: string;
+                /** @description Período de comparación: YYYY-MM-DD:YYYY-MM-DD (America/Lima). */
+                previous: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description { current: { period, revenue, orders, averageTicket }, previous: {...}, comparison: { revenueChange, ordersChange, ticketChange }, byChannel: { app, phone } } */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description current/previous con formato distinto de YYYY-MM-DD:YYYY-MM-DD, fechas inválidas, invertidas o > 366 días */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ReportsController_topProducts: {
+        parameters: {
+            query: {
+                /** @description Fecha inicial (YYYY-MM-DD, America/Lima). */
+                startDate: string;
+                /** @description Fecha final (YYYY-MM-DD, America/Lima). Máximo 366 días desde startDate. */
+                endDate: string;
+                /** @description Cantidad máxima de productos (1-50). */
+                limit?: number;
+                /** @description Canal: all, app (POST /orders) o phone (cargados desde el panel). */
+                channel?: "all" | "app" | "phone";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description [{ id, name, quantity, revenue, revenuePercentage, quantityPercentage, averagePrice, byChannel: { app, phone } }] */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Fechas inválidas, limit fuera de 1-50 o channel inválido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ReportsController_conversion: {
+        parameters: {
+            query: {
+                /** @description Fecha inicial (YYYY-MM-DD, America/Lima). */
+                startDate: string;
+                /** @description Fecha final (YYYY-MM-DD, America/Lima). Máximo 366 días desde startDate. */
+                endDate: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description { period, phoneOrders, phoneCustomers, convertedToApp, conversionRate, timeline: [{ phoneOrderDate, appOrderDate, daysDiff }] } */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Fechas inválidas */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    ReportsController_dailyMetrics: {
+        parameters: {
+            query: {
+                /** @description Fecha inicial (YYYY-MM-DD, America/Lima). */
+                startDate: string;
+                /** @description Fecha final (YYYY-MM-DD, America/Lima). Máximo 366 días desde startDate. */
+                endDate: string;
+                /** @description Agrega deliveredOrders/pendingOrders/cancelledOrders: pedidos CREADOS ese día según su estado actual. */
+                includeStatus?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description { days: [{ date, revenue, revenueApp, revenuePhone, orders, ordersApp, ordersPhone, customers, averageTicket, (deliveredOrders, pendingOrders, cancelledOrders) }] } */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Fechas inválidas o includeStatus distinto de true/false */
             400: {
                 headers: {
                     [name: string]: unknown;

@@ -945,6 +945,19 @@ celtas-admin/
       se muestra todavía en la tabla "Historial de campañas" de `MarketingPage.tsx` (fuera de
       alcance a propósito en esta ronda).
 
+### 12. Reportes (app vs teléfono)
+- [x] Página `/reports` (sidebar "Reportes", ícono `BarChart3`) en `src/features/reports/`:
+      filtros (rango en Lima como YYYY-MM-DD, canal, groupBy), KPIs con desglose por canal y
+      cambio vs período anterior, ingresos/pedidos por período, top 10 productos apilado por
+      canal, conversión teléfono → app con tendencia en pp, tabla detallada por período.
+- [x] Contrato confirmado contra el código real de `backend-celtas` @ `a669513`
+      (`reports.service.ts`, `dto/report-query.dto.ts`), no contra Swagger (sin schemas de
+      respuesta). `comparison` usa `current`/`previous` `A:B`; `channel` solo en top-products.
+- [x] Auditado por `tester`: LISTO a nivel código (24 tests, mutaciones detectadas). Detalle en
+      `docs/testing-checklist.md` → "Auditoría: Reportes app vs teléfono".
+- [ ] **Bloqueado**: `/admin/reports/*` responde 404 en producción (backend no desplegado al
+      2026-10-01). Tras el deploy: `pnpm run generate:types` y prueba en navegador con token admin.
+
 ---
 
 ## Cómo trabajar con OpenCode

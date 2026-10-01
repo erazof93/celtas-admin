@@ -13,6 +13,7 @@ import { LoadingState } from '@/components/ui/LoadingState'
  */
 const LoginPage = lazy(() => import('@/features/auth/LoginPage'))
 const DashboardPage = lazy(() => import('@/features/dashboard/DashboardPage'))
+const ReportsPage = lazy(() => import('@/features/reports/ReportsPage'))
 const MenuPage = lazy(() => import('@/features/menu/MenuPage'))
 const OrdersPage = lazy(() => import('@/features/orders/OrdersPage'))
 const CreateManualOrderPage = lazy(
@@ -59,6 +60,14 @@ export const router = createBrowserRouter([
         element: (
           <Suspense fallback={<PageFallback />}>
             <DashboardPage />
+          </Suspense>
+        ),
+      },
+      {
+        path: 'reports',
+        element: (
+          <Suspense fallback={<PageFallback />}>
+            <ReportsPage />
           </Suspense>
         ),
       },

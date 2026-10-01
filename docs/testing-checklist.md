@@ -2645,3 +2645,41 @@ nada). `LinkAnonymousOrdersResult` coincide campo a campo.
 - [ ] (menor) El test "el mensaje se va a los 2s" espera 2 s reales (~2.1 s de 5 s de timeout) en vez
       de usar fake timers: más expuesto a la flakiness por CPU de la suite en paralelo.
 - [ ] Sin verificar en navegador real contra el backend desplegado.
+
+## Auditoría: Reportes app vs teléfono (`GET /admin/reports/{summary,comparison,top-products,conversion}`), working tree sin commitear
+
+Contrato confirmado contra el código real de `backend-celtas` @ `a669513` (= `origin/master`), NO contra
+Swagger: los endpoints no están en `/docs-json` de producción y `curl` sin token a
+`/admin/reports/*` devuelve **404** (control `/admin/dashboard/summary` → 401), o sea que el módulo
+**todavía no está desplegado**. `types/reports.ts` coincide campo a campo con las interfaces de
+`reports.service.ts` (`ReportSummary`, `SummaryRow`, `ChannelMetrics`, `ReportComparison`,
+`ReportTopProduct` con `id: string | null`, `ReportConversion` con `conversionRate: string`) y los
+query params con `dto/report-query.dto.ts` (`groupBy` solo en summary; `limit`/`channel` solo en
+top-products; conversion = `ReportRangeQueryDto`; comparison = `current`/`previous` como
+`YYYY-MM-DD:YYYY-MM-DD`). Tipos a mano justificados: no hay schemas en `api.d.ts`.
+
+- [x] type-check 0 errores; lint 0 errores (1 warning previo en `StarPromotionForm.tsx`); build OK
+      (chunk `ReportsPage` 36 kB / gzip 10.4 kB, lazy).
+- [x] Suite completa: 59 archivos / 535 tests; reports: 2 archivos / 22 tests.
+- [x] Sin `any`, sin casts salvo `as ReportChannel`/`as ReportGroupBy` en `onValueChange` de Selects
+      con valores fijos. Sin URL hardcodeada (todo vía `get` de `@/lib/api-client`).
+- [x] Fechas en Lima: `todayInLima` con `date-fns-tz`; inputs `type="date"` emiten YYYY-MM-DD;
+      `addDays`/`spanInDays` operan en UTC medianoche (el único `toISOString` es sobre una fecha
+      UTC pura, correcto). `rangeError` = reglas de `rangeProblem` del backend (inicio<=fin, 366
+      inclusive); rango inválido no se propaga al backend (borrador local + `role=alert`).
+- [x] `channel` solo viaja a top-products; summary/conversion/comparison sin `channel`
+      (evita 400 por `forbidNonWhitelisted`).
+- [x] Estados por sección: KPIs/resumen (loading/error+reintentar), conversión (loading/error/vacío
+      "Sin pedidos por teléfono"), top productos (loading/error/vacío), gráfico por período (vacío).
+      Un reporte que falla no tumba al resto (test).
+- [x] Mutaciones (backup + restore, verificado con `git status`/re-run), todas MATADAS:
+      `handleDate('endDate')`→`'startDate'` en "Hasta"; comparison con `startDate/endDate`;
+      `todayInLima` con `toISOString`; tope 367 días; `channel` en conversion; `channel` en summary;
+      sin chequeo inicio<=fin.
+- [ ] (bloqueante de release, no de código) backend de producción sin `/admin/reports/*` (404):
+      desplegar el backend antes que este frontend, o la página mostrará 4 errores.
+- [ ] (menor) Error de `comparison` silencioso: los KPIs solo pierden el hint "vs período anterior".
+- [ ] (menor) Mientras carga la conversión del período anterior se lee "Sin datos del período
+      anterior para comparar" (mismo texto que el caso sin base real).
+- [ ] (menor) Mensaje de error genérico ("Revisa tu conexión") también para 400/404/403.
+- [ ] Sin verificar en navegador real contra el backend desplegado (imposible hasta el deploy).

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import {
   Axe,
+  BarChart3,
   Image as ImageIcon,
   LayoutDashboard,
   LogOut,
@@ -23,6 +24,7 @@ import { logout } from '@/features/auth/hooks'
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/reports', label: 'Reportes', icon: BarChart3 },
   { to: '/menu', label: 'Menú', icon: Utensils },
   { to: '/orders', label: 'Pedidos', icon: ShoppingBag },
   { to: '/coupons', label: 'Cupones', icon: TicketPercent },
