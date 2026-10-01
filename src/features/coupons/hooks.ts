@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { get, post } from '@/lib/api-client'
+import { get, post, put } from '@/lib/api-client'
 import type {
+  AutoCouponConfig,
   BulkCouponResult,
   Coupon,
   CouponStatus,
@@ -67,5 +68,28 @@ export function useGenerateBulkCoupons() {
       post<BulkCouponResult>('/coupons/generate-bulk', input),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: COUPONS_LIST_KEY }),
+  })
+}
+
+const AUTO_CONFIG_KEY = ['coupons', 'auto-config'] as const
+
+/** GET /coupons/auto-config (admin): configuración actual de cupones automáticos. */
+export function useAutoCouponConfig() {
+  return useQuery({
+    queryKey: AUTO_CONFIG_KEY,
+    queryFn: () => get<AutoCouponConfig>('/coupons/auto-config'),
+  })
+}
+
+/**
+ * PUT /coupons/auto-config: reemplaza los 4 valores (recurso único, sin id).
+ * Devuelve la config resultante, que se escribe directo en la caché.
+ */
+export function useUpdateAutoCouponConfig() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: AutoCouponConfig) =>
+      put<AutoCouponConfig>('/coupons/auto-config', input),
+    onSuccess: (data) => queryClient.setQueryData(AUTO_CONFIG_KEY, data),
   })
 }

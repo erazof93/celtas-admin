@@ -272,8 +272,9 @@ export function GenerateCouponForm({
       </div>
 
       <p className="text-muted-foreground text-xs">
-        La expiración la define el backend al generar (hoy + 15 días por
-        defecto) — no se envía en el payload.
+        La expiración la define el backend al generar (hoy + los días de
+        vigencia de Configuración → Cupones automáticos) — no se envía en el
+        payload.
       </p>
 
       <div className="flex justify-end gap-2 pt-2">

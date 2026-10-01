@@ -165,6 +165,16 @@ export async function patch<T>(
   return data
 }
 
+/** Helper tipado para PUT que devuelve el payload desenvuelto. */
+export async function put<T>(
+  url: string,
+  body?: unknown,
+  config?: AxiosRequestConfig,
+): Promise<T> {
+  const { data } = await api.put<T>(url, body, config)
+  return data
+}
+
 /** Helper tipado para DELETE que devuelve el payload desenvuelto. */
 export async function del<T>(
   url: string,

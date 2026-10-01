@@ -71,3 +71,42 @@ export function getEffectiveStatus(
   }
   return status
 }
+const AUTO_CONFIG_FIELDS = [
+  'discountType',
+  'discountValue',
+  'thresholdAmount',
+  'expirationDays',
+] as const
+
+export type AutoCouponConfigField = (typeof AUTO_CONFIG_FIELDS)[number]
+
+/**
+ * Asigna cada mensaje 400 de PUT /coupons/auto-config a su campo. El
+ * HttpExceptionFilter del backend une los errores de class-validator en UN
+ * string con ", " (http-exception.filter.ts), así que se separa por ese
+ * delimitador — ningún mensaje de UpdateAutoCouponConfigDto lo contiene. Los
+ * mensajes de UpdateAutoCouponConfigDto empiezan con el nombre del campo
+ * ("expirationDays no puede superar 365"), salvo el de IsPercentageWithinLimit
+ * ("El porcentaje de descuento…"), que corresponde a discountValue. Lo que no
+ * se identifica queda en `unmapped` para mostrarse como alerta general.
+ */
+export function mapAutoConfigErrors(message: string): {
+  fields: Partial<Record<AutoCouponConfigField, string>>
+  unmapped: string[]
+} {
+  const fields: Partial<Record<AutoCouponConfigField, string>> = {}
+  const unmapped: string[] = []
+  for (const part of message.split(', ').filter(Boolean)) {
+    const field =
+      AUTO_CONFIG_FIELDS.find((f) => part.startsWith(`${f} `)) ??
+      (part.startsWith('El porcentaje de descuento')
+        ? 'discountValue'
+        : undefined)
+    if (field && !fields[field]) {
+      fields[field] = part
+    } else if (!field) {
+      unmapped.push(part)
+    }
+  }
+  return { fields, unmapped }
+}

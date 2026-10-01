@@ -81,3 +81,20 @@ export interface GenerateBulkCouponInput {
 export interface BulkCouponResult {
   count: number
 }
+
+/**
+ * Configuración de los cupones automáticos: GET /coupons/auto-config la
+ * devuelve y PUT /coupons/auto-config la reemplaza completa (los 4 campos
+ * obligatorios, devuelve la config resultante). Confirmado contra el código
+ * real del backend: `AutoCouponConfig` en settings.service.ts y
+ * `UpdateAutoCouponConfigDto` (rama feature/auto-coupon-config).
+ */
+export interface AutoCouponConfig {
+  discountType: CouponDiscountType
+  /** % (máx. 100) si es percentage, soles si es fixed_amount. > 0, 2 decimales. */
+  discountValue: number
+  /** Soles gastados en pedidos entregados (desde el último cupón). > 0, 2 decimales. */
+  thresholdAmount: number
+  /** Días de vigencia desde la generación. Entero 1–365. */
+  expirationDays: number
+}

@@ -2710,3 +2710,33 @@ Contrato confirmado contra el código real de `backend-celtas` @ `c8f23dd` (= `o
       (`[]`), solo se pierde la visibilidad de "Sin X" para el admin. Falta un test de UI para ese caso.
 - [ ] Sin verificar contra el backend desplegado (no se confirmó que Render corra `c8f23dd`; con un
       backend anterior, `[]` en un grupo obligatorio daría 400).
+
+## Auditoría: Configuración — Cupones automáticos (`GET`/`PUT /coupons/auto-config`), rama `feature/auto-coupon-config`, working tree sin commitear
+
+Contrato confirmado contra el código real de `../backend-celtas` (rama local `feature/auto-coupon-config`;
+el endpoint NO está desplegado, prod responde 404, y NO está en `src/types/api.d.ts`):
+`UpdateAutoCouponConfigDto` (4 campos obligatorios; `discountValue`/`thresholdAmount` `IsNumber({maxDecimalPlaces: 2})`
++ `IsPositive` + `Max(MAX_COUPON_AMOUNT = 99_999_999.99)`; `IsPercentageWithinLimit` en `discountValue`;
+`expirationDays` `IsInt` + `Min(1)` + `Max(MAX_AUTO_COUPON_EXPIRATION_DAYS = 365)`); controller `@Get`/`@Put('auto-config')`
+admin-only; `settings.service.ts` `getAutoCouponConfig()`/`updateAutoCouponConfig()` devuelven `AutoCouponConfig`
+(mismos 4 campos). `TransformInterceptor` envuelve en `{ success, data }` → el interceptor de `api-client`
+lo desenvuelve igual para PUT. `HttpExceptionFilter` devuelve `message` como **string** (array unido con `", "`).
+
+- [x] type-check 0 errores; lint 0 errores (1 warning previo en `StarPromotionForm.tsx`, fuera del diff); build OK.
+- [x] Suite completa: 60 archivos / 558 tests.
+- [x] `AutoCouponConfig` (frontend) = `AutoCouponConfig` (backend), campo a campo. Tipo escrito a mano
+      justificado (endpoint fuera de Swagger); regenerar tipos cuando se despliegue.
+- [x] `put<T>` reutiliza la instancia `api` → mismo desenvuelto de envelope y refresh en 401 que GET/PATCH.
+- [x] Body del PUT: solo los 4 campos (Zod `object` descarta extras; sin `id`; compatible con `forbidNonWhitelisted`).
+- [x] Schema Zod espejo del DTO: % ≤ 100 solo en `percentage`, > 0, ≤ 99,999,999.99, 2 decimales,
+      días enteros 1–365. `hasMaxTwoDecimals` no rechaza en falso valores en el tope (99999999.99, 1234567.89).
+- [x] Estados de UI: loading (`LoadingState`), error con reintento (`ErrorState`), éxito; estado vacío N/A
+      (recurso único, el backend siempre devuelve defaults).
+- [x] Mutaciones (backup + restore, hash verificado), MATADAS: sin `superRefine` %>100; sin `.int()`;
+      sin `setError` en 400; `MAX_EXPIRATION_DAYS` 365→500; sin chequeo de 2 decimales.
+- [ ] **BUG**: `mapAutoConfigErrors` + `getApiMessages` asumen `message: string[]` en el 400, pero el
+      backend real manda un string unido con `", "`. Con 2+ errores, el texto completo cae en el campo del
+      primer mensaje y el resto no se asigna a su campo. Los tests usan un array (forma que el backend nunca
+      envía), por eso pasan.
+- [ ] Sin test: cambiar a `fixed_amount` permite > 100 (no cubierto por test de UI).
+- [ ] E2E contra el backend desplegado: pendiente (endpoint no desplegado). No es fallo del frontend.

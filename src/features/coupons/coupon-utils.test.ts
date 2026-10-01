@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   formatCouponDiscount,
+  mapAutoConfigErrors,
   formatMinPurchaseAmount,
   getDaysUntilExpiry,
   getEffectiveStatus,
@@ -91,5 +92,48 @@ describe('getEffectiveStatus', () => {
   it('no toca los estados used/expired del backend', () => {
     expect(getEffectiveStatus('used', past, now)).toBe('used')
     expect(getEffectiveStatus('expired', future, now)).toBe('expired')
+  })
+})
+describe('mapAutoConfigErrors', () => {
+  it('asigna cada mensaje a su campo por prefijo', () => {
+    expect(
+      mapAutoConfigErrors(
+        'expirationDays no puede superar 365, thresholdAmount debe ser mayor a 0',
+      ),
+    ).toEqual({
+      fields: {
+        expirationDays: 'expirationDays no puede superar 365',
+        thresholdAmount: 'thresholdAmount debe ser mayor a 0',
+      },
+      unmapped: [],
+    })
+  })
+
+  it('el mensaje de IsPercentageWithinLimit va a discountValue', () => {
+    expect(
+      mapAutoConfigErrors('El porcentaje de descuento no puede superar el 100%')
+        .fields,
+    ).toEqual({
+      discountValue: 'El porcentaje de descuento no puede superar el 100%',
+    })
+  })
+
+  it('no confunde discountType con discountValue y deja lo desconocido sin mapear', () => {
+    expect(
+      mapAutoConfigErrors(
+        'discountType debe ser percentage o fixed_amount, property id should not exist',
+      ),
+    ).toEqual({
+      fields: {
+        discountType: 'discountType debe ser percentage o fixed_amount',
+      },
+      unmapped: ['property id should not exist'],
+    })
+  })
+})
+
+describe('mapAutoConfigErrors con string vacío', () => {
+  it('no produce campos ni mensajes sueltos', () => {
+    expect(mapAutoConfigErrors('')).toEqual({ fields: {}, unmapped: [] })
   })
 })
