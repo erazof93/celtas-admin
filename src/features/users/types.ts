@@ -5,6 +5,8 @@
  * @Exclude) — no trae direcciones ni pedidos.
  */
 
+import type { Order } from '@/features/orders/types'
+
 export type UserRole = 'cliente' | 'admin'
 
 export interface AdminUser {
@@ -68,4 +70,30 @@ export interface UserAddress {
   userId: string
   createdAt: string
   updatedAt: string
+}
+/**
+ * GET /users/:id/anonymous-orders (admin): preview de pedidos manuales
+ * anónimos (userId null) cuyo `customerPhone` es el celular normalizado del
+ * cliente. Swagger no declara el schema de respuesta (`unknown`) — tipado a
+ * mano contra `orders.service.ts` real (`findLinkableAnonymousOrders`): los
+ * pedidos vienen con `items`, más recientes primero.
+ */
+export interface AnonymousOrdersPreview {
+  userId: string
+  /** Celular normalizado con el que el backend buscó. */
+  phone: string
+  orders: Order[]
+}
+
+/**
+ * Respuesta de POST /users/:id/link-anonymous-orders (todo o nada: 409 si
+ * algún pedido ya no es vinculable). Confirmado contra `linkAnonymousOrders`
+ * del backend real.
+ */
+export interface LinkAnonymousOrdersResult {
+  userId: string
+  linkedOrderIds: string[]
+  /** Suma de los pedidos entregados agregada a totalSpent. */
+  deliveredTotalAdded: number
+  totalSpent: number
 }

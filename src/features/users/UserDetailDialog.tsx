@@ -33,6 +33,7 @@ import {
 } from '@/features/coupons/status'
 import { formatLima } from '@/lib/dates'
 import { cn } from '@/lib/utils'
+import { AnonymousOrdersSection } from './AnonymousOrdersSection'
 import { RoleChangeDialog } from './RoleChangeDialog'
 import { UserAddressesSection } from './UserAddressesSection'
 import { UserOrdersSection } from './UserOrdersSection'
@@ -105,6 +106,10 @@ function UserDetailContent({
   const [roleDialogOpen, setRoleDialogOpen] = useState(false)
   const [couponsPage, setCouponsPage] = useState(1)
   const [ordersPage, setOrdersPage] = useState(1)
+  // `user` es la copia que UsersPage guardó al abrir el diálogo: no cambia al
+  // vincular pedidos anónimos. El POST devuelve el totalSpent ya actualizado
+  // y se muestra ese. Se reinicia al cambiar de cliente (key={user.id}).
+  const [totalSpent, setTotalSpent] = useState(user.totalSpent)
 
   const couponsQuery = useCoupons(
     couponsPage,
@@ -176,7 +181,7 @@ function UserDetailContent({
               <div className="space-y-1">
                 <p className="text-muted-foreground text-xs">Total gastado</p>
                 <p className="text-sm font-medium">
-                  {formatTotalSpent(user.totalSpent)}
+                  {formatTotalSpent(totalSpent)}
                 </p>
               </div>
               <div className="space-y-1">
@@ -192,6 +197,17 @@ function UserDetailContent({
                 </p>
               </div>
             </section>
+
+            {/* El backend busca por el celular del cliente y responde 400 si
+                no es rol cliente o no tiene celular: no se muestra en esos casos. */}
+            {user.phone && user.role === 'cliente' ? (
+              <div className="border-border mt-6 border-t pt-4">
+                <AnonymousOrdersSection
+                  userId={user.id}
+                  onLinked={(result) => setTotalSpent(result.totalSpent)}
+                />
+              </div>
+            ) : null}
           </TabsContent>
 
           {/* Direcciones */}

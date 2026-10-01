@@ -42,6 +42,13 @@ vi.mock('./hooks', () => ({
   useUpdateUserRole: () => ({ mutateAsync: vi.fn() }),
   useUserAddresses: useUserAddressesMock,
   useUserOrders: useUserOrdersMock,
+  useAnonymousOrders: () => ({
+    isLoading: false,
+    isError: false,
+    data: { userId: 'x', phone: '51987654321', orders: [] },
+    refetch: vi.fn(),
+  }),
+  useLinkAnonymousOrders: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false }),
 }))
 
 function makeUser(id: string, fullName: string): AdminUser {
@@ -210,5 +217,46 @@ describe('UserDetailDialog — reset de paginación de cupones', () => {
     // Cambia al detalle de userB: la página de pedidos debe resetear a 1.
     rerender(<UserDetailDialog user={userB} onOpenChange={() => {}} />)
     expect(useUserOrdersMock).toHaveBeenLastCalledWith(1, 5, 'user-b')
+  })
+})
+describe('UserDetailDialog — sección "Pedidos sin cuenta con este celular"', () => {
+  beforeEach(() => {
+    const empty = { isLoading: false, isError: false, refetch: vi.fn() }
+    useCouponsMock.mockReturnValue({
+      ...empty,
+      data: { items: [], meta: { page: 1, limit: 5, total: 0, totalPages: 0 } },
+    })
+    useUserAddressesMock.mockReturnValue({ ...empty, data: [] })
+    useUserOrdersMock.mockReturnValue({
+      ...empty,
+      data: { items: [], meta: { page: 1, limit: 5, total: 0, totalPages: 0 } },
+    })
+  })
+
+  const title = 'Pedidos sin cuenta con este celular'
+
+  it('se muestra para un cliente con celular', () => {
+    render(
+      <UserDetailDialog
+        user={{ ...userA, phone: '987654321' }}
+        onOpenChange={() => {}}
+      />,
+    )
+    expect(screen.getByText(title)).toBeInTheDocument()
+  })
+
+  it('no se muestra si el cliente no tiene celular', () => {
+    render(<UserDetailDialog user={userA} onOpenChange={() => {}} />)
+    expect(screen.queryByText(title)).not.toBeInTheDocument()
+  })
+
+  it('no se muestra para un admin (el backend responde 400)', () => {
+    render(
+      <UserDetailDialog
+        user={{ ...userA, phone: '987654321', role: 'admin' }}
+        onOpenChange={() => {}}
+      />,
+    )
+    expect(screen.queryByText(title)).not.toBeInTheDocument()
   })
 })

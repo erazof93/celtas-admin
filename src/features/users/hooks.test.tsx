@@ -11,19 +11,20 @@ import type { ReactNode } from 'react'
  * El test FALLA si se revierte el fix (body = input completo con id).
  */
 
-const { patchMock, getMock } = vi.hoisted(() => ({
+const { patchMock, getMock, postMock } = vi.hoisted(() => ({
   patchMock: vi.fn(),
   getMock: vi.fn(),
+  postMock: vi.fn(),
 }))
 
 vi.mock('@/lib/api-client', () => ({
   patch: patchMock,
   get: getMock,
-  post: vi.fn(),
+  post: postMock,
   del: vi.fn(),
 }))
 
-import { useUsers, useUpdateUserRole } from './hooks'
+import { useLinkAnonymousOrders, useUsers, useUpdateUserRole } from './hooks'
 
 function makeWrapper() {
   const queryClient = new QueryClient({
@@ -107,5 +108,43 @@ describe('useUpdateUserRole', () => {
     const [, body] = patchMock.mock.calls[0] as [string, Record<string, unknown>]
     expect(body).toEqual({ role: 'cliente' })
     expect(Object.keys(body)).not.toContain('id')
+  })
+})
+
+/**
+ * Vincular pedidos anónimos cambia el preview (['users', 'anonymous-orders', id]),
+ * el totalSpent del cliente (['users']) y la pestaña Pedidos del cliente
+ * (['orders', ...] vía useOrders). El test FALLA si se quita cualquiera de las
+ * dos invalidaciones.
+ */
+describe('useLinkAnonymousOrders', () => {
+  beforeEach(() => {
+    postMock.mockReset()
+  })
+
+  it('UN POST con { orderIds } (userId solo en el path) e invalida users y orders', async () => {
+    postMock.mockResolvedValue({
+      userId: 'user-1',
+      linkedOrderIds: ['o-1'],
+      deliveredTotalAdded: 0,
+      totalSpent: 0,
+    })
+    const queryClient = new QueryClient()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+    const { result } = renderHook(() => useLinkAnonymousOrders(), { wrapper })
+
+    await result.current.mutateAsync({ userId: 'user-1', orderIds: ['o-1'] })
+
+    expect(postMock).toHaveBeenCalledTimes(1)
+    expect(postMock).toHaveBeenCalledWith('/users/user-1/link-anonymous-orders', {
+      orderIds: ['o-1'],
+    })
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['users'] })
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['orders'] })
+    })
   })
 })

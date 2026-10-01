@@ -2550,3 +2550,63 @@ justificados y coinciden con las interfaces del service.
 - [ ] (menor) No hay test de que "Ya lo envié" quede deshabilitado mientras `isPending`.
 - [ ] Sin verificar en navegador real contra el backend desplegado (hay que desplegar primero la
       migración `AddWhatsappSentAtToOrder`).
+
+## Auditoría: Users — "Pedidos sin cuenta con este celular" (vincular pedidos anónimos), working tree sin commitear
+
+Contrato confirmado contra el código real de `backend-celtas` @ `302531c`:
+`anonymous-orders-link.controller.ts` (`@Controller('users')`, `GET :id/anonymous-orders`,
+`POST :id/link-anonymous-orders` con `@HttpCode(200)`, ambos `@Roles(ADMIN)` y `ParseUUIDPipe`),
+`orders.service.ts` (`findLinkableAnonymousOrders` → `{ userId, phone, orders }` con `items`,
+`createdAt DESC`; `linkAnonymousOrders` → `{ userId, linkedOrderIds, deliveredTotalAdded, totalSpent }`,
+todo o nada con 409; `findCustomerForLinking` → 404 / 400 si no es cliente o sin celular normalizable),
+`dto/link-anonymous-orders.dto.ts` (`orderIds`: array no vacío, únicos, UUID v4, máx. 100) y
+`main.ts` (`forbidNonWhitelisted: true`). Swagger deja ambas respuestas en `unknown`, así que
+`AnonymousOrdersPreview` / `LinkAnonymousOrdersResult` escritos a mano en `users/types.ts` están
+justificados y coinciden campo a campo con las firmas del service. La spec original
+(`GET /orders?customerPhone=` + un POST por pedido) no existe en el backend: se usó el contrato real.
+
+- [x] type-check 0 errores; lint 0 errores (1 warning previo en `StarPromotionForm.tsx`); build OK.
+- [x] Suite completa: 54 archivos / 484 tests (483 del dev + 1 del tester).
+- [x] `useAnonymousOrders` → `get<AnonymousOrdersPreview>('/users/${id}/anonymous-orders')`;
+      `useLinkAnonymousOrders` → UN `post` con body `{ orderIds }`, `userId` solo en el path (sin casts).
+- [x] Query key `['users','anonymous-orders',id]` cuelga de `['users']` → la invalidación tras
+      vincular refresca el preview; también se invalida `['orders']` (pestaña Pedidos del cliente).
+- [x] Estados de UI: loading (`LoadingState`), error del preview con mensaje del backend +
+      reintentar (`ErrorState`), vacío ("No hay pedidos sin cuenta."), "Vinculando…" deshabilitado,
+      éxito (`role=status`), error al vincular (`role=alert`), 409 → refetch del preview.
+- [x] Nada preseleccionado; "Seleccionar todos"; solo se envían ids marcados que siguen en la lista.
+- [x] Visibilidad en `UserDetailDialog`: solo si `user.phone && user.role === 'cliente'`.
+- [x] **[QA] test nuevo en `hooks.test.tsx`**: `useLinkAnonymousOrders` invalida `['users']` y
+      `['orders']` (la de `['orders']` no estaba cubierta por ningún test).
+- [x] Mutaciones (backup + restore, `cmp` idéntico al final), todas MATADAS: sin gate de rol; sin
+      gate de phone; sin refetch en 409; sin invalidar `['users']`; body = `input` completo (con
+      `userId`); preselección; enviar todos en vez de los marcados; sin invalidar `['orders']`.
+- [x] (menor) "Total gastado" del tab Perfil no se actualiza tras vincular: `UsersPage` pasa un
+      snapshot (`selectedUser`) al diálogo; se ve el valor nuevo solo al cerrar y reabrir.
+      **Resuelto**, ver auditoría siguiente.
+- [ ] (menor) >100 pedidos seleccionados → 400 del backend (`ArrayMaxSize(100)`); se muestra el
+      mensaje del backend, sin límite en la UI.
+- [ ] Sin verificar en navegador real contra el backend desplegado.
+
+## Auditoría: Users — fix "Total gastado" desactualizado tras vincular pedidos anónimos, working tree sin commitear
+
+Contrato confirmado contra `backend-celtas/src/modules/orders/orders.service.ts`
+(`linkAnonymousOrders`, l. 644): devuelve `{ userId, linkedOrderIds, deliveredTotalAdded, totalSpent }`,
+**no** el usuario completo (la spec que asumía `data.user` no coincide con el backend). `totalSpent`
+sale de `lockedUser.totalSpent` (re-leído con lock dentro de la transacción; la columna `decimal`
+tiene transformer `parseFloat` en `user.entity.ts`, así que es `number` también cuando no se suma
+nada). `LinkAnonymousOrdersResult` coincide campo a campo.
+
+- [x] type-check 0 errores; lint 0 errores (1 warning previo en `StarPromotionForm.tsx`); build OK.
+- [x] Suite completa: 55 archivos / 487 tests en verde en 5 de 6 corridas; 1 corrida con 1 fallo
+      no reproducible (flakiness conocida por contención de CPU, ver nota de `pnpm run test`).
+- [x] `UserDetailContent`: `useState(user.totalSpent)` + `onLinked={(r) => setTotalSpent(r.totalSpent)}`;
+      se reinicia al cambiar de cliente por `key={user.id}`.
+- [x] `AnonymousOrdersSection`: `onLinked` solo en `onSuccess`; mensaje de éxito se borra a los 2 s
+      con `clearTimeout` en el cleanup (sin setState tras desmontar).
+- [x] Mutaciones (backup + restore, `cmp` idéntico), todas MATADAS: mostrar `user.totalSpent`;
+      `setTotalSpent(deliveredTotalAdded)`; no pasar `onLinked`; no llamar `onLinked` en `onSuccess`;
+      sin auto-borrado del mensaje; llamar `onLinked` también en `onError`.
+- [ ] (menor) El test "el mensaje se va a los 2s" espera 2 s reales (~2.1 s de 5 s de timeout) en vez
+      de usar fake timers: más expuesto a la flakiness por CPU de la suite en paralelo.
+- [ ] Sin verificar en navegador real contra el backend desplegado.

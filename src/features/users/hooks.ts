@@ -1,7 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { get, patch } from '@/lib/api-client'
+import { get, patch, post } from '@/lib/api-client'
 import { useOrders } from '@/features/orders/hooks'
-import type { PaginatedUsers, UpdateUserRoleInput, UserAddress } from './types'
+import type {
+  AnonymousOrdersPreview,
+  LinkAnonymousOrdersResult,
+  PaginatedUsers,
+  UpdateUserRoleInput,
+  UserAddress,
+} from './types'
 
 const USERS_KEY = ['users'] as const
 
@@ -72,5 +78,43 @@ export function useUpdateUserRole() {
       return patch<{ id: string; role: string }>(`/users/${id}/role`, body)
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: USERS_KEY }),
+  })
+}
+
+/**
+ * GET /users/:id/anonymous-orders (admin): preview de pedidos anónimos con el
+ * celular del cliente. No vincula nada. 400 si el usuario no es cliente o no
+ * tiene un celular válido (mensaje en español del backend).
+ */
+export function useAnonymousOrders(userId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['users', 'anonymous-orders', userId ?? 'none'],
+    queryFn: () =>
+      get<AnonymousOrdersPreview>(`/users/${userId}/anonymous-orders`),
+    enabled: Boolean(userId) && enabled,
+  })
+}
+
+/**
+ * POST /users/:id/link-anonymous-orders (admin). UNA sola request con todos
+ * los `orderIds` elegidos (LinkAnonymousOrdersDto solo declara `orderIds`);
+ * el `id` del cliente viaja SOLO en el path. Todo o nada: 409 si alguno ya no
+ * es vinculable. Vincular cambia el preview, los pedidos del cliente y su
+ * totalSpent → se invalidan users y orders.
+ */
+export function useLinkAnonymousOrders() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { userId: string; orderIds: string[] }) => {
+      const { userId, ...body } = input
+      return post<LinkAnonymousOrdersResult>(
+        `/users/${userId}/link-anonymous-orders`,
+        body,
+      )
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: USERS_KEY })
+      void queryClient.invalidateQueries({ queryKey: ['orders'] })
+    },
   })
 }

@@ -602,7 +602,7 @@ export interface paths {
         };
         /**
          * Links de WhatsApp de un pedido: cliente y tienda (solo admin)
-         * @description El backend NO envía mensajes: devuelve links wa.me que el admin abre desde el panel. Se rearman desde el snapshot del pedido con el número del negocio actual. `customer` ("CONFIRMA TU PEDIDO") sale de customerPhone (anónimo) o del teléfono del cliente; es null si no hay un celular peruano válido. `store` ("NUEVO PEDIDO") siempre viene. Tras mandarlo, el panel llama a POST /orders/admin/:orderId/whatsapp-sent.
+         * @description El backend NO envía mensajes: devuelve links wa.me que el admin abre desde el panel. Se rearman desde el snapshot del pedido con el número del negocio actual. `customer` ("CONFIRMA TU PEDIDO") sale de customerPhone (anónimo) o del teléfono del cliente; es null si no hay un celular válido (peruano o extranjero con código de país). `store` ("NUEVO PEDIDO") siempre viene. Tras mandarlo, el panel llama a POST /orders/admin/:orderId/whatsapp-sent.
          */
         get: operations["OrdersController_getWhatsappLinks"];
         put?: never;
@@ -741,6 +741,46 @@ export interface paths {
         get: operations["DeliveryController_estimate"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/anonymous-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Pedidos anónimos que coinciden con el celular del cliente (solo admin)
+         * @description Preview antes de vincular: pedidos manuales sin cliente (userId null) cuyo customerPhone es el celular normalizado del cliente. No vincula nada. El teléfono solo no prueba identidad: el admin confirma con el cliente cuáles son suyos y los manda a POST /users/:id/link-anonymous-orders.
+         */
+        get: operations["AnonymousOrdersLinkController_findAnonymousOrders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users/{id}/link-anonymous-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Vincular pedidos anónimos a un cliente registrado (solo admin)
+         * @description Adjunta al cliente los pedidos anónimos elegidos (orderIds del preview). Todo o nada: si alguno no existe, ya tiene cliente o su customerPhone no es el del cliente → 409 y no se vincula ninguno. Los entregados suman su total a totalSpent; después se recalculan estrellas (solo cuentan los entregados del mes en curso) y cupón automático, igual que al entregar.
+         */
+        post: operations["AnonymousOrdersLinkController_linkAnonymousOrders"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1238,10 +1278,10 @@ export interface components {
              */
             fullName?: string;
             /**
-             * @description Teléfono de contacto (opcional)
-             * @example +51999999999
+             * @description Celular de contacto (opcional; null lo borra). Peruano: 9 dígitos (acepta +51/espacios/guiones). Extranjero: con + o 00 y código de país (ej. +58 412 999 9999). Se guarda normalizado: código de país + número, sin + (51987654321).
+             * @example 987654321
              */
-            phone?: string;
+            phone?: Record<string, never> | null;
         };
         UpdateFcmTokenDto: {
             /**
@@ -1349,8 +1389,8 @@ export interface components {
              */
             fullName: string;
             /**
-             * @description Teléfono (opcional)
-             * @example +51999999999
+             * @description Celular (opcional). Peruano: 9 dígitos (acepta +51/espacios/guiones). Extranjero: con + o 00 y código de país (ej. +58 412 999 9999). Se guarda normalizado: código de país + número, sin + (51987654321).
+             * @example 987654321
              */
             phone?: string;
         };
@@ -1939,7 +1979,7 @@ export interface components {
              */
             customerName?: string;
             /**
-             * @description Celular peruano de contacto (9 dígitos, acepta +51/espacios/guiones). Obligatorio si no hay customerId. El whatsappUrl del pedido apunta a este número.
+             * @description Celular de contacto. Peruano: 9 dígitos (acepta +51/espacios/guiones). Extranjero: con + o 00 y código de país (ej. +58 412 999 9999). Se guarda normalizado (código de país + número, sin +). Obligatorio si no hay customerId. El whatsappUrl del pedido apunta a este número.
              * @example 987654321
              */
             customerPhone?: string;
@@ -1963,6 +2003,15 @@ export interface components {
              * @example El cliente ya no se encuentra en la dirección de entrega
              */
             cancelReason?: string;
+        };
+        LinkAnonymousOrdersDto: {
+            /**
+             * @description UUIDs de pedidos anónimos (del preview) cuyo customerPhone coincide con el teléfono del cliente. Máx. 100.
+             * @example [
+             *       "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+             *     ]
+             */
+            orderIds: string[];
         };
         GenerateCouponDto: {
             /**
@@ -2628,6 +2677,8 @@ export interface operations {
                 page?: number;
                 /** @description Usuarios por página (default 10, máx 100) */
                 limit?: number;
+                /** @description Busca por nombre o email (contiene, sin distinguir mayúsculas) o por teléfono: se comparan solo los dígitos, así "987 654", "+51 987654" y "987-654" encuentran 51987654321. El teléfono se busca desde 3 dígitos. Máx. 100 caracteres. */
+                search?: string;
                 /** @description Columna de ordenamiento. Sin este param, el comportamiento actual (createdAt DESC) queda intacto. */
                 sortBy?: "totalSpent" | "createdAt";
                 /** @description Orden ascendente o descendente (default desc) */
@@ -4649,6 +4700,117 @@ export interface operations {
             };
             /** @description store_location no está configurada */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AnonymousOrdersLinkController_findAnonymousOrders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID del cliente */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description { userId, phone, orders } (orders más recientes primero) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description id no es UUID, el usuario no es cliente, o no tiene un celular válido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El usuario no es admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Usuario no encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AnonymousOrdersLinkController_linkAnonymousOrders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description UUID del cliente */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LinkAnonymousOrdersDto"];
+            };
+        };
+        responses: {
+            /** @description Vinculados */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Payload inválido, el usuario no es cliente, o no tiene un celular válido */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description El usuario no es admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Usuario no encontrado */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Algún pedido no es anónimo, no existe o no coincide el celular (no se vincula ninguno) */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
