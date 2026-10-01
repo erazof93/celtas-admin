@@ -1267,6 +1267,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/dashboard/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Métricas de hoy, semana y mes (solo admin)
+         * @description Períodos calendario en America/Lima: hoy, semana (desde el lunes) y mes (desde el día 1), hasta hoy. `orders`/`ordersApp`/`ordersPhone` cuentan pedidos CREADOS en el período (todos los estados; `ordersPhone` = cargados desde el panel). `revenue` suma pedidos ENTREGADOS en el período. `month.newCustomers` = clientes registrados en el mes.
+         */
+        get: operations["AdminController_metrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/dashboard/revenue-trend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Ventas y pedidos por día (solo admin)
+         * @description Un elemento por día de los últimos N días (incluye hoy y los días sin movimiento en 0), en America/Lima, orden ascendente. `revenue` = pedidos ENTREGADOS ese día; `ordersApp`/`ordersPhone` = pedidos CREADOS ese día por canal.
+         */
+        get: operations["AdminController_revenueTrend"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/dashboard/new-customers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Clientes nuevos por día (solo admin)
+         * @description Clientes (rol cliente, email o Google) registrados en los últimos N días, en America/Lima: total y un elemento por día (incluye los días en 0), orden ascendente.
+         */
+        get: operations["AdminController_newCustomers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -6069,6 +6129,8 @@ export interface operations {
                 from?: string;
                 /** @description Fecha final (YYYY-MM-DD). Default: hoy en America/Lima. */
                 to?: string;
+                /** @description Atajo: últimos N días incluyendo hoy (1-90). No se combina con from/to. */
+                days?: number;
                 /** @description Cantidad máxima de productos (1-50). Default: 10. */
                 limit?: number;
             };
@@ -6085,7 +6147,123 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Formato de fecha o limit inválido */
+            /** @description Formato de fecha, days o limit inválido, o days junto con from/to */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminController_metrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description { today: { orders, revenue, ordersApp, ordersPhone }, week: {...}, month: {..., newCustomers} } */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminController_revenueTrend: {
+        parameters: {
+            query?: {
+                /** @description Cantidad de días hacia atrás, incluyendo hoy, en America/Lima (1-90). */
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description [{ date: "YYYY-MM-DD", revenue, ordersApp, ordersPhone }] */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description days fuera de rango (1-90) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Sin token o token inválido */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Requiere rol admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    AdminController_newCustomers: {
+        parameters: {
+            query?: {
+                /** @description Cantidad de días hacia atrás, incluyendo hoy, en America/Lima (1-90). */
+                days?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description { total, byDay: [{ date: "YYYY-MM-DD", count }] } */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description days fuera de rango (1-90) */
             400: {
                 headers: {
                     [name: string]: unknown;

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   Bar,
   BarChart,
@@ -16,8 +17,18 @@ import {
 } from '@/components/ui/card'
 import { ErrorState } from '@/components/ui/ErrorState'
 import { LoadingState } from '@/components/ui/LoadingState'
+import { Button } from '@/components/ui/button'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import type { UseQueryResult } from '@tanstack/react-query'
-import type { TopProductsResult } from './types'
+import { formatCurrency, formatPercent, revenueShare } from './dashboard-utils'
+import type { TopProduct, TopProductsResult } from './types'
 
 const CHART_BAR_COLOR = 'var(--color-celtas-orange)'
 const CHART_TICK_COLOR = 'var(--color-celtas-cream)'
@@ -102,24 +113,76 @@ export function TopProductsChart({ query }: TopProductsChartProps) {
 }
 
 /**
- * Tarjeta que envuelve la gráfica con su título y manejo de estados
- * (loading/error/vacío) — se usa dentro del dashboard.
+ * Tabla de productos más vendidos: mismo orden que el backend (por cantidad
+ * vendida) con ingresos y participación. El % es sobre los ingresos de los
+ * productos listados (el backend no expone ingresos por producto fuera del
+ * top N), por eso la columna dice "% del top", no "% del total".
+ */
+export function TopProductsTable({ items }: { items: TopProduct[] }) {
+  const shares = revenueShare(items)
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Producto</TableHead>
+          <TableHead className="text-right">Cantidad</TableHead>
+          <TableHead className="text-right">Ingresos</TableHead>
+          <TableHead className="text-right">% del top</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {items.map((item, index) => (
+          <TableRow key={item.menuItemId ?? `deleted-${index}`}>
+            <TableCell className="font-medium">{item.name}</TableCell>
+            <TableCell className="text-right">{item.quantity}</TableCell>
+            <TableCell className="text-right">{formatCurrency(item.revenue)}</TableCell>
+            <TableCell className="text-muted-foreground text-right">
+              {formatPercent(shares[index])}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+}
+
+/**
+ * Tarjeta de productos más vendidos con manejo de estados
+ * (loading/error/vacío) y alternancia gráfico/tabla.
  */
 export function TopProductsCard({
   query,
 }: {
   query: UseQueryResult<TopProductsResult>
 }) {
+  const [view, setView] = useState<'chart' | 'table'>('chart')
+  const items = query.data?.items ?? []
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Productos más vendidos</CardTitle>
-        <CardDescription>
-          Pedidos entregados en el rango seleccionado.
-        </CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between gap-4">
+        <div className="space-y-1.5">
+          <CardTitle>Productos más vendidos</CardTitle>
+          <CardDescription>
+            Pedidos entregados en el rango seleccionado, por cantidad vendida.
+          </CardDescription>
+        </div>
+        {items.length > 0 ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setView(view === 'chart' ? 'table' : 'chart')}
+          >
+            {view === 'chart' ? 'Ver tabla' : 'Ver gráfico'}
+          </Button>
+        ) : null}
       </CardHeader>
       <CardContent>
-        <TopProductsChart query={query} />
+        {view === 'table' && items.length > 0 ? (
+          <TopProductsTable items={items} />
+        ) : (
+          <TopProductsChart query={query} />
+        )}
       </CardContent>
     </Card>
   )

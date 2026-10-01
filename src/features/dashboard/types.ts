@@ -38,3 +38,40 @@ export interface TopProductsResult {
   items: TopProduct[]
   limit: number
 }
+/**
+ * Pedidos CREADOS en el período (todos los estados), separados por canal, y
+ * ventas ENTREGADAS en el período. Canal: `source = admin` → teléfono
+ * (pedido manual del panel); el resto → app. El backend NO separa los
+ * ingresos por canal, solo la cantidad de pedidos.
+ */
+export interface PeriodMetrics {
+  orders: number
+  /** Suma del total de pedidos entregados en el período (por deliveredAt). */
+  revenue: number
+  ordersApp: number
+  ordersPhone: number
+}
+
+/**
+ * GET /admin/dashboard/metrics. Swagger no declara el schema de respuesta
+ * (`content?: never`): tipado contra `admin-dashboard.service.ts` real.
+ * Períodos en Lima: hoy, semana calendario (desde el lunes) y mes calendario
+ * (desde el día 1). Sin comparación con el período anterior.
+ */
+export interface DashboardMetrics {
+  today: PeriodMetrics
+  week: PeriodMetrics
+  month: PeriodMetrics & { newCustomers: number }
+}
+
+/**
+ * Un día de GET /admin/dashboard/revenue-trend?days=N: los últimos N días
+ * (incluye hoy y los días sin movimiento en 0), ascendente. `date` es el día
+ * calendario en Lima (YYYY-MM-DD), no un instante.
+ */
+export interface RevenueTrendDay {
+  date: string
+  revenue: number
+  ordersApp: number
+  ordersPhone: number
+}

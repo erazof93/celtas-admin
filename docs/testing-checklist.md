@@ -50,6 +50,26 @@ solo cuando pasa lo aplicable de este checklist.
 - [x] Colores de la gráfica vía `var(--color-celtas-*)` (emitidas por `@theme` en `index.css`),
       sin hex hardcodeado en componentes
 
+### Dashboard — Métricas por canal + tendencia de 7 días (`GET /admin/dashboard/metrics`, `GET /admin/dashboard/revenue-trend`)
+
+- [x] Endpoints existen en prod (`/docs-json` los lista; sin token responden 401, no 404)
+- [x] Tipos `PeriodMetrics`/`DashboardMetrics`/`RevenueTrendDay` coinciden campo a campo con
+      `admin-dashboard.service.ts` (Swagger: `content?: never`, tipado a mano justificado)
+- [x] `revenue-trend` se pide con `days=7` (rango válido 1-90)
+- [x] Filtro Hoy/Semana/Mes con `aria-pressed`; cambiar de período NO vuelve a pedir datos
+      (una sola request a `/metrics`)
+- [x] KPI de pedidos separa App (`ordersApp`) y Teléfono (`ordersPhone`) sin invertirlos
+- [x] Día de la tendencia (`YYYY-MM-DD` de Lima) se formatea sin correrlo por la zona del
+      navegador (test con `vi.stubEnv('TZ', 'America/Lima')`, falla aun con host en UTC)
+- [x] Sin doble eje Y: ingresos y pedidos en dos gráficos con el mismo eje X; vista tabla accesible
+- [x] Estados: loading, error con reintentar y vacío ("Sin pedidos ni ventas…") en métricas y
+      tendencia; un error en la tendencia no tumba las métricas (queries independientes)
+- [x] Top productos: orden del backend (cantidad), tabla con ingresos y "% del top" sobre la
+      lista; vacío sin botón "Ver tabla"
+- [x] Tokens `channel-app`/`channel-phone` emitidos en el CSS compilado (`.bg-channel-*`,
+      `--color-channel-*`), sin hex en componentes
+- [ ] Verificación visual en navegador con sesión real (Recharts no dibuja en jsdom)
+
 ## Menu
 
 - [x] 409 de nombre duplicado se muestra en el campo del formulario, no como error genérico

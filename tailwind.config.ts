@@ -21,6 +21,12 @@ export default {
         'celtas-red-light': '#F87171',
         'celtas-gold': '#FFB800',
         'celtas-cream': '#F5F1E8',
+        // Canal del pedido en las gráficas del dashboard (app vs teléfono).
+        // Par validado con el validador de paletas (dark, superficie #141414):
+        // banda de luminosidad, CVD ΔE 30.5 y contraste ≥ 3:1. El dorado de
+        // marca no sirve como segunda serie junto al naranja (fuera de banda).
+        'channel-app': '#3B82F6',
+        'channel-phone': '#E8590C',
       },
     },
   },

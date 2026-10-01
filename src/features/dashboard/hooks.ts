@@ -1,6 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { get } from '@/lib/api-client'
-import type { DashboardSummary, TopProductsResult } from './types'
+import type {
+  DashboardMetrics,
+  DashboardSummary,
+  RevenueTrendDay,
+  TopProductsResult,
+} from './types'
 
 /**
  * Hooks de React Query del dashboard — los componentes nunca llaman a Axios
@@ -29,6 +34,27 @@ export function useDashboardTopProducts(
     queryFn: () =>
       get<TopProductsResult>('/admin/dashboard/top-products', {
         params: { from, to, limit },
+      }),
+  })
+}
+/** GET /admin/dashboard/metrics: hoy, semana y mes en Lima (lo calcula el backend). */
+export function useDashboardMetrics() {
+  return useQuery({
+    queryKey: ['dashboard', 'metrics'],
+    queryFn: () => get<DashboardMetrics>('/admin/dashboard/metrics'),
+  })
+}
+
+/**
+ * GET /admin/dashboard/revenue-trend?days=N (1-90, default del backend 7):
+ * serie diaria con ventas entregadas y pedidos por canal.
+ */
+export function useDashboardRevenueTrend(days = 7) {
+  return useQuery({
+    queryKey: ['dashboard', 'revenue-trend', days],
+    queryFn: () =>
+      get<RevenueTrendDay[]>('/admin/dashboard/revenue-trend', {
+        params: { days },
       }),
   })
 }

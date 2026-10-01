@@ -60,6 +60,9 @@
   --color-celtas-red-light: #f87171;
   --color-celtas-gold: #ffb800;
   --color-celtas-cream: #f5f1e8;
+  /* Canal del pedido en el dashboard (ver tailwind.config.ts). */
+  --color-channel-app: #3b82f6;
+  --color-channel-phone: #e8590c;
 }
 
 :root {
