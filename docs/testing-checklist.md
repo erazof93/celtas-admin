@@ -2683,3 +2683,30 @@ top-products; conversion = `ReportRangeQueryDto`; comparison = `current`/`previo
       anterior para comparar" (mismo texto que el caso sin base real).
 - [ ] (menor) Mensaje de error genérico ("Revisa tu conexión") también para 400/404/403.
 - [ ] Sin verificar en navegador real contra el backend desplegado (imposible hasta el deploy).
+
+## Auditoría: Orders — Pedido manual: "Sin salsas / Sin bebida / Sin porciones extras" en grupos obligatorios (`*AllowWithout`), working tree sin commitear
+
+Contrato confirmado contra el código real de `backend-celtas` @ `c8f23dd` (= `origin/master`):
+`validateGroupSelection` lanza 400 si `groupRequired && (selected === null || (selected.length === 0 && !allowWithout))`;
+`offered` = todas las opciones asignadas (activas o no); tipos de papas pasa `allowWithout = false`.
+`MenuItem.sauceAllowWithout`/`beverageAllowWithout`/`extraPortionsAllowWithout` ya existían en `features/menu/types.ts`.
+
+- [x] type-check 0 errores; lint 0 errores (1 warning previo en `StarPromotionForm.tsx`); build OK.
+- [x] Suite completa: 59 archivos / 546 tests.
+- [x] `selectionErrors`/`blockedRequiredGroups` respetan `allowWithout`; papas siempre `allowWithout: false`;
+      el máximo se sigue aplicando con `allowWithout`.
+- [x] `buildCreateOrderAdminPayload`: obligatorio + allowWithout + todas inactivas → `[]` explícito;
+      opcional con todas inactivas → se omite (igual que antes).
+- [x] `AddItemDialog`: "Sin X" marcado si no hay nada elegido, elegir una opción lo desmarca, marcarlo
+      limpia el grupo; papas nunca muestra "Sin".
+- [x] Los 5 tests previos ajustados a `*AllowWithout: false` conservan su semántica original (antes no
+      existía la excepción; con `false` el comportamiento es idéntico).
+- [x] Mutaciones (backup + restore, hashes verificados), MATADAS: `!allowWithout` en el chequeo de
+      "Elige al menos" (4 fallos); `sendsGroup` → `available > 0` (1); `blockedRequiredGroups` sin
+      `allowWithout` (1); papas `allowWithout: true` (4); sin checkbox "Sin X" (1); marcar "Sin X" no
+      limpia (1); `checked` fijo en `false` (1).
+- [ ] (menor) Mutación SOBREVIVIENTE: `showNoneOnly = false` en `AddItemDialog` (grupo obligatorio con
+      allowWithout y todas las opciones inactivas no se muestra). El payload sigue siendo correcto
+      (`[]`), solo se pierde la visibilidad de "Sin X" para el admin. Falta un test de UI para ese caso.
+- [ ] Sin verificar contra el backend desplegado (no se confirmó que Render corra `c8f23dd`; con un
+      backend anterior, `[]` en un grupo obligatorio daría 400).

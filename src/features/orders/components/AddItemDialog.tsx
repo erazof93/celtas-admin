@@ -50,8 +50,10 @@ function formatPrice(value: number) {
 }
 
 /** Límite legible de un grupo para el encabezado. */
-function groupHint(required: boolean, max: number | null) {
-  const parts = [required ? 'Obligatorio' : 'Opcional']
+function groupHint(required: boolean, max: number | null, noneLabel: string | null) {
+  const parts = [
+    required ? (noneLabel ? `Elige o "${noneLabel}"` : 'Obligatorio') : 'Opcional',
+  ]
   if (max !== null) parts.push(`máx. ${max}`)
   return parts.join(' · ')
 }
@@ -102,8 +104,17 @@ export function AddItemDialog({ open, onOpenChange, menuItems, onAdd }: AddItemD
     options: { id: string; name: string; price?: number }[],
     required: boolean,
     max: number | null,
+    /**
+     * "Sin salsas", etc. si el producto tiene `*AllowWithout`; null si no. Con
+     * todas las opciones ocultas, un grupo obligatorio igual se muestra para
+     * que "Sin X" quede a la vista (es lo que se envía: `[]`).
+     */
+    noneLabel: string | null = null,
+    /** Opciones asignadas, activas o no (las que cuenta el backend). */
+    assigned = options.length,
   ) {
-    if (options.length === 0) return null
+    const showNoneOnly = options.length === 0 && required && noneLabel !== null && assigned > 0
+    if (options.length === 0 && !showNoneOnly) return null
     const chosen = selection[key]
     const full = max !== null && chosen.length >= max
     return (
@@ -111,10 +122,23 @@ export function AddItemDialog({ open, onOpenChange, menuItems, onAdd }: AddItemD
         <legend className="text-sm font-medium">
           {title}{' '}
           <span className="text-muted-foreground text-xs font-normal">
-            ({groupHint(required, max)})
+            ({groupHint(required, max, noneLabel)})
           </span>
         </legend>
         <div className="grid grid-cols-2 gap-1.5">
+          {noneLabel ? (
+            // Marcado = ninguna opción elegida ([] explícito en el payload).
+            // Elegir una opción lo desmarca; marcarlo limpia el grupo.
+            <label className="flex items-center gap-1.5 text-sm">
+              <Checkbox
+                checked={chosen.length === 0}
+                onCheckedChange={(isChecked) => {
+                  if (isChecked === true) setSelection((prev) => ({ ...prev, [key]: [] }))
+                }}
+              />
+              <span>{noneLabel}</span>
+            </label>
+          ) : null}
           {options.map((option) => {
             const checked = chosen.includes(option.id)
             return (
@@ -238,6 +262,8 @@ export function AddItemDialog({ open, onOpenChange, menuItems, onAdd }: AddItemD
               activeSauces(selected),
               selected.sauceGroupRequired,
               selected.sauceGroupMaxSelectable,
+              selected.sauceAllowWithout ? 'Sin salsas' : null,
+              selected.sauces.length,
             )}
             {renderGroup(
               'beverageIds',
@@ -249,6 +275,8 @@ export function AddItemDialog({ open, onOpenChange, menuItems, onAdd }: AddItemD
               })),
               selected.beverageGroupRequired,
               selected.beverageGroupMaxSelectable,
+              selected.beverageAllowWithout ? 'Sin bebida' : null,
+              selected.beverages.length,
             )}
             {renderGroup(
               'extraPortionIds',
@@ -256,6 +284,8 @@ export function AddItemDialog({ open, onOpenChange, menuItems, onAdd }: AddItemD
               activeExtraPortions(selected).map((e) => ({ id: e.id, name: e.name, price: e.price })),
               selected.extraPortionsGroupRequired,
               selected.extraPortionsGroupMaxSelectable,
+              selected.extraPortionsAllowWithout ? 'Sin porciones extras' : null,
+              selected.extraPortions.length,
             )}
             {renderGroup(
               'friesTypeIds',

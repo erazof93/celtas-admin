@@ -730,6 +730,7 @@ describe('CreateManualOrderPage - grupos obligatorios sin opciones disponibles',
     menuState.data = [
       makeMenuItem({
         id: 'combo-off', name: 'Combo sin bebidas', beverages: [inactiveCoca], beverageGroupRequired: true,
+        beverageAllowWithout: false,
       }),
     ]
     renderPage()
@@ -749,6 +750,7 @@ describe('CreateManualOrderPage - grupos obligatorios sin opciones disponibles',
     menuState.data = [
       makeMenuItem({
         id: 'combo-ok', name: 'Combo con bebida', beverages: [inactiveCoca, coca], beverageGroupRequired: true,
+        beverageAllowWithout: false,
       }),
     ]
     renderPage()
@@ -929,5 +931,94 @@ describe('CreateManualOrderPage - regresión: volver a elegir la guardada ya sel
   it('el pedido manual activa el autocompletado de Geoapify', async () => {
     renderPage()
     expect(await screen.findByTestId('calc-autocomplete')).toHaveTextContent('true')
+  })
+})
+
+describe('CreateManualOrderPage - "Sin X" en grupos obligatorios', () => {
+  it('bebida obligatoria con allowWithout: "Sin bebida" marcado por defecto, se agrega y viaja beverageIds: []', async () => {
+    const user = userEvent.setup()
+    menuState.data = [
+      makeMenuItem({ id: 'combo-sin', name: 'Combo flexible', beverages: [coca], beverageGroupRequired: true }),
+    ]
+    renderPage()
+
+    await fillAnonymous(user)
+    await user.click(screen.getByRole('button', { name: 'Agregar producto' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /Combo flexible/ }))
+
+    expect(within(dialog).getByText(/Elige o "Sin bebida"/)).toBeInTheDocument()
+    const none = within(dialog).getByRole('checkbox', { name: 'Sin bebida' })
+    expect(none).toBeChecked()
+    expect(within(dialog).queryByText('Elige al menos una bebida')).not.toBeInTheDocument()
+
+    // Elegir una bebida desmarca "Sin bebida"; volver a marcarlo limpia el grupo.
+    await user.click(within(dialog).getByRole('checkbox', { name: /Coca-Cola/ }))
+    expect(none).not.toBeChecked()
+    await user.click(none)
+    expect(none).toBeChecked()
+    expect(within(dialog).getByRole('checkbox', { name: /Coca-Cola/ })).not.toBeChecked()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Agregar al pedido' }))
+    await user.click(await screen.findByRole('button', { name: 'ubicar-dirección' }))
+    await user.click(screen.getByRole('button', { name: 'Crear pedido' }))
+
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1))
+    expect(lastPayload().items[0].beverageIds).toEqual([])
+  })
+
+  it('obligatoria + allowWithout con todas las bebidas ocultas: muestra "Sin bebida" y viaja beverageIds: []', async () => {
+    const user = userEvent.setup()
+    const hidden: Beverage = { ...coca, id: 'coca-off', name: 'Coca apagada', active: false }
+    menuState.data = [
+      makeMenuItem({ id: 'combo-oculto', name: 'Combo oculto', beverages: [hidden], beverageGroupRequired: true }),
+    ]
+    renderPage()
+
+    await fillAnonymous(user)
+    await user.click(screen.getByRole('button', { name: 'Agregar producto' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).queryByText(/Sin opciones disponibles/)).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: /Combo oculto/ }))
+
+    expect(within(dialog).getByRole('checkbox', { name: 'Sin bebida' })).toBeChecked()
+    expect(within(dialog).queryByRole('checkbox', { name: /Coca apagada/ })).not.toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Agregar al pedido' }))
+    await user.click(await screen.findByRole('button', { name: 'ubicar-dirección' }))
+    await user.click(screen.getByRole('button', { name: 'Crear pedido' }))
+
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1))
+    expect(lastPayload().items[0].beverageIds).toEqual([])
+  })
+
+  it('sin allowWithout no aparece "Sin bebida" y sigue pidiendo elegir', async () => {
+    const user = userEvent.setup()
+    menuState.data = [
+      makeMenuItem({
+        id: 'combo-strict', name: 'Combo estricto', beverages: [coca],
+        beverageGroupRequired: true, beverageAllowWithout: false,
+      }),
+    ]
+    renderPage()
+
+    await user.click(screen.getByRole('button', { name: 'Agregar producto' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /Combo estricto/ }))
+
+    expect(within(dialog).queryByRole('checkbox', { name: 'Sin bebida' })).not.toBeInTheDocument()
+    expect(within(dialog).getByText('Elige al menos una bebida')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Agregar al pedido' })).toBeDisabled()
+  })
+
+  it('tipo de papas obligatorio nunca ofrece "Sin"', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await user.click(screen.getByRole('button', { name: 'Agregar producto' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(within(dialog).getByRole('button', { name: /Combo Celtas/ }))
+
+    expect(within(dialog).queryByRole('checkbox', { name: /^Sin papas/ })).not.toBeInTheDocument()
+    expect(within(dialog).getByText('Elige al menos un tipo de papas')).toBeInTheDocument()
   })
 })

@@ -95,7 +95,10 @@ export function manualOrderSubtotal(
   )
 }
 
+type GroupKey = 'sauceIds' | 'beverageIds' | 'extraPortionIds' | 'friesTypeIds'
+
 interface GroupRule {
+  key: GroupKey
   label: { one: string; many: string; group: string }
   /** Opciones asignadas al producto, activas o no (lo que cuenta el backend). */
   total: number
@@ -105,42 +108,55 @@ interface GroupRule {
   required: boolean
   /** null = sin límite. */
   max: number | null
+  /**
+   * `*AllowWithout` del producto: "Sin X" (`[]` explícito) cumple un grupo
+   * obligatorio. Tipos de papas no tiene la opción (el backend pasa `false`).
+   */
+  allowWithout: boolean
 }
 
 function groupRules(menuItem: MenuItem, selection: ManualOrderSelection): GroupRule[] {
   return [
     {
+      key: 'sauceIds',
       label: { one: 'una salsa', many: 'salsa(s)', group: 'salsas' },
       total: menuItem.sauces.length,
       available: activeSauces(menuItem).length,
       selected: selection.sauceIds.length,
       required: menuItem.sauceGroupRequired,
       max: menuItem.sauceGroupMaxSelectable,
+      allowWithout: menuItem.sauceAllowWithout,
     },
     {
+      key: 'beverageIds',
       label: { one: 'una bebida', many: 'bebida(s)', group: 'bebidas' },
       total: menuItem.beverages.length,
       available: activeBeverages(menuItem).length,
       selected: selection.beverageIds.length,
       required: menuItem.beverageGroupRequired,
       max: menuItem.beverageGroupMaxSelectable,
+      allowWithout: menuItem.beverageAllowWithout,
     },
     {
+      key: 'extraPortionIds',
       label: { one: 'una porción extra', many: 'porción extra(s)', group: 'porciones extras' },
       total: menuItem.extraPortions.length,
       available: activeExtraPortions(menuItem).length,
       selected: selection.extraPortionIds.length,
       required: menuItem.extraPortionsGroupRequired,
       max: menuItem.extraPortionsGroupMaxSelectable,
+      allowWithout: menuItem.extraPortionsAllowWithout,
     },
     {
       // FriesType no tiene `active`: todas las asignadas son elegibles.
+      key: 'friesTypeIds',
       label: { one: 'un tipo de papas', many: 'tipo(s) de papas', group: 'tipos de papas' },
       total: menuItem.friesTypes.length,
       available: menuItem.friesTypes.length,
       selected: selection.friesTypeIds.length,
       required: menuItem.friesTypeGroupRequired,
       max: menuItem.friesTypeGroupMaxSelectable,
+      allowWithout: false,
     },
   ]
 }
@@ -150,29 +166,31 @@ function groupRules(menuItem: MenuItem, selection: ManualOrderSelection): GroupR
  * opciones asignadas pero todas están ocultas (inactive). El backend cuenta
  * también las inactivas (validateGroupSelection), así que exigiría elegir una
  * y respondería 400. Un grupo sin ninguna opción asignada no cuenta: el
- * backend no lo exige. Devuelve los nombres de los grupos bloqueados.
+ * backend no lo exige. Con `allowWithout` tampoco: "Sin X" lo cumple.
+ * Devuelve los nombres de los grupos bloqueados.
  */
 export function blockedRequiredGroups(menuItem: MenuItem): string[] {
   const empty = { sauceIds: [], beverageIds: [], extraPortionIds: [], friesTypeIds: [], menuItemId: menuItem.id }
   return groupRules(menuItem, empty)
-    .filter((g) => g.required && g.total > 0 && g.available === 0)
+    .filter((g) => g.required && !g.allowWithout && g.total > 0 && g.available === 0)
     .map((g) => g.label.group)
 }
 
 /**
  * Mismas reglas que `validateGroupSelection` del backend, para avisar antes de
- * enviar: obligatorio sin elegir, o más de `max` elegidos. Grupo no ofrecido
- * → sin reglas. Devuelve los mensajes (vacío = válido).
+ * enviar: obligatorio sin elegir (salvo que admita "Sin X": `[]` es una
+ * respuesta válida), o más de `max` elegidos. Grupo no ofrecido → sin reglas.
+ * Devuelve los mensajes (vacío = válido).
  */
 export function selectionErrors(menuItem: MenuItem, selection: ManualOrderSelection): string[] {
   const errors: string[] = []
   for (const group of groupRules(menuItem, selection)) {
     if (group.total === 0) continue
-    if (group.required && group.available === 0) {
+    if (group.required && !group.allowWithout && group.available === 0) {
       errors.push(`No hay opciones disponibles para ${group.label.group}`)
       continue
     }
-    if (group.required && group.selected === 0) {
+    if (group.required && !group.allowWithout && group.selected === 0) {
       errors.push(`Elige al menos ${group.label.one}`)
     }
     if (group.max !== null && group.selected > group.max) {
@@ -251,11 +269,15 @@ export interface CreateOrderAdminInput {
 
 /**
  * Tri-state de los grupos (resolveSelected* del backend): omitido = "no
- * aplica" (null en el pedido), [] = el cliente eligió "Sin X". Un grupo que el
- * producto ofrece siempre viaja como array; uno que no ofrece se omite.
+ * aplica" (null en el pedido), [] = el cliente eligió "Sin X". Un grupo con
+ * opciones activas siempre viaja como array; uno sin opciones se omite.
+ *
+ * Excepción: grupo obligatorio con "Sin X" cuyas opciones están todas ocultas.
+ * El backend cuenta también las inactivas, así que omitirlo (null) sería 400:
+ * viaja `[]` explícito ("Sin X"), que es lo único que el admin puede elegir.
  */
-function groupIds(offered: number, ids: string[]): string[] | undefined {
-  return offered > 0 ? ids : undefined
+function sendsGroup(group: GroupRule): boolean {
+  return group.available > 0 || (group.required && group.allowWithout && group.total > 0)
 }
 
 export function buildCreateOrderAdminPayload(params: {
@@ -274,17 +296,10 @@ export function buildCreateOrderAdminPayload(params: {
       ...(comment ? { comment } : {}),
     }
     if (!menuItem) return item
-    const sauceIds = groupIds(activeSauces(menuItem).length, line.sauceIds)
-    const beverageIds = groupIds(activeBeverages(menuItem).length, line.beverageIds)
-    const extraPortionIds = groupIds(activeExtraPortions(menuItem).length, line.extraPortionIds)
-    const friesTypeIds = groupIds(menuItem.friesTypes.length, line.friesTypeIds)
-    return {
-      ...item,
-      ...(sauceIds ? { sauceIds } : {}),
-      ...(beverageIds ? { beverageIds } : {}),
-      ...(extraPortionIds ? { extraPortionIds } : {}),
-      ...(friesTypeIds ? { friesTypeIds } : {}),
+    for (const group of groupRules(menuItem, line)) {
+      if (sendsGroup(group)) item[group.key] = line[group.key]
     }
+    return item
   })
 
   // customerId y customerName/customerPhone son excluyentes en el backend

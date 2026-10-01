@@ -267,7 +267,11 @@ describe('grupos obligatorios sin opciones disponibles (todas inactivas)', () =>
   const offBeverage = { ...beverage('off', 5), active: false }
 
   it('bebidas obligatorias con todas inactivas → bloqueado, con mensaje propio', () => {
-    const item = makeMenuItem({ beverages: [offBeverage], beverageGroupRequired: true })
+    const item = makeMenuItem({
+      beverages: [offBeverage],
+      beverageGroupRequired: true,
+      beverageAllowWithout: false,
+    })
     expect(blockedRequiredGroups(item)).toEqual(['bebidas'])
     expect(selectionErrors(item, line())).toEqual(['No hay opciones disponibles para bebidas'])
   })
@@ -276,8 +280,10 @@ describe('grupos obligatorios sin opciones disponibles (todas inactivas)', () =>
     const item = makeMenuItem({
       sauces: [sauce('a', false)],
       sauceGroupRequired: true,
+      sauceAllowWithout: false,
       extraPortions: [{ ...extra('q', 3), active: false }],
       extraPortionsGroupRequired: true,
+      extraPortionsAllowWithout: false,
     })
     expect(blockedRequiredGroups(item)).toEqual(['salsas', 'porciones extras'])
   })
@@ -286,6 +292,7 @@ describe('grupos obligatorios sin opciones disponibles (todas inactivas)', () =>
     const item = makeMenuItem({
       beverages: [offBeverage, beverage('on', 5)],
       beverageGroupRequired: true,
+      beverageAllowWithout: false,
     })
     expect(blockedRequiredGroups(item)).toEqual([])
     expect(selectionErrors(item, line())).toEqual(['Elige al menos una bebida'])
@@ -341,5 +348,66 @@ describe('buildAddressSnapshot solo con pin', () => {
       latitude: -12.17,
       longitude: -76.98,
     })
+  })
+})
+
+describe('"Sin X" en grupos obligatorios (allowWithout, espejo de validateGroupSelection)', () => {
+  it('obligatorio + allowWithout: [] es válido; sin allowWithout pide elegir', () => {
+    const conSin = makeMenuItem({ sauces: [sauce('mayo')], sauceGroupRequired: true, sauceAllowWithout: true })
+    const sinSin = makeMenuItem({ sauces: [sauce('mayo')], sauceGroupRequired: true, sauceAllowWithout: false })
+    expect(selectionErrors(conSin, line())).toEqual([])
+    expect(selectionErrors(sinSin, line())).toEqual(['Elige al menos una salsa'])
+  })
+
+  it('aplica igual a bebidas y porciones extras', () => {
+    const item = makeMenuItem({
+      beverages: [beverage('x', 5)],
+      beverageGroupRequired: true,
+      extraPortions: [extra('q', 3)],
+      extraPortionsGroupRequired: true,
+    })
+    expect(selectionErrors(item, line())).toEqual([])
+    expect(
+      selectionErrors(item, line({ beverageIds: [] })),
+    ).toEqual([])
+  })
+
+  it('tipos de papas no tiene "Sin": sigue siendo obligatorio (el backend pasa false)', () => {
+    const item = makeMenuItem({ friesTypes: [fries('fritas')], friesTypeGroupRequired: true })
+    expect(selectionErrors(item, line())).toEqual(['Elige al menos un tipo de papas'])
+  })
+
+  it('allowWithout no salta el máximo', () => {
+    const item = makeMenuItem({
+      beverages: [beverage('x', 5), beverage('y', 5)],
+      beverageGroupRequired: true,
+      beverageGroupMaxSelectable: 1,
+    })
+    expect(selectionErrors(item, line({ beverageIds: ['x', 'y'] }))).toEqual(['Máximo 1 bebida(s)'])
+  })
+
+  it('obligatorio + allowWithout con todas inactivas: no bloquea y viaja [] explícito (null sería 400)', () => {
+    const item = makeMenuItem({ sauces: [sauce('off', false)], sauceGroupRequired: true })
+    expect(blockedRequiredGroups(item)).toEqual([])
+    expect(selectionErrors(item, line())).toEqual([])
+
+    const payload = buildCreateOrderAdminPayload({
+      customer: { mode: 'registered', customerId: 'user-1' },
+      lines: [line()],
+      menuById: new Map([['burger', item]]),
+      address: { fullAddress: 'Av. X 1', reference: '', latitude: null, longitude: null },
+    })
+    expect(payload.items[0].sauceIds).toEqual([])
+  })
+
+  it('opcional con todas inactivas se sigue omitiendo (sin cambio de comportamiento)', () => {
+    const item = makeMenuItem({ sauces: [sauce('off', false)], sauceGroupRequired: false })
+    const payload = buildCreateOrderAdminPayload({
+      customer: { mode: 'registered', customerId: 'user-1' },
+      lines: [line()],
+      menuById: new Map([['burger', item]]),
+      address: { fullAddress: 'Av. X 1', reference: '', latitude: null, longitude: null },
+    })
+    expect(payload.items[0]).not.toHaveProperty('sauceIds')
   })
 })
