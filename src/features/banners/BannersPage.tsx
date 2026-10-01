@@ -36,6 +36,7 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import {
+  bannerDisplayTitle,
   getBannerVigencia,
   formatDaysOfWeek,
   formatBannerDateRange,
@@ -76,6 +77,7 @@ function SortableBannerRow({
 
   const vigencia = getBannerVigencia(banner, new Date())
   const confirming = confirmDeleteId === banner.id
+  const displayTitle = bannerDisplayTitle(banner)
 
   return (
     <TableRow
@@ -88,7 +90,7 @@ function SortableBannerRow({
           type="button"
           {...attributes}
           {...listeners}
-          aria-label={`Arrastrar banner ${banner.title}`}
+          aria-label={`Arrastrar banner ${displayTitle}`}
           className="text-muted-foreground hover:text-celtas-cream cursor-grab touch-none rounded p-1"
         >
           <GripVertical className="size-4" />
@@ -98,7 +100,7 @@ function SortableBannerRow({
         {banner.imageUrl ? (
           <img
             src={banner.imageUrl}
-            alt={banner.title}
+            alt={displayTitle}
             className="border-border size-12 shrink-0 rounded-lg border object-cover"
           />
         ) : (
@@ -107,7 +109,14 @@ function SortableBannerRow({
           </div>
         )}
       </TableCell>
-      <TableCell className="font-medium">{banner.title}</TableCell>
+      <TableCell
+        className={cn(
+          'font-medium',
+          !banner.title?.trim() && 'text-muted-foreground font-normal italic',
+        )}
+      >
+        {displayTitle}
+      </TableCell>
       <TableCell className="text-muted-foreground text-sm">
         {banner.actionType === 'none'
           ? 'Sin acción'
@@ -139,7 +148,7 @@ function SortableBannerRow({
             variant="outline"
             size="sm"
             onClick={() => onEdit(banner)}
-            aria-label={`Editar ${banner.title}`}
+            aria-label={`Editar ${displayTitle}`}
           >
             <Pencil />
           </Button>
@@ -156,7 +165,7 @@ function SortableBannerRow({
               variant="ghost"
               size="sm"
               onClick={() => onDelete(banner.id)}
-              aria-label={`Eliminar ${banner.title}`}
+              aria-label={`Eliminar ${displayTitle}`}
             >
               <Trash2 />
             </Button>

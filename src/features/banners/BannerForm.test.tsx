@@ -302,3 +302,93 @@ describe('BannerForm limpiar fecha', () => {
     ).not.toBeInTheDocument()
   })
 })
+
+/**
+ * Título opcional (el backend ahora acepta title omitido/null y en el PATCH
+ * null lo borra). La clave `title` se envía SIEMPRE: vacío → null, nunca se
+ * omite (el merge() del update ignora claves undefined y no borraría el
+ * título guardado) ni se manda '' .
+ */
+describe('BannerForm título opcional', () => {
+  beforeEach(() => {
+    createMock.mockReset()
+    updateMock.mockReset()
+    uploadMock.mockReset()
+  })
+
+  it('el label indica que el título es opcional', () => {
+    render(<BannerForm onClose={() => {}} />)
+    expect(screen.getByLabelText('Título (opcional)')).toBeInTheDocument()
+  })
+
+  it('crear banner sin título → POST con title: null', async () => {
+    const user = userEvent.setup()
+    createMock.mockResolvedValue(makeBannerResponse({ title: null }))
+
+    render(<BannerForm onClose={() => {}} />)
+    await user.click(screen.getByRole('button', { name: 'Crear banner' }))
+
+    await waitFor(() => expect(createMock).toHaveBeenCalled())
+    expect(createMock.mock.calls[0][0]).toHaveProperty('title', null)
+    expect(screen.queryByText('El título es obligatorio')).not.toBeInTheDocument()
+  })
+
+  it('título solo espacios → null', async () => {
+    const user = userEvent.setup()
+    createMock.mockResolvedValue(makeBannerResponse({ title: null }))
+
+    render(<BannerForm onClose={() => {}} />)
+    await user.type(screen.getByLabelText(/Título/i), '   ')
+    await user.click(screen.getByRole('button', { name: 'Crear banner' }))
+
+    await waitFor(() => expect(createMock).toHaveBeenCalled())
+    expect(createMock.mock.calls[0][0]).toHaveProperty('title', null)
+  })
+
+  it('con título, lo envía recortado', async () => {
+    const user = userEvent.setup()
+    createMock.mockResolvedValue(makeBannerResponse())
+
+    render(<BannerForm onClose={() => {}} />)
+    await user.type(screen.getByLabelText(/Título/i), '  2x1 en burgers  ')
+    await user.click(screen.getByRole('button', { name: 'Crear banner' }))
+
+    await waitFor(() => expect(createMock).toHaveBeenCalled())
+    expect(createMock.mock.calls[0][0]).toHaveProperty('title', '2x1 en burgers')
+  })
+
+  it('al editar, borrar el título envía title: null explícito (no omite la clave)', async () => {
+    const user = userEvent.setup()
+    updateMock.mockResolvedValue(makeBannerResponse({ title: null }))
+
+    render(<BannerForm banner={makeBannerResponse()} onClose={() => {}} />)
+    await user.clear(screen.getByLabelText(/Título/i))
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalled())
+    expect(updateMock.mock.calls[0][0]).toHaveProperty('title', null)
+  })
+
+  it('editar un banner sin título muestra el campo vacío', () => {
+    render(
+      <BannerForm banner={makeBannerResponse({ title: null })} onClose={() => {}} />,
+    )
+    expect(screen.getByLabelText(/Título/i)).toHaveValue('')
+  })
+
+  // Añadido por @tester: el test anterior pasa aunque el defaultValue sea null
+  // (el DOM pinta '' igual). Este cubre el efecto real: sin `?? ''` zod recibe
+  // null en un z.string() y bloquea el submit de un banner sin título.
+  it('editar un banner sin título y guardar sin tocarlo → PATCH con title: null', async () => {
+    const user = userEvent.setup()
+    updateMock.mockResolvedValue(makeBannerResponse({ title: null }))
+
+    render(
+      <BannerForm banner={makeBannerResponse({ title: null })} onClose={() => {}} />,
+    )
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalled())
+    expect(updateMock.mock.calls[0][0]).toHaveProperty('title', null)
+  })
+})

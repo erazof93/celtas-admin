@@ -92,3 +92,29 @@ describe('BannersPage — columna Fechas', () => {
     expect(cellWrapper?.children).toHaveLength(1)
   })
 })
+
+describe('BannersPage — banner sin título', () => {
+  it('title null: muestra "Sin título" y los aria-label no dicen "null"', () => {
+    mockBanners([
+      makeBanner({ title: null, imageUrl: 'https://res.cloudinary.com/x.jpg' }),
+    ])
+    render(<BannersPage />)
+
+    expect(screen.getByText('Sin título')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Editar Sin título' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Eliminar Sin título' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Arrastrar banner Sin título' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'Sin título' })).toBeInTheDocument()
+    expect(screen.queryByText(/null/)).not.toBeInTheDocument()
+  })
+
+  it('con título: lo muestra tal cual', () => {
+    mockBanners([makeBanner({ title: '2x1 en burgers' })])
+    render(<BannersPage />)
+
+    expect(screen.getByText('2x1 en burgers')).toBeInTheDocument()
+    expect(screen.queryByText('Sin título')).not.toBeInTheDocument()
+  })
+})

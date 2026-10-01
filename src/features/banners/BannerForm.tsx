@@ -47,14 +47,15 @@ function parseDateInput(dateStr: string): Date {
 }
 
 /**
- * Reglas espejo del CreateBannerDto del backend: título obligatorio,
- * actionValue obligatorio si actionType no es none, y startDate < endDate
- * cuando vienen ambas (validado en el cliente para evitar el submit inútil).
+ * Reglas espejo del CreateBannerDto del backend: título opcional (null si
+ * se deja vacío), actionValue obligatorio si actionType no es none, y
+ * startDate < endDate cuando vienen ambas (validado en el cliente para
+ * evitar el submit inútil).
  * daysOfWeek es un array opcional de enteros 0-6.
  */
 const bannerSchema = z
   .object({
-    title: z.string().min(1, 'El título es obligatorio'),
+    title: z.string().trim().optional(),
     actionType: z.enum(['none', 'category', 'menuItem', 'external_url']),
     actionValue: z.string().optional(),
     startDate: z.string().optional(),
@@ -145,7 +146,9 @@ export function BannerForm({ banner, onClose }: BannerFormProps) {
     setImageError(null)
 
     const payload = {
-      title: values.title.trim(),
+      // Vacío → null (no se omite): en el PATCH el merge() del backend ignora
+      // claves undefined, así que omitirla no borraría un título ya guardado.
+      title: values.title?.trim() || null,
       actionType: values.actionType,
       ...(values.actionType !== 'none' && values.actionValue?.trim()
         ? { actionValue: values.actionValue.trim() }
@@ -214,7 +217,7 @@ export function BannerForm({ banner, onClose }: BannerFormProps) {
       ) : null}
 
       <div className="space-y-1.5">
-        <Label htmlFor="banner-title">Título</Label>
+        <Label htmlFor="banner-title">Título (opcional)</Label>
         <Input
           id="banner-title"
           placeholder="Ej. 2x1 en burgers"

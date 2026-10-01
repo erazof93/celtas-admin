@@ -95,3 +95,9 @@ export function isValidBannerDateRange(
   if (!start || !end) return true
   return new Date(start).getTime() < new Date(end).getTime()
 }
+/** Nombre para mostrar: el título es opcional (banner solo imagen). */
+export const UNTITLED_BANNER = 'Sin título'
+
+export function bannerDisplayTitle(banner: Pick<Banner, 'title'>): string {
+  return banner.title?.trim() || UNTITLED_BANNER
+}

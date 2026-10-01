@@ -1281,7 +1281,7 @@ export interface components {
              * @description Celular de contacto (opcional; null lo borra). Peruano: 9 dígitos (acepta +51/espacios/guiones). Extranjero: con + o 00 y código de país (ej. +58 412 999 9999). Se guarda normalizado: código de país + número, sin + (51987654321).
              * @example 987654321
              */
-            phone?: Record<string, never> | null;
+            phone?: string | null;
         };
         UpdateFcmTokenDto: {
             /**
@@ -2191,10 +2191,10 @@ export interface components {
         };
         CreateBannerDto: {
             /**
-             * @description Título del banner
+             * @description Título del banner (opcional)
              * @example 2x1 en burgers
              */
-            title: string;
+            title?: string | null;
             /**
              * @description URL de la imagen del banner
              * @example https://res.cloudinary.com/...
@@ -2262,10 +2262,10 @@ export interface components {
         };
         UpdateBannerDto: {
             /**
-             * @description Título
+             * @description Título (opcional; null lo borra)
              * @example 2x1 en burgers
              */
-            title?: string;
+            title?: string | null;
             /** @description URL de la imagen del banner */
             imageUrl?: string;
             /**

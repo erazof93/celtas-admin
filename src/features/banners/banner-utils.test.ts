@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  bannerDisplayTitle,
   formatBannerDateRange,
   getBannerVigencia,
   isValidBannerDateRange,
@@ -182,5 +183,16 @@ describe('formatBannerDateRange', () => {
         endDate: null,
       }),
     ).toBe('31/07/2026 → …')
+  })
+})
+describe('bannerDisplayTitle', () => {
+  it('usa el título si existe', () => {
+    expect(bannerDisplayTitle({ title: '2x1 en burgers' })).toBe('2x1 en burgers')
+  })
+
+  it('null, vacío o solo espacios → "Sin título"', () => {
+    expect(bannerDisplayTitle({ title: null })).toBe('Sin título')
+    expect(bannerDisplayTitle({ title: '' })).toBe('Sin título')
+    expect(bannerDisplayTitle({ title: '   ' })).toBe('Sin título')
   })
 })

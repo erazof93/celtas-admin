@@ -629,6 +629,21 @@ solo cuando pasa lo aplicable de este checklist.
       veredicto LISTO se hubiera emitido en esta segunda ronda — el contenido resultó ser
       técnicamente exacto una vez verificado, pero el checkbox de `ROADMAP.md` debería marcarse
       solo después del veredicto del tester, no en anticipación.
+- [x] **Título opcional en Banners** — contrato verificado contra el diff local SIN COMMITEAR de
+      `backend-celtas` (prod `/docs-json` aún exige `title`): `CreateBannerDto`/`UpdateBannerDto`
+      `@IsOptional @IsString title?: string | null` (sin `IsNotEmpty`), entidad `nullable: true`,
+      migración `1790816936262-MakeBannerTitleNullable` (DROP NOT NULL), `update()` con
+      `merge()` (ignora `undefined` → la clave `title` se envía siempre, `null` si vacío).
+      `api.d.ts` NO regenerado a propósito (sigue `title: string` hasta el deploy).
+      Barrido de `Banner.title` en `src/`: solo `BannerForm.tsx`, `BannersPage.tsx`,
+      `banner-utils.ts`; dashboard/otros módulos no lo consumen. `celtas-app` ya modela
+      `String? title`. **Mutaciones @tester**: `BannersPage` con `banner.title` crudo → 1 test
+      falla; schema `min(1)` → 2 fallan; `|| undefined` → 3 fallan (sesión principal). Quitar
+      `?? ''` del defaultValue NO lo detectaba ningún test (el DOM pinta '' igual) → @tester
+      agregó "editar un banner sin título y guardar sin tocarlo → PATCH con title: null", que
+      falla sin el `?? ''` (zod recibe null). type-check/lint (0 errores)/build OK, 55 archivos /
+      498 tests. ⚠️ Pendiente de deploy: desplegar backend + migración ANTES que el panel; luego
+      `pnpm run generate:types`.
 
 ## Settings
 

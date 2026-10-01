@@ -10,7 +10,8 @@ export type BannerVigencia = 'vigente' | 'programado' | 'vencido' | 'inactivo'
 
 export interface Banner {
   id: string
-  title: string
+  /** Opcional: el banner puede ser solo imagen. */
+  title: string | null
   /** URL de la imagen (Cloudinary), se sube aparte con POST /banners/:id/image. */
   imageUrl: string | null
   actionType: BannerActionType
@@ -32,7 +33,8 @@ export interface Banner {
 }
 
 export interface CreateBannerInput {
-  title: string
+  /** null o vacío = sin título (en un update, null lo borra). */
+  title?: string | null
   actionType: BannerActionType
   /** Obligatorio si actionType no es none. */
   actionValue?: string
