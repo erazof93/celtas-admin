@@ -2,12 +2,9 @@ import { useState } from 'react'
 import { useFieldArray, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { deliveryFeeError, requiredNumber } from '@/lib/number-validation'
 import { CheckCircle2, Plus, Trash2, Truck } from 'lucide-react'
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -23,6 +20,7 @@ import { LoadingState } from '@/components/ui/LoadingState'
 import { getApiMessage } from '@/lib/api-errors'
 import { buildAddressMapUrl, buildGoogleMapsUrl } from '../users/users-utils'
 import { useSettings, useUpsertSetting } from './hooks'
+import { deliveryModeFromSettings } from './delivery-mode'
 import {
   DELIVERY_ALERT_RADIUS_METERS_DESCRIPTION,
   DELIVERY_ALERT_RADIUS_METERS_KEY,
@@ -46,19 +44,32 @@ import type { DeliveryFeeTier } from './types'
  */
 const tierRowSchema = z.object({
   maxMeters: z.string(),
-  fee: z.coerce.number('La tarifa debe ser un número'),
+  fee: requiredNumber(
+    'La tarifa es obligatoria y debe ser un número',
+  ).superRefine((fee, ctx) => {
+    const message = deliveryFeeError(fee)
+    if (message) ctx.addIssue({ code: 'custom', message })
+  }),
 })
 
 const deliverySchema = z
   .object({
-    latitude: z.coerce
-      .number('La latitud debe ser un número')
-      .min(-90, 'La latitud debe estar entre -90 y 90')
-      .max(90, 'La latitud debe estar entre -90 y 90'),
-    longitude: z.coerce
-      .number('La longitud debe ser un número')
-      .min(-180, 'La longitud debe estar entre -180 y 180')
-      .max(180, 'La longitud debe estar entre -180 y 180'),
+    latitude: requiredNumber(
+      'La latitud es obligatoria y debe ser un número',
+    ).pipe(
+      z
+        .number()
+        .min(-90, 'La latitud debe estar entre -90 y 90')
+        .max(90, 'La latitud debe estar entre -90 y 90'),
+    ),
+    longitude: requiredNumber(
+      'La longitud es obligatoria y debe ser un número',
+    ).pipe(
+      z
+        .number()
+        .min(-180, 'La longitud debe estar entre -180 y 180')
+        .max(180, 'La longitud debe estar entre -180 y 180'),
+    ),
     tiers: z.array(tierRowSchema).min(1, 'Agrega al menos un tramo'),
     alertRadiusMeters: z.coerce
       .number('El radio debe ser un número')
@@ -72,7 +83,10 @@ const deliverySchema = z
     // Un maxMeters no numérico (texto suelto) no es "sin límite": se marca
     // inválido en su propio campo antes de correr la validación de orden.
     data.tiers.forEach((row, i) => {
-      if (row.maxMeters.trim() !== '' && !Number.isFinite(Number(row.maxMeters))) {
+      if (
+        row.maxMeters.trim() !== '' &&
+        !Number.isFinite(Number(row.maxMeters))
+      ) {
         ctx.addIssue({
           code: 'custom',
           path: ['tiers', i, 'maxMeters'],
@@ -84,7 +98,14 @@ const deliverySchema = z
     if (error) {
       ctx.addIssue({
         code: 'custom',
-        path: error.index === -1 ? ['tiers'] : ['tiers', error.index, 'maxMeters'],
+        path:
+          error.index === -1
+            ? ['tiers']
+            : [
+                'tiers',
+                error.index,
+                deliveryFeeError(tiers[error.index].fee) ? 'fee' : 'maxMeters',
+              ],
         message: error.message,
       })
     }
@@ -93,7 +114,9 @@ const deliverySchema = z
 type DeliveryFormValues = z.output<typeof deliverySchema>
 type DeliveryFormInputValues = z.input<typeof deliverySchema>
 
-function tiersToRows(tiers: DeliveryFeeTier[]): DeliveryFormInputValues['tiers'] {
+function tiersToRows(
+  tiers: DeliveryFeeTier[],
+): DeliveryFormInputValues['tiers'] {
   return tiers.map((tier) => ({
     maxMeters: tier.maxMeters === null ? '' : String(tier.maxMeters),
     fee: tier.fee,
@@ -115,8 +138,7 @@ export function DeliverySettingsCard() {
   const [saved, setSaved] = useState(false)
 
   const geoapifyApiKey = import.meta.env.VITE_GEOAPIFY_API_KEY as
-    | string
-    | undefined
+    string | undefined
 
   const storeLocationValue = settingsQuery.data?.find(
     (s) => s.key === STORE_LOCATION_KEY,
@@ -150,8 +172,11 @@ export function DeliverySettingsCard() {
   const latitude = useWatch({ control, name: 'latitude' })
   const longitude = useWatch({ control, name: 'longitude' })
   const previewLat = typeof latitude === 'number' ? latitude : Number(latitude)
-  const previewLng = typeof longitude === 'number' ? longitude : Number(longitude)
+  const previewLng =
+    typeof longitude === 'number' ? longitude : Number(longitude)
   const hasValidPreview =
+    String(latitude).trim() !== '' &&
+    String(longitude).trim() !== '' &&
     Number.isFinite(previewLat) &&
     Number.isFinite(previewLng) &&
     previewLat >= -90 &&
@@ -181,7 +206,8 @@ export function DeliverySettingsCard() {
         key: DELIVERY_FEE_TIERS_KEY,
         value: serializeDeliveryFeeTiers(
           values.tiers.map((row) => ({
-            maxMeters: row.maxMeters.trim() === '' ? null : Number(row.maxMeters),
+            maxMeters:
+              row.maxMeters.trim() === '' ? null : Number(row.maxMeters),
             fee: row.fee,
           })),
         ),
@@ -194,7 +220,9 @@ export function DeliverySettingsCard() {
       })
       setSaved(true)
     } catch (error) {
-      setServerError(getApiMessage(error, 'No se pudo guardar la configuración de delivery'))
+      setServerError(
+        getApiMessage(error, 'No se pudo guardar la configuración de delivery'),
+      )
     }
   }
 
@@ -211,6 +239,13 @@ export function DeliverySettingsCard() {
           Ubicación del local, tarifas de envío por tramo de distancia y radio
           de aviso de pedidos lejanos.
         </CardDescription>
+        <p className="text-muted-foreground text-sm">
+          {deliveryModeFromSettings(settingsQuery.data) === 'DISTANCE'
+            ? 'Activo para calcular delivery'
+            : deliveryModeFromSettings(settingsQuery.data) === 'ZONES'
+              ? 'Configuración de respaldo — actualmente inactiva'
+              : 'Método operativo no disponible'}
+        </p>
       </CardHeader>
       <CardContent>
         {settingsQuery.isLoading ? (
@@ -232,8 +267,8 @@ export function DeliverySettingsCard() {
                 <CheckCircle2 className="text-emerald-400" />
                 <AlertTitle>Configuración guardada</AlertTitle>
                 <AlertDescription>
-                  La ubicación, las tarifas y el radio de aviso se
-                  actualizaron correctamente.
+                  La ubicación, las tarifas y el radio de aviso se actualizaron
+                  correctamente.
                 </AlertDescription>
               </Alert>
             ) : null}
@@ -249,8 +284,8 @@ export function DeliverySettingsCard() {
               <Alert className="border-celtas-gold/40 bg-celtas-gold/10">
                 <AlertTitle>Ubicación del local sin configurar</AlertTitle>
                 <AlertDescription>
-                  Hasta guardar esto, el backend rechaza el cálculo de
-                  delivery por distancia en los pedidos nuevos.
+                  Hasta guardar esto, el backend rechaza el cálculo de delivery
+                  por distancia en los pedidos nuevos.
                 </AlertDescription>
               </Alert>
             ) : null}
@@ -302,7 +337,11 @@ export function DeliverySettingsCard() {
                   className="border-border group block max-w-md overflow-hidden rounded-lg border"
                 >
                   <img
-                    src={buildAddressMapUrl(previewLat, previewLng, geoapifyApiKey)}
+                    src={buildAddressMapUrl(
+                      previewLat,
+                      previewLng,
+                      geoapifyApiKey,
+                    )}
                     alt="Mapa del local"
                     className="block w-full cursor-pointer transition-opacity group-hover:opacity-80"
                     width={400}
@@ -318,7 +357,7 @@ export function DeliverySettingsCard() {
               )}
             </div>
 
-            <div className="space-y-3 border-t border-border/50 pt-4">
+            <div className="border-border/50 space-y-3 border-t pt-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium">Tarifas por distancia</h3>
                 <Button
@@ -333,7 +372,9 @@ export function DeliverySettingsCard() {
               </div>
 
               {tiersRootError ? (
-                <p className="text-celtas-red-light text-xs">{tiersRootError}</p>
+                <p className="text-celtas-red-light text-xs">
+                  {tiersRootError}
+                </p>
               ) : null}
 
               <div className="space-y-2">
@@ -343,11 +384,13 @@ export function DeliverySettingsCard() {
                   return (
                     <div
                       key={field.id}
-                      className="flex flex-wrap items-start gap-3 border-b border-border/50 pb-3 last:border-0 last:pb-0"
+                      className="border-border/50 flex flex-wrap items-start gap-3 border-b pb-3 last:border-0 last:pb-0"
                     >
                       <div className="min-w-36 flex-1 space-y-1">
                         <Label htmlFor={`tier-max-${index}`}>
-                          {isLast ? 'Sin límite (tarifa plana)' : 'Hasta (metros)'}
+                          {isLast
+                            ? 'Sin límite (tarifa plana)'
+                            : 'Hasta (metros)'}
                         </Label>
                         <Input
                           id={`tier-max-${index}`}
@@ -382,7 +425,7 @@ export function DeliverySettingsCard() {
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="mt-6 text-muted-foreground hover:text-celtas-red-light"
+                        className="text-muted-foreground hover:text-celtas-red-light mt-6"
                         aria-label={`Quitar tramo ${index + 1}`}
                         disabled={fields.length <= 1}
                         onClick={() => remove(index)}
@@ -395,7 +438,7 @@ export function DeliverySettingsCard() {
               </div>
             </div>
 
-            <div className="space-y-1.5 border-t border-border/50 pt-4">
+            <div className="border-border/50 space-y-1.5 border-t pt-4">
               <Label htmlFor="alert-radius">
                 Radio de aviso de pedidos lejanos (metros)
               </Label>
@@ -412,8 +455,8 @@ export function DeliverySettingsCard() {
                 </p>
               ) : (
                 <p className="text-muted-foreground text-xs">
-                  Un pedido con una dirección a más de esta distancia del
-                  local dispara un aviso interno — nunca bloquea el pedido.
+                  Un pedido con una dirección a más de esta distancia del local
+                  dispara un aviso interno — nunca bloquea el pedido.
                 </p>
               )}
             </div>

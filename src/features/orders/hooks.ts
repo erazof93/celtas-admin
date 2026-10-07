@@ -11,6 +11,7 @@ import type {
 } from './types'
 import type { DeliveryEstimate, LatLng } from './delivery-estimate'
 import type { CreateOrderAdminInput } from './manual-order'
+import type { DeliveryMode } from '../delivery-zones/types'
 
 const ORDERS_LIST_KEY = ['orders', 'list'] as const
 
@@ -89,9 +90,9 @@ export function useGeocodeAddress() {
  * Cotiza el delivery para un punto (GET /delivery/estimate). Se re-consulta
  * cada vez que el pin cambia; `null` = todavía no hay pin.
  */
-export function useDeliveryEstimate(point: LatLng | null) {
+export function useDeliveryEstimate(point: LatLng | null, mode?: DeliveryMode | null) {
   return useQuery({
-    queryKey: ['delivery', 'estimate', point?.lat, point?.lng],
+    queryKey: ['delivery', 'estimate', point?.lat, point?.lng, mode],
     queryFn: () => {
       if (!point) throw new Error('Sin punto para cotizar')
       return get<DeliveryEstimate>('/delivery/estimate', {

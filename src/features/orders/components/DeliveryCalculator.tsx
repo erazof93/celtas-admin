@@ -9,9 +9,6 @@ import {
 } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png'
-import markerIcon from 'leaflet/dist/images/marker-icon.png'
-import markerShadow from 'leaflet/dist/images/marker-shadow.png'
 import { Home, MapPin, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -19,9 +16,12 @@ import { ErrorState } from '@/components/ui/ErrorState'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LoadingState } from '@/components/ui/LoadingState'
+import { storeMapIcon, tileLayerProps } from '@/lib/map-config'
 import { useSettings } from '../../settings/hooks'
+import { deliveryModeFromSettings } from '../../settings/delivery-mode'
 import {
   deliveryErrorMessage,
+  isDeliveryUncovered,
   GEOCODE_ADDRESS_MAX_LENGTH,
   storeLocationFromSettings,
   type DeliveryEstimate,
@@ -31,30 +31,7 @@ import {
 import type { GeoapifySuggestion } from '@/lib/geoapify'
 import { useDeliveryEstimate, useGeocodeAddress, useGeoapifyAutocomplete } from '../hooks'
 
-// Con Vite, Leaflet no resuelve solo las imágenes del ícono por defecto.
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
-})
-
 const MAP_ZOOM = 15
-
-function tileLayerProps() {
-  const geoapifyApiKey = import.meta.env.VITE_GEOAPIFY_API_KEY as
-    string | undefined
-  if (geoapifyApiKey) {
-    return {
-      url: `https://maps.geoapify.com/v1/tile/osm-bright/{z}/{x}/{y}.png?apiKey=${geoapifyApiKey}`,
-      attribution:
-        'Powered by <a href="https://www.geoapify.com/">Geoapify</a> | &copy; OpenStreetMap contributors',
-    }
-  }
-  return {
-    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attribution: '&copy; OpenStreetMap contributors',
-  }
-}
 
 /** `center` de MapContainer solo aplica al montar: recentra en cada búsqueda. */
 function RecenterOnSearch({ target }: { target: LatLng }) {
@@ -97,6 +74,7 @@ export interface DeliveryLocation {
   estimate: DeliveryEstimate | null
   /** La cotización del punto ubicado falló (el calculador ya muestra el error y "Reintentar"). */
   estimateFailed: boolean
+  estimatePending?: boolean
   /** Distrito de la sugerencia de Geoapify elegida; `null` si no vino de una. */
   district: string | null
 }
@@ -163,7 +141,8 @@ export function DeliveryCalculator({
   useEffect(() => () => {
     if (blurTimeoutRef.current) clearTimeout(blurTimeoutRef.current)
   }, [])
-  const estimateQuery = useDeliveryEstimate(pin)
+  const mode = deliveryModeFromSettings(settingsQuery.data)
+  const estimateQuery = useDeliveryEstimate(pin, mode)
   const geoSuggestions = useGeoapifyAutocomplete(
     suggestionsOpen ? address : '',
     enableAutocomplete,
@@ -177,12 +156,16 @@ export function DeliveryCalculator({
   })
   const located = locatedText !== null && address.trim() === locatedText
   const point = located ? pin : null
-  const estimateData = located ? (estimateQuery.data ?? null) : null
+  const estimateData =
+    located && !estimateQuery.isFetching && !estimateQuery.isError
+      ? (estimateQuery.data ?? null)
+      : null
   const estimateFailed = located && estimateQuery.isError
+  const estimatePending = located && (estimateQuery.isPending || estimateQuery.isFetching)
   const district = located ? pickedDistrict : null
   useEffect(() => {
-    onChangeRef.current?.({ address, point, estimate: estimateData, estimateFailed, district })
-  }, [address, point, estimateData, estimateFailed, district])
+    onChangeRef.current?.({ address, point, estimate: estimateData, estimateFailed, estimatePending, district })
+  }, [address, point, estimateData, estimateFailed, estimatePending, district])
 
   if (settingsQuery.isLoading) {
     return <LoadingState label="Cargando configuración de delivery…" />
@@ -218,6 +201,7 @@ export function DeliveryCalculator({
 
   /** Click o arrastre en el mapa: el pin adopta el texto actual. */
   function placePinManually(target: LatLng) {
+    setError(null)
     setPin(target)
     setLocatedText(address.trim())
     // Si el texto no cambió, el distrito de la sugerencia sigue valiendo.
@@ -261,7 +245,7 @@ export function DeliveryCalculator({
     lat: storeLocation.latitude,
     lng: storeLocation.longitude,
   }
-  const estimate = estimateQuery.data
+  const estimate = estimateData
 
   const query = address.trim().toLowerCase()
   const savedMatches = query
@@ -405,13 +389,14 @@ export function DeliveryCalculator({
           <MapContainer
             center={[mapCenter.lat, mapCenter.lng]}
             zoom={MAP_ZOOM}
-            className="h-80 w-full rounded-lg"
+            className="isolate z-0 h-80 w-full rounded-lg"
           >
             <TileLayer {...tileLayerProps()} />
             {searchTarget ? <RecenterOnSearch target={searchTarget} /> : null}
             <MapClickHandler onPick={placePinManually} />
             {pin ? (
               <Marker
+                icon={storeMapIcon}
                 position={[pin.lat, pin.lng]}
                 draggable
                 title="Cliente"
@@ -425,17 +410,17 @@ export function DeliveryCalculator({
                 <Popup>Cliente (arrastra para ajustar)</Popup>
               </Marker>
             ) : null}
-            <Marker position={[store.lat, store.lng]} title="Local">
+            <Marker position={[store.lat, store.lng]} title="Local" icon={storeMapIcon}>
               <Popup>Celtas (local)</Popup>
             </Marker>
           </MapContainer>
 
           <div className="bg-muted space-y-1 rounded-lg p-4" aria-live="polite">
-            {!pin ? (
+            {!point ? (
               <p className="text-muted-foreground text-sm">
                 Haz click en el mapa para marcar la ubicación del cliente.
               </p>
-            ) : estimateQuery.isPending ? (
+            ) : estimatePending ? (
               <p className="text-muted-foreground text-sm">
                 Calculando delivery…
               </p>
@@ -457,9 +442,26 @@ export function DeliveryCalculator({
                 <p className="text-sm">
                   Distancia aprox.: {estimate.distanceMeters ?? '—'} m
                 </p>
-                <p className="text-lg font-bold">
-                  Delivery: S/ {estimate.deliveryFee.toFixed(2)}
-                </p>
+                {isDeliveryUncovered(estimate) ? (
+                  <div role="alert" className="text-celtas-red-light space-y-1">
+                    <p className="font-semibold">Fuera de cobertura</p>
+                    <p className="text-sm">
+                      Esta ubicación no pertenece a ninguna zona de delivery activa.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-lg font-bold">
+                      Tarifa de delivery: S/ {estimate.deliveryFee.toFixed(2)}
+                    </p>
+                    {estimate.deliveryMode === 'ZONES' && (
+                      <div className="text-sm">
+                        <p>Zona: {estimate.zone?.name ?? 'Zona activa'}</p>
+                        <p className="text-muted-foreground">Tarifa según zona</p>
+                      </div>
+                    )}
+                  </>
+                )}
                 {estimate.isFarOrder ? (
                   <p className="text-celtas-red-light flex items-center gap-1 text-sm font-medium">
                     <TriangleAlert className="size-4" />

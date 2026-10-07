@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import userEvent from '@testing-library/user-event'
 import OrdersPage from './OrdersPage'
 import type { Order } from './types'
 
@@ -22,6 +23,11 @@ vi.mock('./hooks', () => ({ useOrders: useOrdersMock, useOrder: useOrderMock }))
 vi.mock('./OrderDetailDialog', () => ({
   OrderDetailDialog: ({ order, open }: { order: Order | null; open: boolean }) =>
     open && order ? <div data-testid="order-detail">{order.id}</div> : null,
+}))
+vi.mock('./components/DeliveryCalculator', () => ({
+  DeliveryCalculator: ({ allowManualPin }: { allowManualPin?: boolean }) => (
+    <div data-testid="calculator-manual-pin">{String(allowManualPin)}</div>
+  ),
 }))
 
 function renderPage(url = '/orders') {
@@ -79,6 +85,14 @@ function rowOf(orderId: string) {
   if (!row) throw new Error('fila no encontrada')
   return within(row)
 }
+
+it('cotizador permite ubicación manual sin depender del geocoding', async () => {
+  mockOrders([])
+  const user = userEvent.setup()
+  renderPage()
+  await user.click(screen.getByRole('button', { name: 'Cotizar delivery' }))
+  expect(await screen.findByTestId('calculator-manual-pin')).toHaveTextContent('true')
+})
 
 describe('OrdersPage — columna Cliente', () => {
   it('lista mixta: el pedido anónimo muestra nombre + "Sin cuenta" y el registrado su ID corto, sin crashear', () => {

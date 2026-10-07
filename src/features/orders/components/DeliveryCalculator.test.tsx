@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import type { Icon } from 'leaflet'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -29,13 +30,21 @@ vi.mock('react-leaflet', () => ({
     title,
     position,
     eventHandlers,
+    icon,
   }: {
     title: string
     position: [number, number]
     eventHandlers?: { dragend?: (e: { target: unknown }) => void }
+    icon?: Icon
   }) => {
     if (eventHandlers?.dragend) leaflet.dragend = eventHandlers.dragend
-    return <div data-testid={`marker-${title}`} data-position={position.join(',')} />
+    return (
+      <div
+        data-testid={`marker-${title}`}
+        data-position={position.join(',')}
+        data-icon-src={icon?.createIcon().getAttribute('src')}
+      />
+    )
   },
   useMap: () => leaflet.map,
   useMapEvents: (handlers: { click: typeof leaflet.click }) => {
@@ -99,11 +108,12 @@ function renderCalculator(onChange?: (location: DeliveryLocation) => void) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
-  return render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <DeliveryCalculator onChange={onChange} />
     </QueryClientProvider>,
   )
+  return { ...view, queryClient }
 }
 
 async function search(user: ReturnType<typeof userEvent.setup>, address: string) {
@@ -149,7 +159,7 @@ describe('DeliveryCalculator (backend real)', () => {
     expect(getMock).toHaveBeenCalledWith('/orders/geocode', {
       params: { address: 'Jr. Carabaya 250, Lima' },
     })
-    expect(await screen.findByText('Delivery: S/ 4.00')).toBeInTheDocument()
+    expect(await screen.findByText('Tarifa de delivery: S/ 4.00')).toBeInTheDocument()
     expect(screen.getByText('Distancia aprox.: 350 m')).toBeInTheDocument()
     expect(screen.getByTestId('marker-Cliente')).toHaveAttribute(
       'data-position',
@@ -159,6 +169,12 @@ describe('DeliveryCalculator (backend real)', () => {
       'data-position',
       `${STORE.lat},${STORE.lng}`,
     )
+    for (const title of ['Cliente', 'Local']) {
+      expect(screen.getByTestId(`marker-${title}`)).toHaveAttribute(
+        'data-icon-src',
+        expect.stringMatching(/marker-icon\.png$/),
+      )
+    }
     expect(getMock).toHaveBeenCalledWith('/delivery/estimate', {
       params: { latitude: GEOCODED[0], longitude: GEOCODED[1] },
     })
@@ -175,12 +191,12 @@ describe('DeliveryCalculator (backend real)', () => {
       )
     renderCalculator()
     await search(user, 'Jr. Carabaya 250, Lima')
-    await screen.findByText('Delivery: S/ 4.00')
+    await screen.findByText('Tarifa de delivery: S/ 4.00')
 
     const point = { lat: -12.155, lng: -76.97 }
     act(() => leaflet.click?.({ latlng: point }))
 
-    expect(await screen.findByText('Delivery: S/ 6.00')).toBeInTheDocument()
+    expect(await screen.findByText('Tarifa de delivery: S/ 6.00')).toBeInTheDocument()
     expect(screen.getByText('Distancia aprox.: 800 m')).toBeInTheDocument()
     expect(screen.getByTestId('marker-Cliente')).toHaveAttribute(
       'data-position',
@@ -195,14 +211,14 @@ describe('DeliveryCalculator (backend real)', () => {
     const user = userEvent.setup()
     renderCalculator()
     await search(user, 'Jr. Carabaya 250, Lima')
-    await screen.findByText('Delivery: S/ 4.00')
+    await screen.findByText('Tarifa de delivery: S/ 4.00')
 
     estimateImpl = () =>
       Promise.resolve({ deliveryFee: 8, isFarOrder: true, distanceMeters: 3000 })
     const far = { lat: -12.136, lng: -76.97 }
     act(() => leaflet.dragend?.({ target: { getLatLng: () => far } }))
 
-    expect(await screen.findByText('Delivery: S/ 8.00')).toBeInTheDocument()
+    expect(await screen.findByText('Tarifa de delivery: S/ 8.00')).toBeInTheDocument()
     expect(screen.getByText('Fuera de zona habitual')).toBeInTheDocument()
   })
 
@@ -274,7 +290,7 @@ describe('DeliveryCalculator (backend real)', () => {
     estimateImpl = () =>
       Promise.resolve({ deliveryFee: 4, isFarOrder: false, distanceMeters: 350 })
     await user.click(screen.getByRole('button', { name: 'Reintentar' }))
-    expect(await screen.findByText('Delivery: S/ 4.00')).toBeInTheDocument()
+    expect(await screen.findByText('Tarifa de delivery: S/ 4.00')).toBeInTheDocument()
   })
 
   it('mientras cotiza muestra "Calculando delivery…"', async () => {
@@ -286,7 +302,7 @@ describe('DeliveryCalculator (backend real)', () => {
 
     expect(await screen.findByText('Calculando delivery…')).toBeInTheDocument()
     act(() => resolve({ deliveryFee: 4, isFarOrder: false, distanceMeters: 350 }))
-    expect(await screen.findByText('Delivery: S/ 4.00')).toBeInTheDocument()
+    expect(await screen.findByText('Tarifa de delivery: S/ 4.00')).toBeInTheDocument()
   })
 
   it('búsqueda vacía → pide escribir una dirección, sin llamar al backend', async () => {
@@ -366,7 +382,7 @@ describe('DeliveryCalculator - mapa desplazado a otra copia del mundo', () => {
     const user = userEvent.setup()
     renderCalculator()
     await search(user, 'Jr. Carabaya 250, Lima')
-    await screen.findByText('Delivery: S/ 4.00')
+    await screen.findByText('Tarifa de delivery: S/ 4.00')
 
     act(() => leaflet.click?.({ latlng: { lat: -12.155, lng: 283.03 } }))
 
@@ -385,7 +401,7 @@ describe('DeliveryCalculator - onChange (reutilizado en pedido manual)', () => {
     renderCalculator(onChange)
 
     await search(user, 'Jr. Carabaya 250, Lima')
-    await screen.findByText('Delivery: S/ 4.00')
+    await screen.findByText('Tarifa de delivery: S/ 4.00')
 
     await waitFor(() =>
       expect(onChange).toHaveBeenLastCalledWith({
@@ -393,6 +409,7 @@ describe('DeliveryCalculator - onChange (reutilizado en pedido manual)', () => {
         point: { lat: GEOCODED[0], lng: GEOCODED[1] },
         estimate: { deliveryFee: 4, isFarOrder: false, distanceMeters: 350 },
         estimateFailed: false,
+        estimatePending: false,
         district: null,
       }),
     )
@@ -404,6 +421,7 @@ describe('DeliveryCalculator - onChange (reutilizado en pedido manual)', () => {
       point: null,
       estimate: null,
       estimateFailed: false,
+      estimatePending: false,
       district: null,
     })
   })
@@ -419,7 +437,7 @@ describe('DeliveryCalculator - onChange (reutilizado en pedido manual)', () => {
       )
     renderCalculator(onChange)
     await search(user, 'Jr. Carabaya 250, Lima')
-    await screen.findByText('Delivery: S/ 4.00')
+    await screen.findByText('Tarifa de delivery: S/ 4.00')
 
     act(() => leaflet.click?.({ latlng: { lat: -12.14, lng: -76.97 } }))
 
@@ -429,6 +447,7 @@ describe('DeliveryCalculator - onChange (reutilizado en pedido manual)', () => {
         point: { lat: -12.14, lng: -76.97 },
         estimate: { deliveryFee: 7, isFarOrder: true, distanceMeters: 2800 },
         estimateFailed: false,
+        estimatePending: false,
         district: null,
       }),
     )
@@ -484,7 +503,7 @@ describe('DeliveryCalculator - initialLocation (dirección guardada)', () => {
 
     expect(screen.getByLabelText('Dirección')).toHaveValue('Av. Los Álamos 123')
     expect(screen.getByTestId('marker-Cliente')).toHaveAttribute('data-position', '-12.155,-76.965')
-    expect(await screen.findByText('Delivery: S/ 4.00')).toBeInTheDocument()
+    expect(await screen.findByText('Tarifa de delivery: S/ 4.00')).toBeInTheDocument()
     expect(getMock).toHaveBeenCalledWith('/delivery/estimate', {
       params: { latitude: -12.155, longitude: -76.965 },
     })
@@ -606,7 +625,7 @@ describe('DeliveryCalculator - autocompletado', () => {
     })
     // No pasa por el geocoding del backend.
     expect(getMock).not.toHaveBeenCalledWith('/orders/geocode', expect.anything())
-    expect(await screen.findByText('Delivery: S/ 4.00')).toBeInTheDocument()
+    expect(await screen.findByText('Tarifa de delivery: S/ 4.00')).toBeInTheDocument()
     await waitFor(() =>
       expect(onChange).toHaveBeenLastCalledWith(
         expect.objectContaining({
@@ -626,7 +645,7 @@ describe('DeliveryCalculator - autocompletado', () => {
     await search(user, 'Jr. Carabaya 250, Lima')
     await new Promise((r) => setTimeout(r, 500))
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
-    expect(await screen.findByText('Delivery: S/ 4.00')).toBeInTheDocument()
+    expect(await screen.findByText('Tarifa de delivery: S/ 4.00')).toBeInTheDocument()
   })
 
   it('sin key de Geoapify no consulta el autocompletado', async () => {
@@ -656,7 +675,7 @@ describe('DeliveryCalculator - pin manual (allowManualPin)', () => {
     act(() => leaflet.click?.({ latlng: { lat: -12.17, lng: -76.98 } }))
 
     expect(screen.getByTestId('marker-Cliente')).toHaveAttribute('data-position', '-12.17,-76.98')
-    expect(await screen.findByText('Delivery: S/ 4.00')).toBeInTheDocument()
+    expect(await screen.findByText('Tarifa de delivery: S/ 4.00')).toBeInTheDocument()
     await waitFor(() =>
       expect(onChange).toHaveBeenLastCalledWith(
         expect.objectContaining({ address: '', point: { lat: -12.17, lng: -76.98 } }),
@@ -711,7 +730,7 @@ describe('DeliveryCalculator - auditoría QA (pin adopta texto, distrito, teclad
     const onChange = vi.fn()
     renderQa({ onChange })
     await search(user, 'Jr. Carabaya 250, Lima')
-    await screen.findByText('Delivery: S/ 4.00')
+    await screen.findByText('Tarifa de delivery: S/ 4.00')
 
     await user.type(screen.getByLabelText('Dirección'), ' 2do piso')
     expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ point: null }))
@@ -944,4 +963,108 @@ describe('DeliveryCalculator - auditoría QA 2 (teclado del combobox)', () => {
     )
     expect(screen.getByLabelText('Dirección')).toHaveValue('Avenida')
   })
+})
+
+it('ZONES sin cobertura no presenta la tarifa cero como delivery gratis', async () => {
+  estimateImpl = async () => ({
+    deliveryFee: 0,
+    isFarOrder: false,
+    distanceMeters: 350,
+    deliveryMode: 'ZONES',
+    isCovered: false,
+    zone: null,
+  })
+  const user = userEvent.setup()
+  const onChange = vi.fn()
+  renderCalculator(onChange)
+  await search(user, 'Lima')
+  expect(
+    await screen.findByText(/Fuera de cobertura/),
+  ).toBeInTheDocument()
+  expect(screen.queryByText('Tarifa de delivery: S/ 0.00')).not.toBeInTheDocument()
+  await waitFor(() =>
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        estimate: expect.objectContaining({
+          isCovered: false,
+          deliveryMode: 'ZONES',
+          zone: null,
+        }),
+      }),
+    ),
+  )
+})
+
+it('geocoding 503 conserva mapa manual y permite cotizar el pin con estimate', async () => {
+  geocodeImpl = () => Promise.reject(new AxiosError('unavailable', undefined, undefined, undefined, {
+    status: 503, statusText: '', headers: {}, config: { headers: new AxiosHeaders() }, data: {},
+  }))
+  const user = userEvent.setup()
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  render(<QueryClientProvider client={client}><DeliveryCalculator allowManualPin /></QueryClientProvider>)
+  await search(user, 'Dirección QA')
+  await screen.findByText(/El servicio de mapas no está disponible/)
+  expect(screen.getByTestId('map')).toBeInTheDocument()
+  act(() => leaflet.click?.({ latlng: { lat: -12.16, lng: -76.97 } }))
+  expect(await screen.findByText('Tarifa de delivery: S/ 4.00')).toBeInTheDocument()
+  expect(screen.queryByText(/El servicio de mapas no está disponible/)).not.toBeInTheDocument()
+  expect(getMock).toHaveBeenCalledWith('/delivery/estimate', { params: { latitude: -12.16, longitude: -76.97 } })
+})
+
+it('ZONES cubierta muestra nombre y tarifa por zona; isFarOrder es independiente', async () => {
+  estimateImpl = async () => ({ deliveryFee: 8, isFarOrder: true, distanceMeters: 350, deliveryMode: 'ZONES', isCovered: true, zone: { id: 'qa', name: 'Zona QA' } })
+  const user = userEvent.setup()
+  renderCalculator()
+  await search(user, 'Dirección A')
+  expect(await screen.findByText('Tarifa de delivery: S/ 8.00')).toBeInTheDocument()
+  expect(screen.getByText('Zona: Zona QA')).toBeInTheDocument()
+  expect(screen.getByText('Tarifa según zona')).toBeInTheDocument()
+  expect(screen.getByText('Fuera de zona habitual')).toBeInTheDocument()
+})
+
+it('cambiar ubicación y un error posterior no reutilizan tarifa/zona anterior', async () => {
+  const user = userEvent.setup()
+  const onChange = vi.fn()
+  let rejectNew!: (error: unknown) => void
+  estimateImpl = async () => ({ deliveryFee: 8, isFarOrder: false, distanceMeters: 350, deliveryMode: 'ZONES', isCovered: true, zone: { id: 'qa', name: 'Zona QA' } })
+  renderCalculator(onChange)
+  await search(user, 'Dirección A')
+  await screen.findByText('Zona: Zona QA')
+  estimateImpl = () => new Promise((_resolve, reject) => { rejectNew = reject })
+  act(() => leaflet.click?.({ latlng: { lat: -12.17, lng: -76.98 } }))
+  expect(await screen.findByText('Calculando delivery…')).toBeInTheDocument()
+  expect(screen.queryByText('Zona: Zona QA')).not.toBeInTheDocument()
+  expect(screen.queryByText('Tarifa de delivery: S/ 8.00')).not.toBeInTheDocument()
+  await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ estimate: null, estimatePending: true })))
+  await act(async () => rejectNew(Error('offline')))
+  await screen.findByRole('button', { name: 'Reintentar' })
+  expect(screen.queryByText('Tarifa de delivery: S/ 8.00')).not.toBeInTheDocument()
+  await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ estimate: null, estimateFailed: true })))
+})
+
+it('editar texto oculta zona/tarifa que pertenecían a la dirección anterior', async () => {
+  const user = userEvent.setup()
+  estimateImpl = async () => ({ deliveryFee: 8, isFarOrder: false, distanceMeters: 350, deliveryMode: 'ZONES', isCovered: true, zone: { id: 'qa', name: 'Zona QA' } })
+  renderCalculator()
+  await search(user, 'Dirección A')
+  await screen.findByText('Zona: Zona QA')
+  await user.type(screen.getByLabelText('Dirección'), ' B')
+  expect(screen.queryByText('Zona: Zona QA')).not.toBeInTheDocument()
+  expect(screen.queryByText('Tarifa de delivery: S/ 8.00')).not.toBeInTheDocument()
+})
+
+it('cambiar método en settings no reutiliza el cache de la misma coordenada del otro motor', async () => {
+  const user = userEvent.setup()
+  const view = renderCalculator()
+  await search(user, 'Dirección A')
+  await screen.findByText('Tarifa de delivery: S/ 4.00')
+  let resolveNew!: (value: unknown) => void
+  estimateImpl = () => new Promise(resolve => { resolveNew = resolve })
+  settingsState.data = [...settingsState.data!, setting('delivery_mode', 'ZONES')]
+  view.rerender(<QueryClientProvider client={view.queryClient}><DeliveryCalculator /></QueryClientProvider>)
+  await screen.findByText('Calculando delivery…')
+  expect(screen.queryByText('Tarifa de delivery: S/ 4.00')).not.toBeInTheDocument()
+  await act(async () => resolveNew({ deliveryFee: 9, isFarOrder: false, distanceMeters: 350, deliveryMode: 'ZONES', isCovered: true, zone: { id: 'qa', name: 'Zona QA' } }))
+  expect(await screen.findByText('Tarifa de delivery: S/ 9.00')).toBeInTheDocument()
+  expect(view.queryClient.getQueryData(['delivery', 'estimate', GEOCODED[0], GEOCODED[1], 'ZONES'])).toMatchObject({ deliveryFee: 9, deliveryMode: 'ZONES' })
 })

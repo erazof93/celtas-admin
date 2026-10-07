@@ -4,19 +4,21 @@ import {
   STORE_LOCATION_KEY,
 } from '../settings/settings-utils'
 import type { Setting, StoreLocation } from '../settings/types'
+import type { DeliveryMode, DeliveryZoneSummary } from '../delivery-zones/types'
 
 /**
  * Cotizador de delivery — contrato real, confirmado contra backend-celtas
- * (commit 640cd6b) y `api.d.ts` regenerado:
+ * (DTOs y servicios de delivery/orders):
  *
  * - `GET /orders/geocode?address=` (JWT, 10 req/min por usuario) → `[lat, lng]`.
  *   400 vacía/larga/no encontrada, 429 rate limit, 503 Geoapify caído.
  * - `GET /delivery/estimate?latitude=&longitude=` (JWT) →
- *   `{ deliveryFee, isFarOrder, distanceMeters }`. 400 coords inválidas, 404
- *   `store_location` sin configurar. Nunca rechaza por distancia.
+ *   `{ deliveryFee, isFarOrder, distanceMeters, isCovered, deliveryMode, zone }`.
+ *   400 coords inválidas, 404 `store_location` sin configurar.
+ *   En ZONES, deliveryFee 0 sin cobertura no representa una cotización.
  *
- * El cálculo (Haversine + tramos) vive SOLO en el backend: el panel ya no lo
- * replica.
+ * Los motores son independientes: tramos en DISTANCE y catálogo en ZONES.
+ * El cálculo vive solo en el backend; el panel no replica pricing ni cobertura.
  */
 
 /** Espejo del retorno de `estimateDeliveryByCoords` en orders.service.ts. */
@@ -25,6 +27,16 @@ export interface DeliveryEstimate {
   isFarOrder: boolean
   /** Redondeado a múltiplos de 50 m (la tarifa usa la distancia exacta). */
   distanceMeters: number | null
+  /** Keep older DISTANCE consumers/fixtures compatible; current backend returns all three fields. */
+  isCovered?: boolean
+  deliveryMode?: DeliveryMode
+  zone?: DeliveryZoneSummary | null
+}
+
+export function isDeliveryUncovered(
+  estimate: DeliveryEstimate | null | undefined,
+): boolean {
+  return estimate?.deliveryMode === 'ZONES' && estimate.isCovered === false
 }
 
 export interface LatLng {
@@ -64,6 +76,8 @@ export function deliveryErrorMessage(
       kind === 'geocode' ? 'Dirección no encontrada' : 'No se pudo cotizar',
     )
   }
+  if (status === 403)
+    return 'Tu cuenta no tiene permisos para consultar el delivery.'
   if (status === 401) return 'Tu sesión expiró. Vuelve a iniciar sesión.'
   if (status === 429) {
     return 'Demasiadas búsquedas seguidas. Espera un minuto y vuelve a intentar.'

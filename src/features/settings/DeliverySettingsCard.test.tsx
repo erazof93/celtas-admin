@@ -93,7 +93,9 @@ describe('DeliverySettingsCard', () => {
     // caso jamás se ejercita de verdad.
     vi.stubEnv('VITE_GEOAPIFY_API_KEY', '')
     render(<DeliverySettingsCard />)
-    expect(screen.queryByRole('img', { name: 'Mapa del local' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('img', { name: 'Mapa del local' }),
+    ).not.toBeInTheDocument()
   })
 
   it('con VITE_GEOAPIFY_API_KEY y coordenadas válidas: renderiza el mapa como link a Google Maps', () => {
@@ -119,18 +121,25 @@ describe('DeliverySettingsCard', () => {
     // Ahora hay 3 tramos "Hasta (metros)" (los 2 originales + el nuevo vacío)
     // y sigue habiendo un único tramo final sin límite.
     expect(screen.getAllByLabelText('Hasta (metros)')).toHaveLength(3)
-    expect(screen.getAllByLabelText('Sin límite (tarifa plana)')).toHaveLength(1)
+    expect(screen.getAllByLabelText('Sin límite (tarifa plana)')).toHaveLength(
+      1,
+    )
   })
 
   it('no permite quitar el último tramo (siempre debe quedar al menos uno)', () => {
     settingsData.current = [
       makeSetting('store_location', '{"latitude":-12.1631,"longitude":-76.97}'),
-      makeSetting('delivery_fee_tiers', JSON.stringify([{ maxMeters: null, fee: 8 }])),
+      makeSetting(
+        'delivery_fee_tiers',
+        JSON.stringify([{ maxMeters: null, fee: 8 }]),
+      ),
       makeSetting('delivery_alert_radius_meters', '2500'),
     ]
     render(<DeliverySettingsCard />)
 
-    expect(screen.getByRole('button', { name: /quitar tramo 1/i })).toBeDisabled()
+    expect(
+      screen.getByRole('button', { name: /quitar tramo 1/i }),
+    ).toBeDisabled()
   })
 
   it('rechaza tramos no ascendentes (superposición) y no envía el submit', async () => {
@@ -172,5 +181,124 @@ describe('DeliverySettingsCard', () => {
     )
     expect(byKey.delivery_fee_tiers).toBe(SAVED_TIERS)
     expect(byKey.delivery_alert_radius_meters).toBe('2500')
+  })
+
+  it.each(['', '1.001', '100000000', '-1'])(
+    'tarifa inválida %s bloquea TODOS los PATCH',
+    async (fee) => {
+      const user = userEvent.setup()
+      render(<DeliverySettingsCard />)
+      const input = screen.getAllByLabelText('Tarifa (S/)')[0]
+      await user.clear(input)
+      if (fee) await user.type(input, fee)
+      await user.click(
+        screen.getByRole('button', { name: /guardar configuración/i }),
+      )
+      await waitFor(() => expect(input).toHaveAttribute('aria-invalid', 'true'))
+      expect(upsertMock).not.toHaveBeenCalled()
+    },
+  )
+  it.each(['0', '1.00', '99999999.99'])(
+    'tarifa válida %s mantiene números y null final',
+    async (fee) => {
+      const user = userEvent.setup()
+      render(<DeliverySettingsCard />)
+      const input = screen.getAllByLabelText('Tarifa (S/)')[0]
+      await user.clear(input)
+      await user.type(input, fee)
+      await user.click(
+        screen.getByRole('button', { name: /guardar configuración/i }),
+      )
+      await waitFor(() => expect(upsertMock).toHaveBeenCalledTimes(3))
+      const tiers = JSON.parse(upsertMock.mock.calls[1][0].value)
+      expect(tiers[0]).toEqual({ maxMeters: 100, fee: Number(fee) })
+      expect(tiers.at(-1).maxMeters).toBeNull()
+    },
+  )
+  it.each(['Latitud', 'Longitud', 'ambas'])(
+    'coordenada vacía %s no produce 0 ni preview',
+    async (label) => {
+      vi.stubEnv('VITE_GEOAPIFY_API_KEY', 'test')
+      const user = userEvent.setup()
+      render(<DeliverySettingsCard />)
+      for (const name of label === 'ambas' ? ['Latitud', 'Longitud'] : [label])
+        await user.clear(screen.getByLabelText(name))
+      expect(
+        screen.queryByRole('img', { name: 'Mapa del local' }),
+      ).not.toBeInTheDocument()
+      await user.click(
+        screen.getByRole('button', { name: /guardar configuración/i }),
+      )
+      await waitFor(() =>
+        expect(
+          screen.getByLabelText(label === 'ambas' ? 'Latitud' : label),
+        ).toHaveAttribute('aria-invalid', 'true'),
+      )
+      expect(upsertMock).not.toHaveBeenCalled()
+    },
+  )
+  it.each([
+    [0, 0],
+    [-90, -180],
+    [90, 180],
+  ])('coordenadas explícitas %s/%s se guardan', async (lat, lng) => {
+    const user = userEvent.setup()
+    render(<DeliverySettingsCard />)
+    for (const [label, value] of [
+      ['Latitud', lat],
+      ['Longitud', lng],
+    ] as const) {
+      await user.clear(screen.getByLabelText(label))
+      await user.type(screen.getByLabelText(label), String(value))
+    }
+    await user.click(
+      screen.getByRole('button', { name: /guardar configuración/i }),
+    )
+    await waitFor(() => expect(upsertMock).toHaveBeenCalledTimes(3))
+    expect(JSON.parse(upsertMock.mock.calls[0][0].value)).toEqual({
+      latitude: lat,
+      longitude: lng,
+    })
+  })
+  it.each([
+    ['Latitud', '91'],
+    ['Longitud', '-181'],
+  ])(
+    'coordenada fuera de rango %s bloquea todos los PATCH',
+    async (label, value) => {
+      const user = userEvent.setup()
+      render(<DeliverySettingsCard />)
+      await user.clear(screen.getByLabelText(label))
+      await user.type(screen.getByLabelText(label), value)
+      await user.click(
+        screen.getByRole('button', { name: /guardar configuración/i }),
+      )
+      await waitFor(() =>
+        expect(screen.getByLabelText(label)).toHaveAttribute(
+          'aria-invalid',
+          'true',
+        ),
+      )
+      expect(upsertMock).not.toHaveBeenCalled()
+    },
+  )
+  it('un fallo intermedio conserva el error y no hace rollback ni guarda el radio', async () => {
+    upsertMock
+      .mockResolvedValueOnce(makeSetting('store_location', 'x'))
+      .mockRejectedValueOnce(new Error('Network unavailable'))
+    const user = userEvent.setup()
+    render(<DeliverySettingsCard />)
+    await user.click(
+      screen.getByRole('button', { name: /guardar configuración/i }),
+    )
+    expect(
+      await screen.findByText(
+        'No se pudo guardar la configuración de delivery',
+      ),
+    ).toBeInTheDocument()
+    expect(upsertMock.mock.calls.map(([input]) => input.key)).toEqual([
+      'store_location',
+      'delivery_fee_tiers',
+    ])
   })
 })

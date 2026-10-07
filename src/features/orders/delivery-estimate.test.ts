@@ -39,7 +39,9 @@ describe('storeLocationFromSettings', () => {
   })
 
   it('sin store_location configurada → null (nunca inventa coordenadas)', () => {
-    expect(storeLocationFromSettings([setting('store_location', '')])).toBeNull()
+    expect(
+      storeLocationFromSettings([setting('store_location', '')]),
+    ).toBeNull()
     expect(storeLocationFromSettings(undefined)).toBeNull()
   })
 })
@@ -105,7 +107,10 @@ describe('deliveryErrorMessage', () => {
 
 describe('wrapLatLng', () => {
   it('deja intacta una longitud ya en rango', () => {
-    expect(wrapLatLng({ lat: -12.16, lng: -76.97 })).toEqual({ lat: -12.16, lng: -76.97 })
+    expect(wrapLatLng({ lat: -12.16, lng: -76.97 })).toEqual({
+      lat: -12.16,
+      lng: -76.97,
+    })
   })
 
   it('una copia del mundo a la derecha/izquierda vuelve a [-180, 180)', () => {
@@ -113,4 +118,13 @@ describe('wrapLatLng', () => {
     expect(wrapLatLng({ lat: -12.16, lng: -436.97 }).lng).toBeCloseTo(-76.97, 9)
     expect(wrapLatLng({ lat: 0, lng: 180 }).lng).toBe(-180)
   })
+
+  it.each(['estimate', 'geocode'] as const)(
+    '403 en %s explica permisos',
+    (kind) => {
+      expect(deliveryErrorMessage(httpError(403), kind)).toMatch(
+        /no tiene permisos/,
+      )
+    },
+  )
 })

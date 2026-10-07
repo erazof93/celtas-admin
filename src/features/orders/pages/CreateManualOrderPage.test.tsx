@@ -96,6 +96,36 @@ vi.mock('../components/DeliveryCalculator', async () => {
         <button
           type="button"
           onClick={() =>
+            onChange({
+              address: 'Lima',
+              point: { lat: -12, lng: -77 },
+              estimate: {
+                deliveryFee: 0,
+                isFarOrder: false,
+                distanceMeters: 900,
+                deliveryMode: 'ZONES',
+                isCovered: false,
+                zone: null,
+              },
+              estimateFailed: false,
+              district: null,
+            })
+          }
+        >
+          sin-cobertura
+        </button>
+        <button type="button" onClick={() => onChange({
+          address: 'Dirección QA cubierta', point: { lat: -12.16, lng: -76.97 },
+          estimate: { deliveryFee: 8, isFarOrder: true, distanceMeters: 900, deliveryMode: 'ZONES', isCovered: true, zone: { id: 'qa', name: 'Zona QA' } },
+          estimateFailed: false, district: null,
+        })}>zona-cubierta</button>
+        <button type="button" onClick={() => onChange({
+          address: 'Dirección B', point: { lat: -12.17, lng: -76.98 },
+          estimate: null, estimateFailed: false, estimatePending: true, district: null,
+        })}>recalculando</button>
+        <button
+          type="button"
+          onClick={() =>
             onChange({ address: 'Av. Sin Mapa 1', point: null, estimate: null, estimateFailed: false, district: null })
           }
         >
@@ -361,8 +391,8 @@ describe('CreateManualOrderPage', () => {
 
     const summary = screen.getByRole('heading', { name: '4. Resumen' }).parentElement as HTMLElement
     // Sin ubicar: subtotal y total coinciden (delivery 0).
-    expect(within(summary).getAllByText('S/ 85.90')).toHaveLength(2)
-    expect(within(summary).getByText('S/ 0.00')).toBeInTheDocument()
+    expect(within(summary).getAllByText('S/ 85.90')).toHaveLength(1)
+    expect(within(summary).getByText('Ubicación pendiente')).toBeInTheDocument()
 
     await user.click(await screen.findByRole('button', { name: 'ubicar-dirección' }))
     expect(within(summary).getByText('S/ 5.00')).toBeInTheDocument()
@@ -376,6 +406,20 @@ describe('CreateManualOrderPage', () => {
     // Eliminar una línea recalcula.
     await user.click(screen.getByRole('button', { name: 'Eliminar Combo Celtas' }))
     expect(within(summary).getByText('S/ 56.70')).toBeInTheDocument()
+  })
+
+  it('ZONES sin cobertura no usa cero para delivery o total', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(
+      await screen.findByRole('button', { name: 'sin-cobertura' }),
+    )
+    const summary = screen.getByRole('heading', { name: '4. Resumen' })
+      .parentElement as HTMLElement
+    expect(within(summary).getAllByText('Fuera de cobertura')).toHaveLength(2); expect(screen.getByRole('button', { name: 'Crear pedido' })).toBeDisabled()
+    const totalRow = within(summary).getByText('Total')
+      .parentElement as HTMLElement
+    expect(within(totalRow).getByText('—')).toBeInTheDocument()
   })
 
   it('el diálogo no ofrece productos no disponibles y bloquea un grupo obligatorio sin elegir', async () => {
@@ -395,14 +439,14 @@ describe('CreateManualOrderPage', () => {
     expect(within(dialog).getByRole('button', { name: 'Agregar al pedido' })).toBeEnabled()
   })
 
-  it('dirección sin ubicar en el mapa: avisa que el delivery será S/ 0.00 y manda el snapshot sin coordenadas', async () => {
+  it('dirección sin ubicar: avisa que tarifa y cobertura no están confirmadas y manda snapshot sin coordenadas', async () => {
     const user = userEvent.setup()
     renderPage()
 
     await fillAnonymous(user)
     await addProduct(user, 'Celtas Burger')
     await user.click(await screen.findByRole('button', { name: 'solo-texto' }))
-    expect(screen.getByText(/Sin ubicar en el mapa el servidor cobra delivery S\/ 0.00/)).toBeInTheDocument()
+    expect(screen.getByText(/Sin ubicar en el mapa la tarifa y cobertura no están confirmadas/)).toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Crear pedido' }))
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1))
@@ -446,6 +490,37 @@ describe('CreateManualOrderPage', () => {
 })
 
 describe('CreateManualOrderPage - cotización fallida', () => {
+  it('zona cubierta usa tarifa/nombre; nueva dirección y error eliminan tarifa anterior', async () => {
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(await screen.findByRole('button', { name: 'zona-cubierta' }))
+    expect(within(summary()).getByText('Zona de delivery: Zona QA')).toBeInTheDocument()
+    expect(deliveryValue()).toBe('S/ 8.00')
+    expect(within(summary()).getByText(/fuera de la zona habitual/)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'recalculando' }))
+    expect(deliveryValue()).toBe('Calculando…')
+    expect(within(summary()).queryByText(/Zona de delivery/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Crear pedido' })).toBeDisabled()
+    await user.click(screen.getByRole('button', { name: 'cotizacion-falla' }))
+    expect(deliveryValue()).toBe('No se pudo calcular')
+    expect(within(summary()).queryByText('S/ 8.00')).not.toBeInTheDocument()
+  })
+  it('400 de cobertura mantiene datos y muestra motivo sin sustituir tarifa', async () => {
+    createMock.mockRejectedValue(new AxiosError('coverage', undefined, undefined, undefined, {
+      status: 400, statusText: '', headers: {}, config: { headers: new AxiosHeaders() },
+      data: { message: 'La dirección no tiene cobertura de delivery o no tiene coordenadas válidas' },
+    }))
+    const user = userEvent.setup()
+    renderPage()
+    await fillAnonymous(user)
+    await addProduct(user, 'Celtas Burger')
+    await user.click(await screen.findByRole('button', { name: 'zona-cubierta' }))
+    await user.click(screen.getByRole('button', { name: 'Crear pedido' }))
+    expect(await screen.findByText(/La dirección no tiene cobertura/)).toBeInTheDocument()
+    expect(screen.getByRole('table')).toHaveTextContent('Celtas Burger')
+    expect(screen.queryByTestId('orders-page')).not.toBeInTheDocument()
+    expect(lastPayload()).not.toHaveProperty('deliveryFee')
+  })
   it('no se queda en "Calculando…": avisa y permite crear igual (el servidor calcula el delivery)', async () => {
     const user = userEvent.setup()
     renderPage()
@@ -586,7 +661,7 @@ describe('CreateManualOrderPage - direcciones guardadas del cliente', () => {
     await waitFor(() => expect(calcInitial()).toBeNull())
     expect(screen.getByLabelText(/^Referencia/)).toHaveValue('')
     // Sin dirección ubicada: delivery S/ 0.00 hasta buscar.
-    expect(deliveryValue()).toBe('S/ 0.00')
+    expect(deliveryValue()).toBe('Ubicación pendiente')
 
     await user.click(screen.getByRole('button', { name: 'ubicar-dirección' }))
     expect(deliveryValue()).toBe('S/ 5.00')
@@ -921,7 +996,7 @@ describe('CreateManualOrderPage - regresión: volver a elegir la guardada ya sel
 
     // El admin edita el texto: el punto se pierde.
     await user.click(screen.getByRole('button', { name: 'solo-texto' }))
-    expect(deliveryValue()).toBe('S/ 0.00')
+    expect(deliveryValue()).toBe('Ubicación pendiente')
 
     await user.click(screen.getByRole('button', { name: 'sugerida: Casa - Av. Los Álamos 123, SJM' }))
     await waitFor(() => expect(deliveryValue()).toBe('S/ 7.00'))

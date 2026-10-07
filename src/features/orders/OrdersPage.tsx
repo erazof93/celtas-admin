@@ -291,12 +291,12 @@ export default function OrdersPage() {
           <DialogHeader>
             <DialogTitle>Cotizar delivery</DialogTitle>
             <DialogDescription>
-              Busca la dirección del cliente y ajusta el pin en el mapa.
+              Busca la dirección del cliente o marca la ubicación en el mapa.
             </DialogDescription>
           </DialogHeader>
           {calculatorOpen ? (
             <Suspense fallback={<LoadingState label="Cargando mapa…" />}>
-              <DeliveryCalculator />
+              <DeliveryCalculator allowManualPin />
             </Suspense>
           ) : null}
         </DialogContent>

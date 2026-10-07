@@ -36,6 +36,7 @@ import { AddItemDialog } from '../components/AddItemDialog'
 import { CustomerPicker } from '../components/CustomerPicker'
 import type { DeliveryLocation } from '../components/DeliveryCalculator'
 import type { DeliveryEstimate } from '../delivery-estimate'
+import { isDeliveryUncovered } from '../delivery-estimate'
 import { useCreateAdminOrder } from '../hooks'
 import {
   buildCreateOrderAdminPayload,
@@ -171,6 +172,8 @@ export default function CreateManualOrderPage() {
   const [addOpen, setAddOpen] = useState(false)
   const [estimate, setEstimate] = useState<DeliveryEstimate | null>(null)
   const [estimateFailed, setEstimateFailed] = useState(false)
+  const [estimatePending, setEstimatePending] = useState(false)
+  const [estimateKey, setEstimateKey] = useState<string | null>(null)
   // Distrito de la sugerencia de Geoapify elegida (null si no vino de una).
   const [pickedDistrict, setPickedDistrict] = useState<string | null>(null)
   const [serverError, setServerError] = useState<string | null>(null)
@@ -220,7 +223,12 @@ export default function CreateManualOrderPage() {
   )
   const subtotal = manualOrderSubtotal(lines, menuById)
   const located = address.latitude !== null && address.longitude !== null
-  const deliveryFee = located ? (estimate?.deliveryFee ?? null) : 0
+  const locationReady = estimateKey === calculatorKey
+  const currentEstimate =
+    locationReady && !estimatePending && !estimateFailed ? estimate : null
+  const uncovered = isDeliveryUncovered(currentEstimate)
+  const deliveryFee =
+    uncovered || !located ? null : (currentEstimate?.deliveryFee ?? null)
   const total = deliveryFee === null ? null : round2(subtotal + deliveryFee)
 
   function handleLocationChange(location: DeliveryLocation) {
@@ -242,6 +250,8 @@ export default function CreateManualOrderPage() {
     )
     setEstimate(location.estimate)
     setEstimateFailed(location.estimateFailed)
+    setEstimatePending(location.estimatePending ?? false)
+    setEstimateKey(calculatorKey)
     setPickedDistrict(location.district)
   }
 
@@ -251,6 +261,7 @@ export default function CreateManualOrderPage() {
 
   async function onSubmit(values: ManualOrderFormValues) {
     setServerError(null)
+    if (uncovered || estimatePending || !locationReady) return
     const payload = buildCreateOrderAdminPayload({
       customer:
         values.customer.mode === 'registered'
@@ -497,7 +508,7 @@ export default function CreateManualOrderPage() {
         {address.fullAddress.trim() && !located ? (
           <p className="text-celtas-gold flex items-start gap-1.5 text-sm">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" />
-            Sin ubicar en el mapa el servidor cobra delivery S/ 0.00. Pulsa
+            Sin ubicar en el mapa la tarifa y cobertura no están confirmadas. Pulsa
             "Buscar", elige una sugerencia o marca el punto en el mapa.
           </p>
         ) : null}
@@ -538,6 +549,20 @@ export default function CreateManualOrderPage() {
 
       <Card className="space-y-3 p-5">
         <h2 className="text-lg font-semibold">4. Resumen</h2>
+        {uncovered && (
+          <div role="alert" className="text-celtas-red-light space-y-1">
+            <p className="font-semibold">Fuera de cobertura</p>
+            <p className="text-sm">
+              La dirección seleccionada no pertenece a ninguna zona de delivery activa.
+            </p>
+          </div>
+        )}
+        {currentEstimate?.deliveryMode === 'ZONES' && !uncovered && (
+          <div className="text-sm">
+            <p>Zona de delivery: {currentEstimate.zone?.name ?? 'Zona activa'}</p>
+            <p className="text-muted-foreground">Tarifa según zona</p>
+          </div>
+        )}
         <dl className="space-y-1 text-sm">
           <div className="flex justify-between">
             <dt>Subtotal</dt>
@@ -546,11 +571,15 @@ export default function CreateManualOrderPage() {
           <div className="flex justify-between">
             <dt>Delivery</dt>
             <dd>
-              {deliveryFee !== null
-                ? formatPrice(deliveryFee)
-                : estimateFailed
-                  ? 'No se pudo calcular'
-                  : 'Calculando…'}
+              {uncovered
+                ? 'Fuera de cobertura'
+                : deliveryFee !== null
+                  ? formatPrice(deliveryFee)
+                  : !located
+                    ? 'Ubicación pendiente'
+                    : estimateFailed
+                      ? 'No se pudo calcular'
+                      : 'Calculando…'}
             </dd>
           </div>
           <div className="flex justify-between border-t pt-2 text-base font-bold">
@@ -564,7 +593,7 @@ export default function CreateManualOrderPage() {
             Igual puedes crear el pedido: el servidor lo calcula al crearlo.
           </p>
         ) : null}
-        {estimate?.isFarOrder && located ? (
+        {currentEstimate?.isFarOrder && located ? (
           <p className="text-celtas-red-light flex items-center gap-1 text-sm">
             <TriangleAlert className="size-4" />
             Dirección fuera de la zona habitual de reparto.
@@ -577,7 +606,9 @@ export default function CreateManualOrderPage() {
           <Button
             type="button"
             onClick={handleSubmit(onSubmit)}
-            disabled={isSubmitting || !menuQuery.data}
+            disabled={
+              isSubmitting || !menuQuery.data || uncovered || estimatePending || !locationReady
+            }
           >
             {isSubmitting ? 'Creando…' : 'Crear pedido'}
           </Button>

@@ -4,6 +4,7 @@ import { DeliverySettingsCard } from './DeliverySettingsCard'
 import { EstrellasSettingsCard } from './EstrellasSettingsCard'
 import { RoleManagerCard } from './RoleManagerCard'
 import { WhatsappSettingsCard } from './WhatsappSettingsCard'
+import { DeliveryZonesSection } from '../delivery-zones/DeliveryZonesSection'
 
 /**
  * Configuración — MÓDULO 8. WhatsApp del negocio, horario de atención,
@@ -30,6 +31,7 @@ export default function SettingsPage() {
         <EstrellasSettingsCard />
         <AutoCouponConfigCard />
       </div>
+      <DeliveryZonesSection />
     </div>
   )
 }
