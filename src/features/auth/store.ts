@@ -23,16 +23,31 @@ interface AuthState {
   /** Access token en memoria — se pierde al recargar a propósito. */
   accessToken: string | null
   user: AuthUser | null
-  setSession: (accessToken: string, user: AuthUser) => void
+  sessionId: number
+  roleStatus: 'unverified' | 'checking' | 'confirmed' | 'error'
+  setSession: (accessToken: string, user: AuthUser, confirmed?: boolean) => void
   clearSession: () => void
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
   accessToken: null,
   user: null,
-  setSession: (accessToken, user) => set({ accessToken, user }),
+  sessionId: 0,
+  roleStatus: 'unverified',
+  setSession: (accessToken, user, confirmed = false) =>
+    set((state) => ({
+      accessToken,
+      user,
+      sessionId: state.sessionId + 1,
+      roleStatus: confirmed ? 'confirmed' : 'unverified',
+    })),
   clearSession: () => {
     clearRefreshToken()
-    set({ accessToken: null, user: null })
+    set((state) => ({
+      accessToken: null,
+      user: null,
+      sessionId: state.sessionId + 1,
+      roleStatus: 'unverified',
+    }))
   },
 }))

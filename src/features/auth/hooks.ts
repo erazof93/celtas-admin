@@ -27,7 +27,7 @@ export function useLogin() {
       api.post<AuthTokens>('/auth/login', input).then((r) => r.data),
     onSuccess: (tokens) => {
       setRefreshToken(tokens.refreshToken)
-      setSession(tokens.accessToken, tokens.user)
+      setSession(tokens.accessToken, tokens.user, true)
     },
   })
 }
@@ -56,6 +56,10 @@ export function useBootstrap() {
   return useQuery({
     queryKey: ['auth', 'bootstrap'],
     queryFn: async () => {
+      // An existing in-memory session is checked by ProtectedRoute before admission.
+      if (useAuthStore.getState().accessToken)
+        return useAuthStore.getState().user
+      const sessionId = useAuthStore.getState().sessionId
       const refreshToken = getRefreshToken()
       if (!refreshToken) return null
 
@@ -64,6 +68,7 @@ export function useBootstrap() {
           refreshToken,
         })
         // Rotación: el backend emite un refreshToken nuevo en cada refresh.
+        if (useAuthStore.getState().sessionId !== sessionId) return null
         setRefreshToken(data.refreshToken)
         setSession(data.accessToken, data.user)
         return data.user
@@ -71,7 +76,11 @@ export function useBootstrap() {
         // Solo un 401 definitivo significa token inválido/expirado → limpiar.
         // Errores transitorios (red, 5xx, cold start de Render) conservan el
         // refreshToken para no destruir una sesión válida por un fallo de red.
-        if (error instanceof AxiosError && error.response?.status === 401) {
+        if (
+          useAuthStore.getState().sessionId === sessionId &&
+          error instanceof AxiosError &&
+          error.response?.status === 401
+        ) {
           clearRefreshToken()
           useAuthStore.getState().clearSession()
         }

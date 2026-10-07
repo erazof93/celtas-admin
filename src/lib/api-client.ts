@@ -23,7 +23,9 @@ const api = axios.create({
  * de Zustand) a cada request.
  */
 api.interceptors.request.use((config) => {
-  const { accessToken } = useAuthStore.getState()
+  const { accessToken, sessionId } = useAuthStore.getState()
+  const request = config as RetriableRequestConfig
+  request._sessionId ??= sessionId
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`
   }
@@ -41,41 +43,39 @@ api.interceptors.request.use((config) => {
  */
 interface RetriableRequestConfig extends InternalAxiosRequestConfig {
   _retry?: boolean
+  _sessionId?: number
 }
 
 let isRefreshing = false
 let pendingQueue: Array<(token: string | null) => void> = []
-let roleCheck: { token: string; promise: Promise<void> } | null = null
+let roleCheck: { sessionId: number; promise: Promise<void> } | null = null
 
-/** /users/me reads the current DB role, without requiring Admin permissions. */
-async function reconcileRole(original: RetriableRequestConfig) {
+/** Shared by initial admission and 403 reconciliation; never replays a forbidden request. */
+export async function confirmCurrentUser() {
   const session = useAuthStore.getState()
-  const token = session.accessToken
-  const userId = session.user?.id
-  if (
-    !token ||
-    session.user?.role !== 'admin' ||
-    original.headers.Authorization !== `Bearer ${token}`
-  )
-    return
-  if (roleCheck?.token === token) return roleCheck.promise
+  const { sessionId, user } = session
+  if (!session.accessToken || !user) return
+  if (roleCheck?.sessionId === sessionId) return roleCheck.promise
+  useAuthStore.setState({ roleStatus: 'checking' })
   const check = {
-    token,
+    sessionId,
     promise: (async () => {
       try {
-        const { data: user } = await api.get<AuthUser>('/users/me')
+        const { data: currentUser } = await api.get<AuthUser>('/users/me', {
+          timeout: 15000,
+        })
         const current = useAuthStore.getState()
-        // A late response must not resurrect logout or overwrite another session.
+        if (current.sessionId !== sessionId) return
         if (
-          current.accessToken === token &&
-          current.user?.id === userId &&
-          user.id === userId &&
-          (user.role === 'admin' || user.role === 'cliente')
-        ) {
-          current.setSession(token, user)
-        }
-      } catch {
-        // A failed profile check is not evidence of a lost role. 401 uses normal refresh.
+          currentUser.id !== user.id ||
+          (currentUser.role !== 'admin' && currentUser.role !== 'cliente')
+        )
+          throw new Error('Unexpected session profile')
+        useAuthStore.setState({ user: currentUser, roleStatus: 'confirmed' })
+      } catch (error) {
+        if (useAuthStore.getState().sessionId === sessionId)
+          useAuthStore.setState({ roleStatus: 'error' })
+        throw error
       }
     })(),
   }
@@ -87,6 +87,21 @@ async function reconcileRole(original: RetriableRequestConfig) {
   }
 }
 
+async function reconcileRole(original: RetriableRequestConfig) {
+  const session = useAuthStore.getState()
+  if (
+    !session.accessToken ||
+    session.user?.role !== 'admin' ||
+    original._sessionId !== session.sessionId ||
+    original.headers.Authorization !== `Bearer ${session.accessToken}`
+  )
+    return
+  try {
+    await confirmCurrentUser()
+  } catch {
+    /* Failure does not prove a role change; keep the session for retry. */
+  }
+}
 function flushQueue(token: string | null) {
   pendingQueue.forEach((resolve) => resolve(token))
   pendingQueue = []
@@ -132,6 +147,9 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
+    const refreshSessionId = original._sessionId
+    if (refreshSessionId !== useAuthStore.getState().sessionId)
+      return Promise.reject(error)
     const refreshToken = getRefreshToken()
     if (!refreshToken) {
       useAuthStore.getState().clearSession()
@@ -144,7 +162,7 @@ api.interceptors.response.use(
       // Otra request ya está refrescando: encolar esta y esperar el token nuevo.
       return new Promise((resolve, reject) => {
         pendingQueue.push((token) => {
-          if (token) {
+          if (token && useAuthStore.getState().sessionId === refreshSessionId) {
             original.headers.Authorization = `Bearer ${token}`
             resolve(api(original))
           } else {
@@ -162,8 +180,12 @@ api.interceptors.response.use(
         refreshToken,
       })
       // Rotación: el backend emite un refreshToken nuevo en cada refresh.
+      if (useAuthStore.getState().sessionId !== refreshSessionId) {
+        flushQueue(null)
+        return Promise.reject(error)
+      }
       setRefreshToken(data.refreshToken)
-      useAuthStore.getState().setSession(data.accessToken, data.user)
+      useAuthStore.setState({ accessToken: data.accessToken, user: data.user })
       flushQueue(data.accessToken)
       original.headers.Authorization = `Bearer ${data.accessToken}`
       return api(original)
@@ -173,6 +195,7 @@ api.interceptors.response.use(
       // sesión y redirigir. Errores transitorios (red, 5xx, cold start de
       // Render) conservan la sesión: la próxima request reintentará el refresh.
       if (
+        useAuthStore.getState().sessionId === refreshSessionId &&
         refreshError instanceof AxiosError &&
         refreshError.response?.status === 401
       ) {

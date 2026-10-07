@@ -32,7 +32,7 @@ const fail = (config: InternalAxiosRequestConfig, status: number) =>
 
 beforeEach(() => {
   useAuthStore.getState().clearSession()
-  useAuthStore.getState().setSession('test-access', admin)
+  useAuthStore.getState().setSession('test-access', admin, true)
   setRefreshToken('test-refresh')
 })
 

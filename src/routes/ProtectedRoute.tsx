@@ -1,4 +1,8 @@
 import type { ReactNode } from 'react'
+import { useEffect } from 'react'
+import { confirmCurrentUser } from '@/lib/api-client'
+import { LoadingState } from '@/components/ui/LoadingState'
+import { ErrorState } from '@/components/ui/ErrorState'
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/features/auth/store'
 
@@ -14,6 +18,12 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
   const accessToken = useAuthStore((s) => s.accessToken)
   const user = useAuthStore((s) => s.user)
   const location = useLocation()
+  const status = useAuthStore((s) => s.roleStatus)
+  const sessionId = useAuthStore((s) => s.sessionId)
+  useEffect(() => {
+    if (accessToken && user?.role === 'admin' && status === 'unverified')
+      void confirmCurrentUser().catch(() => undefined)
+  }, [accessToken, user?.role, status, sessionId])
 
   if (!accessToken || !user) {
     return <Navigate to="/login" replace state={{ from: location }} />
@@ -36,5 +46,17 @@ export default function ProtectedRoute({ children }: { children: ReactNode }) {
     )
   }
 
+  if (status === 'error')
+    return (
+      <ErrorState
+        title="No se pudo comprobar el acceso administrativo"
+        description="Tu sesión se conserva. Reintenta para confirmar tus permisos."
+        onRetry={() => {
+          void confirmCurrentUser().catch(() => undefined)
+        }}
+      />
+    )
+  if (status !== 'confirmed')
+    return <LoadingState label="Comprobando acceso administrativo…" />
   return children
 }
