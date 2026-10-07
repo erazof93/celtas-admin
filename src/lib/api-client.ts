@@ -8,7 +8,7 @@ import {
   getRefreshToken,
   setRefreshToken,
 } from '@/features/auth/store'
-import type { AuthTokens } from '@/features/auth/types'
+import type { AuthTokens, AuthUser } from '@/features/auth/types'
 
 /**
  * Instancia única de cliente para todo el panel.
@@ -45,6 +45,47 @@ interface RetriableRequestConfig extends InternalAxiosRequestConfig {
 
 let isRefreshing = false
 let pendingQueue: Array<(token: string | null) => void> = []
+let roleCheck: { token: string; promise: Promise<void> } | null = null
+
+/** /users/me reads the current DB role, without requiring Admin permissions. */
+async function reconcileRole(original: RetriableRequestConfig) {
+  const session = useAuthStore.getState()
+  const token = session.accessToken
+  const userId = session.user?.id
+  if (
+    !token ||
+    session.user?.role !== 'admin' ||
+    original.headers.Authorization !== `Bearer ${token}`
+  )
+    return
+  if (roleCheck?.token === token) return roleCheck.promise
+  const check = {
+    token,
+    promise: (async () => {
+      try {
+        const { data: user } = await api.get<AuthUser>('/users/me')
+        const current = useAuthStore.getState()
+        // A late response must not resurrect logout or overwrite another session.
+        if (
+          current.accessToken === token &&
+          current.user?.id === userId &&
+          user.id === userId &&
+          (user.role === 'admin' || user.role === 'cliente')
+        ) {
+          current.setSession(token, user)
+        }
+      } catch {
+        // A failed profile check is not evidence of a lost role. 401 uses normal refresh.
+      }
+    })(),
+  }
+  roleCheck = check
+  try {
+    await check.promise
+  } finally {
+    if (roleCheck === check) roleCheck = null
+  }
+}
 
 function flushQueue(token: string | null) {
   pendingQueue.forEach((resolve) => resolve(token))
@@ -71,6 +112,16 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const original = error.config as RetriableRequestConfig | undefined
 
+    if (
+      error.response?.status === 403 &&
+      original &&
+      !isAuthEndpoint(original.url) &&
+      original.url?.split('?')[0] !== '/users/me'
+    ) {
+      await reconcileRole(original)
+      return Promise.reject(error)
+    }
+
     // No es 401, ya fue reintentada, o es el propio login/refresh: no refrescar.
     if (
       error.response?.status !== 401 ||
@@ -89,6 +140,7 @@ api.interceptors.response.use(
     }
 
     if (isRefreshing) {
+      original._retry = true
       // Otra request ya está refrescando: encolar esta y esperar el token nuevo.
       return new Promise((resolve, reject) => {
         pendingQueue.push((token) => {
