@@ -22,15 +22,16 @@ import type { Order, OrderItem, OrderUser, WhatsappLinks } from './types'
  * `order.whatsappUrl` — el mensaje del pedido hacia la tienda).
  */
 
-const { settingsData, updateStatusMock, whatsappLinksMock, markSentMock } = vi.hoisted(() => ({
-  whatsappLinksMock: vi.fn(),
-  markSentMock: { mutateAsync: vi.fn(), isPending: false },
-  settingsData: { current: [] as { key: string; value: string }[] },
-  updateStatusMock: {
-    mutateAsync: vi.fn(),
-    isPending: false,
-  },
-}))
+const { settingsData, updateStatusMock, whatsappLinksMock, markSentMock } =
+  vi.hoisted(() => ({
+    whatsappLinksMock: vi.fn(),
+    markSentMock: { mutateAsync: vi.fn(), isPending: false },
+    settingsData: { current: [] as { key: string; value: string }[] },
+    updateStatusMock: {
+      mutateAsync: vi.fn(),
+      isPending: false,
+    },
+  }))
 
 vi.mock('./hooks', () => ({
   useUpdateOrderStatus: () => updateStatusMock,
@@ -121,7 +122,11 @@ beforeEach(() => {
   updateStatusMock.isPending = false
   // Por defecto los links fallan: el diálogo muestra el link original del pedido.
   whatsappLinksMock.mockReset()
-  whatsappLinksMock.mockReturnValue({ isPending: false, isError: true, data: undefined })
+  whatsappLinksMock.mockReturnValue({
+    isPending: false,
+    isError: true,
+    data: undefined,
+  })
   markSentMock.mutateAsync = vi.fn()
   markSentMock.isPending = false
 })
@@ -360,7 +365,9 @@ describe('OrderDetailDialog — botón "Contactar al cliente por WhatsApp"', () 
       screen.queryByRole('link', { name: 'Contactar al cliente por WhatsApp' }),
     ).not.toBeInTheDocument()
     // El botón existente (mensaje del PEDIDO) sigue ahí, sin confundirse con el nuevo.
-    expect(screen.getByRole('link', { name: 'Abrir en WhatsApp' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Abrir en WhatsApp' }),
+    ).toBeInTheDocument()
   })
 })
 
@@ -417,9 +424,7 @@ describe('OrderDetailDialog — cancelar pedido con motivo obligatorio', () => {
     await user.click(screen.getByRole('button', { name: 'Cancelar pedido' }))
 
     expect(
-      screen.getByText(
-        /Indica el motivo de la cancelación/i,
-      ),
+      screen.getByText(/Indica el motivo de la cancelación/i),
     ).toBeInTheDocument()
     expect(
       screen.getByLabelText('Motivo de la cancelación'),
@@ -568,8 +573,14 @@ describe('OrderDetailDialog — cancelar pedido con motivo obligatorio', () => {
 describe('OrderDetailDialog - WhatsApp (links cliente/tienda + confirmación)', () => {
   const links: WhatsappLinks = {
     orderId: 'order-1',
-    customer: { phone: '51987654321', url: 'https://wa.me/51987654321?text=CONFIRMA' },
-    store: { phone: '51999888777', url: 'https://wa.me/51999888777?text=NUEVO' },
+    customer: {
+      phone: '51987654321',
+      url: 'https://wa.me/51987654321?text=CONFIRMA',
+    },
+    store: {
+      phone: '51999888777',
+      url: 'https://wa.me/51999888777?text=NUEVO',
+    },
     whatsappSentAt: null,
   }
 
@@ -587,17 +598,17 @@ describe('OrderDetailDialog - WhatsApp (links cliente/tienda + confirmación)', 
     renderDialog(order)
 
     expect(whatsappLinksMock).toHaveBeenCalledWith(order.id, true)
-    expect(screen.getByRole('link', { name: 'Enviar a cliente (+51 987 654 321)' })).toHaveAttribute(
-      'href',
-      'https://wa.me/51987654321?text=CONFIRMA',
-    )
-    expect(screen.getByRole('link', { name: 'Enviar a tienda (+51 999 888 777)' })).toHaveAttribute(
-      'href',
-      links.store.url,
-    )
+    expect(
+      screen.getByRole('link', { name: 'Enviar a cliente (+51 987 654 321)' }),
+    ).toHaveAttribute('href', 'https://wa.me/51987654321?text=CONFIRMA')
+    expect(
+      screen.getByRole('link', { name: 'Enviar a tienda (+51 999 888 777)' }),
+    ).toHaveAttribute('href', links.store.url)
     expect(screen.getByText('Aún no enviado')).toBeInTheDocument()
     // Reemplaza al link original: no se duplica "Abrir en WhatsApp".
-    expect(screen.queryByRole('link', { name: 'Abrir en WhatsApp' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: 'Abrir en WhatsApp' }),
+    ).not.toBeInTheDocument()
   })
 
   it('"Ya lo envié" llama a POST .../whatsapp-sent con el id del pedido', async () => {
@@ -619,8 +630,12 @@ describe('OrderDetailDialog - WhatsApp (links cliente/tienda + confirmación)', 
     renderDialog(makeOrder([makeItem()]))
 
     // 16:30 UTC = 11:30 en Lima.
-    expect(screen.getByText(/Enviado el .*30\/09\/2026.*11:30/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Ya lo envié' })).not.toBeInTheDocument()
+    expect(
+      screen.getByText(/Enviado el .*30\/09\/2026.*11:30/),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Ya lo envié' }),
+    ).not.toBeInTheDocument()
   })
 
   it('error al marcar → mensaje del backend inline, sin alert()', async () => {
@@ -635,14 +650,19 @@ describe('OrderDetailDialog - WhatsApp (links cliente/tienda + confirmación)', 
         statusText: 'Conflict',
         headers: {},
         config: { headers },
-        data: { statusCode: 409, message: 'El pedido está cancelado: no corresponde mandarle WhatsApp' },
+        data: {
+          statusCode: 409,
+          message: 'El pedido está cancelado: no corresponde mandarle WhatsApp',
+        },
       }),
     )
     renderDialog(makeOrder([makeItem()]))
 
     await user.click(screen.getByRole('button', { name: 'Ya lo envié' }))
     expect(
-      await screen.findByText('El pedido está cancelado: no corresponde mandarle WhatsApp'),
+      await screen.findByText(
+        'El pedido está cancelado: no corresponde mandarle WhatsApp',
+      ),
     ).toBeInTheDocument()
     expect(alertSpy).not.toHaveBeenCalled()
     alertSpy.mockRestore()
@@ -652,8 +672,12 @@ describe('OrderDetailDialog - WhatsApp (links cliente/tienda + confirmación)', 
     linksLoaded({ customer: null })
     renderDialog(makeOrder([makeItem()]))
 
-    expect(screen.queryByRole('link', { name: /Enviar a cliente/ })).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /Enviar a tienda/ })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: /Enviar a cliente/ }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: /Enviar a tienda/ }),
+    ).toBeInTheDocument()
     expect(screen.getByText(/no tiene un celular válido/)).toBeInTheDocument()
   })
 
@@ -662,8 +686,12 @@ describe('OrderDetailDialog - WhatsApp (links cliente/tienda + confirmación)', 
     renderDialog(order)
 
     expect(screen.queryByText(/Enviar a cliente/)).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Ya lo envié' })).not.toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Abrir en WhatsApp' })).toHaveAttribute('href', order.whatsappUrl)
+    expect(
+      screen.queryByRole('button', { name: 'Ya lo envié' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Abrir en WhatsApp' }),
+    ).toHaveAttribute('href', order.whatsappUrl)
   })
 
   it('pedido cancelado → no consulta los links (el backend respondería 409) ni muestra WhatsApp', () => {
@@ -671,13 +699,39 @@ describe('OrderDetailDialog - WhatsApp (links cliente/tienda + confirmación)', 
     renderDialog(order)
 
     expect(whatsappLinksMock).toHaveBeenCalledWith(order.id, false)
-    expect(screen.queryByRole('region', { name: 'WhatsApp del pedido' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('link', { name: 'Abrir en WhatsApp' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('region', { name: 'WhatsApp del pedido' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: 'Abrir en WhatsApp' }),
+    ).not.toBeInTheDocument()
   })
 
   it('mientras cargan los links muestra un estado de carga', () => {
-    whatsappLinksMock.mockReturnValue({ isPending: true, isError: false, data: undefined })
+    whatsappLinksMock.mockReturnValue({
+      isPending: true,
+      isError: false,
+      data: undefined,
+    })
     renderDialog(makeOrder([makeItem()]))
     expect(screen.getByText('Cargando links de WhatsApp…')).toBeInTheDocument()
   })
+
+  it.each([0, 0.01, 0.02])(
+    'muestra cualquier descuento positivo: %s',
+    (discount) => {
+      renderDialog(
+        makeOrder([makeItem({ subtotal: 10.01 })], {
+          total: 12.01 - discount,
+          deliveryFee: 2,
+        }),
+      )
+      if (discount === 0)
+        expect(screen.queryByText('Cupón')).not.toBeInTheDocument()
+      else
+        expect(
+          screen.getByText('-S/ ' + discount.toFixed(2)),
+        ).toBeInTheDocument()
+    },
+  )
 })

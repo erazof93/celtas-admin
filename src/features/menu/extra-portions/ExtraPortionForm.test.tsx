@@ -59,7 +59,9 @@ describe('ExtraPortionForm', () => {
     await user.type(screen.getByLabelText('Nombre'), 'Tocino extra')
     await user.clear(screen.getByLabelText('Precio (S/)'))
     await user.type(screen.getByLabelText('Precio (S/)'), '6.5')
-    await user.click(screen.getByRole('button', { name: 'Crear porción extra' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Crear porción extra' }),
+    )
 
     await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1))
     const payload = createMock.mock.calls[0][0] as { price: unknown }
@@ -75,7 +77,9 @@ describe('ExtraPortionForm', () => {
     await user.type(screen.getByLabelText('Nombre'), 'Queso extra')
     await user.clear(screen.getByLabelText('Precio (S/)'))
     await user.type(screen.getByLabelText('Precio (S/)'), '0')
-    await user.click(screen.getByRole('button', { name: 'Crear porción extra' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Crear porción extra' }),
+    )
 
     expect(
       await screen.findByText('El precio debe ser mayor a cero'),
@@ -91,7 +95,9 @@ describe('ExtraPortionForm', () => {
     await user.type(screen.getByLabelText('Nombre'), 'Guacamole extra')
     await user.clear(screen.getByLabelText('Precio (S/)'))
     await user.type(screen.getByLabelText('Precio (S/)'), '-5')
-    await user.click(screen.getByRole('button', { name: 'Crear porción extra' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Crear porción extra' }),
+    )
 
     expect(
       await screen.findByText('El precio debe ser mayor a cero'),
@@ -106,7 +112,9 @@ describe('ExtraPortionForm', () => {
 
     await user.type(screen.getByLabelText('Nombre'), 'Chizitos extra')
     await user.clear(screen.getByLabelText('Precio (S/)'))
-    await user.click(screen.getByRole('button', { name: 'Crear porción extra' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Crear porción extra' }),
+    )
 
     expect(
       await screen.findByText('El precio debe ser mayor a cero'),
@@ -122,7 +130,9 @@ describe('ExtraPortionForm', () => {
     await user.type(screen.getByLabelText('Nombre'), 'Palta extra')
     await user.clear(screen.getByLabelText('Precio (S/)'))
     await user.type(screen.getByLabelText('Precio (S/)'), '4.999')
-    await user.click(screen.getByRole('button', { name: 'Crear porción extra' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Crear porción extra' }),
+    )
 
     expect(await screen.findByText('Máximo 2 decimales')).toBeInTheDocument()
     expect(createMock).not.toHaveBeenCalled()
@@ -163,10 +173,43 @@ describe('ExtraPortionForm', () => {
     await user.type(screen.getByLabelText('Nombre'), 'Papas extra')
     await user.clear(screen.getByLabelText('Precio (S/)'))
     await user.type(screen.getByLabelText('Precio (S/)'), '8')
-    await user.click(screen.getByRole('button', { name: 'Crear porción extra' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Crear porción extra' }),
+    )
 
     expect(
       await screen.findByText('Ya existe una porción extra con ese nombre'),
     ).toBeInTheDocument()
+  })
+
+  it.each(['1.001', '100000000', '', '0'])(
+    'precio inválido %s no se guarda',
+    async (value) => {
+      const user = userEvent.setup()
+      render(
+        <ExtraPortionForm
+          extraPortion={makeExtraPortion()}
+          onClose={() => {}}
+        />,
+      )
+      const input = screen.getByLabelText('Precio (S/)')
+      await user.clear(input)
+      if (value) await user.type(input, value)
+      await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+      await waitFor(() => expect(input).toHaveAttribute('aria-invalid', 'true'))
+      expect(updateMock).not.toHaveBeenCalled()
+    },
+  )
+  it('máximo monetario válido se env?a como número', async () => {
+    const user = userEvent.setup()
+    updateMock.mockResolvedValue(makeExtraPortion())
+    render(
+      <ExtraPortionForm extraPortion={makeExtraPortion()} onClose={() => {}} />,
+    )
+    await user.clear(screen.getByLabelText('Precio (S/)'))
+    await user.type(screen.getByLabelText('Precio (S/)'), '99999999.99')
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+    await waitFor(() => expect(updateMock).toHaveBeenCalled())
+    expect(updateMock.mock.calls[0][0].price).toBe(99999999.99)
   })
 })

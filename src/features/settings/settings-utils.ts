@@ -6,6 +6,7 @@
  */
 
 import type { DeliveryFeeTier, StoreLocation, WeeklySchedule } from './types'
+import { deliveryFeeError } from '@/lib/number-validation'
 
 export const WHATSAPP_NUMBER_KEY = 'whatsapp_business_number'
 
@@ -136,11 +137,20 @@ export const DEFAULT_DELIVERY_ALERT_RADIUS_METERS = 2500
  * Ubicación del local. `undefined`/`''` (sembrado sin configurar) o JSON
  * inválido/incompleto → `null`, NUNCA se inventan coordenadas.
  */
-export function parseStoreLocation(value: string | undefined): StoreLocation | null {
+export function parseStoreLocation(
+  value: string | undefined,
+): StoreLocation | null {
   if (!value) return null
   try {
     const parsed = JSON.parse(value) as Partial<StoreLocation>
-    if (typeof parsed.latitude === 'number' && typeof parsed.longitude === 'number') {
+    if (
+      typeof parsed.latitude === 'number' &&
+      typeof parsed.longitude === 'number' &&
+      Number.isFinite(parsed.latitude) &&
+      Number.isFinite(parsed.longitude) &&
+      Math.abs(parsed.latitude) <= 90 &&
+      Math.abs(parsed.longitude) <= 180
+    ) {
       return { latitude: parsed.latitude, longitude: parsed.longitude }
     }
     return null
@@ -154,11 +164,14 @@ export function serializeStoreLocation(location: StoreLocation): string {
 }
 
 /** Tramos de tarifa; value ausente/vacío o JSON inválido/vacío caen al default. */
-export function parseDeliveryFeeTiers(value: string | undefined): DeliveryFeeTier[] {
+export function parseDeliveryFeeTiers(
+  value: string | undefined,
+): DeliveryFeeTier[] {
   if (!value) return DEFAULT_DELIVERY_FEE_TIERS
   try {
     const parsed = JSON.parse(value) as DeliveryFeeTier[]
-    if (!Array.isArray(parsed) || parsed.length === 0) return DEFAULT_DELIVERY_FEE_TIERS
+    if (!Array.isArray(parsed) || parsed.length === 0)
+      return DEFAULT_DELIVERY_FEE_TIERS
     return parsed
   } catch {
     return DEFAULT_DELIVERY_FEE_TIERS
@@ -170,7 +183,9 @@ export function serializeDeliveryFeeTiers(tiers: DeliveryFeeTier[]): string {
 }
 
 /** Radio de aviso; value ausente/no numérico/<=0 cae al default. */
-export function parseDeliveryAlertRadiusMeters(value: string | undefined): number {
+export function parseDeliveryAlertRadiusMeters(
+  value: string | undefined,
+): number {
   const parsed = Number(value)
   return Number.isFinite(parsed) && parsed > 0
     ? parsed
@@ -214,9 +229,8 @@ export function validateDeliveryFeeTiers(
     const tier = tiers[i]
     const isLast = i === tiers.length - 1
 
-    if (tier.fee < 0) {
-      return { index: i, message: 'La tarifa no puede ser negativa' }
-    }
+    const feeError = deliveryFeeError(tier.fee)
+    if (feeError) return { index: i, message: feeError }
 
     if (isLast) {
       if (tier.maxMeters !== null) {
@@ -241,7 +255,8 @@ export function validateDeliveryFeeTiers(
     if (prev !== null && tier.maxMeters <= prev) {
       return {
         index: i,
-        message: 'Debe ser mayor que el tramo anterior (orden ascendente, sin superposiciones)',
+        message:
+          'Debe ser mayor que el tramo anterior (orden ascendente, sin superposiciones)',
       }
     }
   }

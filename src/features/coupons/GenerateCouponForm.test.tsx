@@ -77,7 +77,9 @@ describe('GenerateCouponForm', () => {
     render(<GenerateCouponForm onClose={() => {}} />)
 
     await user.type(screen.getByLabelText(/Usuario/i), VALID_UUID)
-    await user.click(screen.getByRole('combobox', { name: /Tipo de descuento/i }))
+    await user.click(
+      screen.getByRole('combobox', { name: /Tipo de descuento/i }),
+    )
     await user.click(await screen.findByRole('option', { name: /Monto fijo/i }))
     await user.type(screen.getByLabelText(/Valor/i), '150')
     await user.click(screen.getByRole('button', { name: 'Generar cupón' }))
@@ -99,7 +101,9 @@ describe('GenerateCouponForm', () => {
 
   it('mapea el 404 de usuario inexistente al campo userId', async () => {
     const user = userEvent.setup()
-    mutateAsyncMock.mockRejectedValue(makeAxiosError(404, 'Usuario no encontrado'))
+    mutateAsyncMock.mockRejectedValue(
+      makeAxiosError(404, 'Usuario no encontrado'),
+    )
     render(<GenerateCouponForm onClose={() => {}} />)
 
     await user.type(screen.getByLabelText(/Usuario/i), VALID_UUID)
@@ -161,7 +165,9 @@ describe('GenerateCouponForm', () => {
     render(<GenerateCouponForm onClose={() => {}} />)
 
     await user.type(screen.getByLabelText(/Usuario/i), VALID_UUID)
-    await user.click(screen.getByRole('combobox', { name: /Tipo de descuento/i }))
+    await user.click(
+      screen.getByRole('combobox', { name: /Tipo de descuento/i }),
+    )
     await user.click(await screen.findByRole('option', { name: /Monto fijo/i }))
     await user.type(screen.getByLabelText(/Valor/i), '15')
     await user.type(screen.getByLabelText(/Monto mínimo de compra/i), '50')
@@ -224,4 +230,78 @@ describe('GenerateCouponForm', () => {
       })
     })
   })
+
+  it.each(['', '0', '1.001', '100000000'])(
+    'descuento fijo invalido %s impide mutation',
+    async (value) => {
+      const user = userEvent.setup()
+      render(<GenerateCouponForm onClose={() => {}} />)
+      await user.type(screen.getByLabelText(/Usuario/i), VALID_UUID)
+      await user.click(
+        screen.getByRole('combobox', { name: /Tipo de descuento/i }),
+      )
+      await user.click(
+        await screen.findByRole('option', { name: /Monto fijo/i }),
+      )
+      if (value) await user.type(screen.getByLabelText(/^Valor$/i), value)
+      await user.click(screen.getByRole('button', { name: 'Generar cupón' }))
+      await waitFor(() =>
+        expect(screen.getByLabelText(/^Valor$/i)).toHaveAttribute(
+          'aria-invalid',
+          'true',
+        ),
+      )
+      expect(mutateAsyncMock).not.toHaveBeenCalled()
+    },
+  )
+  it.each(['1.001', '100000000'])(
+    'minimo invalido %s impide mutation',
+    async (value) => {
+      const user = userEvent.setup()
+      render(<GenerateCouponForm onClose={() => {}} />)
+      await user.type(screen.getByLabelText(/Usuario/i), VALID_UUID)
+      await user.type(screen.getByLabelText(/^Valor$/i), '10')
+      await user.type(screen.getByLabelText(/Monto mínimo de compra/i), value)
+      await user.click(screen.getByRole('button', { name: 'Generar cupón' }))
+      await waitFor(() =>
+        expect(
+          screen.getByLabelText(/Monto mínimo de compra/i),
+        ).toHaveAttribute('aria-invalid', 'true'),
+      )
+      expect(mutateAsyncMock).not.toHaveBeenCalled()
+    },
+  )
+  it.each(['', '0', '99999999.99'])(
+    'maximo fijo valido y minimo %s mantienen semantica',
+    async (minimum) => {
+      const user = userEvent.setup()
+      mutateAsyncMock.mockResolvedValue({
+        code: 'QA',
+        discountType: 'fixed_amount',
+        discountValue: 99999999.99,
+        expiresAt: '2026-12-31T00:00:00Z',
+      })
+      render(<GenerateCouponForm onClose={() => {}} />)
+      await user.type(screen.getByLabelText(/Usuario/i), VALID_UUID)
+      await user.click(
+        screen.getByRole('combobox', { name: /Tipo de descuento/i }),
+      )
+      await user.click(
+        await screen.findByRole('option', { name: /Monto fijo/i }),
+      )
+      await user.type(screen.getByLabelText(/^Valor$/i), '99999999.99')
+      if (minimum)
+        await user.type(
+          screen.getByLabelText(/Monto mínimo de compra/i),
+          minimum,
+        )
+      await user.click(screen.getByRole('button', { name: 'Generar cupón' }))
+
+      await waitFor(() => expect(mutateAsyncMock).toHaveBeenCalledTimes(1))
+      expect(mutateAsyncMock.mock.calls[0][0]).toMatchObject({
+        discountValue: 99999999.99,
+        minPurchaseAmount: Number(minimum) === 0 ? null : 99999999.99,
+      })
+    },
+  )
 })

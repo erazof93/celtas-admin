@@ -2,12 +2,9 @@ import { useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { MAX_MONEY, hasMaxTwoDecimals } from '@/lib/number-validation'
 import { AlertTriangle, CheckCircle2 } from 'lucide-react'
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { DatePicker } from '@/components/ui/DatePicker'
 import { Input } from '@/components/ui/input'
@@ -52,7 +49,8 @@ const generateBulkSchema = z
     }),
     discountValue: z.coerce
       .number('El valor debe ser un número')
-      .positive('El valor debe ser mayor a 0'),
+      .positive('El valor debe ser mayor a 0')
+      .refine(hasMaxTwoDecimals, 'Máximo 2 decimales'),
     campaignName: z
       .string()
       .trim()
@@ -67,12 +65,24 @@ const generateBulkSchema = z
         z.null(),
         z.coerce
           .number('El monto debe ser un número')
-          .nonnegative('El monto mínimo no puede ser negativo'),
+          .nonnegative('El monto mínimo no puede ser negativo')
+          .max(MAX_MONEY, 'El monto mínimo excede el máximo permitido')
+          .refine(hasMaxTwoDecimals, 'Máximo 2 decimales'),
       ]),
     ),
     expiresAt: z.string().optional(),
   })
   .superRefine((data, ctx) => {
+    if (
+      data.discountType === 'fixed_amount' &&
+      data.discountValue > MAX_MONEY
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['discountValue'],
+        message: 'El descuento excede el máximo permitido',
+      })
+    }
     if (data.discountType === 'percentage' && data.discountValue > 100) {
       ctx.addIssue({
         code: 'custom',
@@ -96,12 +106,13 @@ interface GenerateBulkCouponFormProps {
  * panel de confirmación explícito con el resumen de la campaña; solo el
  * botón "Sí, generar cupones" llama a la API.
  */
-export function GenerateBulkCouponForm({ onClose }: GenerateBulkCouponFormProps) {
+export function GenerateBulkCouponForm({
+  onClose,
+}: GenerateBulkCouponFormProps) {
   const bulkMutation = useGenerateBulkCoupons()
   const [serverError, setServerError] = useState<string | null>(null)
-  const [pendingValues, setPendingValues] = useState<GenerateBulkFormValues | null>(
-    null,
-  )
+  const [pendingValues, setPendingValues] =
+    useState<GenerateBulkFormValues | null>(null)
   const [result, setResult] = useState<BulkCouponResult | null>(null)
 
   const {
@@ -171,11 +182,14 @@ export function GenerateBulkCouponForm({ onClose }: GenerateBulkCouponFormProps)
             <p>Esta acción no se puede deshacer.</p>
             <ul className="list-disc space-y-0.5 pl-4">
               <li>
-                Campaña: <span className="font-semibold text-foreground">{pendingValues.campaignName}</span>
+                Campaña:{' '}
+                <span className="text-foreground font-semibold">
+                  {pendingValues.campaignName}
+                </span>
               </li>
               <li>
                 Descuento:{' '}
-                <span className="font-semibold text-foreground">
+                <span className="text-foreground font-semibold">
                   {formatCouponDiscount(
                     pendingValues.discountType,
                     pendingValues.discountValue,
@@ -184,7 +198,7 @@ export function GenerateBulkCouponForm({ onClose }: GenerateBulkCouponFormProps)
               </li>
               <li>
                 Expiración:{' '}
-                <span className="font-semibold text-foreground">
+                <span className="text-foreground font-semibold">
                   {pendingValues.expiresAt
                     ? pendingValues.expiresAt
                     : 'Calculada por el backend (default automático)'}
@@ -228,18 +242,13 @@ export function GenerateBulkCouponForm({ onClose }: GenerateBulkCouponFormProps)
   }
 
   return (
-    <form
-      onSubmit={handleSubmit(onValidated)}
-      noValidate
-      className="space-y-4"
-    >
+    <form onSubmit={handleSubmit(onValidated)} noValidate className="space-y-4">
       {result ? (
         <Alert className="border-emerald-400/40 bg-emerald-400/10">
           <CheckCircle2 className="text-emerald-400" />
           <AlertTitle>Campaña generada</AlertTitle>
           <AlertDescription>
-            Se generaron{' '}
-            <span className="font-semibold">{result.count}</span>{' '}
+            Se generaron <span className="font-semibold">{result.count}</span>{' '}
             cupón{result.count === 1 ? '' : 'es'} — uno por cada cliente
             registrado.
           </AlertDescription>
@@ -352,7 +361,9 @@ export function GenerateBulkCouponForm({ onClose }: GenerateBulkCouponFormProps)
             render={({ field }) => (
               <DatePicker
                 value={field.value ? parseDateInput(field.value) : null}
-                onChange={(date) => field.onChange(date ? toDateInput(date) : '')}
+                onChange={(date) =>
+                  field.onChange(date ? toDateInput(date) : '')
+                }
                 placeholder="Automática (backend)"
                 clearLabel="Limpiar fecha de expiración"
               />

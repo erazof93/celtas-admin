@@ -1,10 +1,6 @@
 import { useState } from 'react'
 import { MessageCircle, TriangleAlert } from 'lucide-react'
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -91,8 +87,7 @@ export function OrderDetailDialog({
   const [cancelError, setCancelError] = useState<string | null>(null)
 
   const geoapifyApiKey = import.meta.env.VITE_GEOAPIFY_API_KEY as
-    | string
-    | undefined
+    string | undefined
 
   async function handleTransition(next: OrderStatus) {
     if (!order) return
@@ -146,15 +141,20 @@ export function OrderDetailDialog({
   )
   const alertRadiusMeters = settingsQuery.data
     ? parseDeliveryAlertRadiusMeters(
-        settingsQuery.data.find((s) => s.key === DELIVERY_ALERT_RADIUS_METERS_KEY)
-          ?.value,
+        settingsQuery.data.find(
+          (s) => s.key === DELIVERY_ALERT_RADIUS_METERS_KEY,
+        )?.value,
       )
     : null
   const distanceMeters = orderDistanceMeters(address, storeLocation)
-  const showFarBadge = order ? isFarOrder(distanceMeters, alertRadiusMeters) : false
+  const showFarBadge = order
+    ? isFarOrder(distanceMeters, alertRadiusMeters)
+    : false
 
-  const addressLat = typeof address?.latitude === 'number' ? address.latitude : null
-  const addressLng = typeof address?.longitude === 'number' ? address.longitude : null
+  const addressLat =
+    typeof address?.latitude === 'number' ? address.latitude : null
+  const addressLng =
+    typeof address?.longitude === 'number' ? address.longitude : null
   // orderCustomer: único lugar que lee userId/user/customer* (pedido anónimo = null).
   const customer = order ? orderCustomer(order) : null
   const customerPhoneDigits = customer?.phoneDigits ?? null
@@ -223,7 +223,7 @@ export function OrderDetailDialog({
                 <p className="border-border border-b px-3 py-2 text-sm font-medium">
                   Productos
                 </p>
-                <ul className="divide-y divide-border">
+                <ul className="divide-border divide-y">
                   {order.items.map((item) => (
                     <li
                       key={item.id}
@@ -258,7 +258,7 @@ export function OrderDetailDialog({
                     <span>Subtotal</span>
                     <span>{CURRENCY.format(subtotal)}</span>
                   </div>
-                  {discount > 0.01 ? (
+                  {discount > 0 ? (
                     <div className="text-muted-foreground flex items-center justify-between">
                       <span>Cupón</span>
                       <span>-{CURRENCY.format(discount)}</span>
@@ -294,9 +294,7 @@ export function OrderDetailDialog({
                         {address.district ? `, ${address.district}` : ''}
                       </p>
                       {address.reference ? (
-                        <p className="text-xs">
-                          Ref: {address.reference}
-                        </p>
+                        <p className="text-xs">Ref: {address.reference}</p>
                       ) : null}
                     </dl>
                   ) : (
@@ -304,7 +302,9 @@ export function OrderDetailDialog({
                       {order.addressSnapshot}
                     </p>
                   )}
-                  {addressLat !== null && addressLng !== null && geoapifyApiKey ? (
+                  {addressLat !== null &&
+                  addressLng !== null &&
+                  geoapifyApiKey ? (
                     <a
                       href={buildGoogleMapsUrl(addressLat, addressLng)}
                       target="_blank"
@@ -314,7 +314,11 @@ export function OrderDetailDialog({
                       className="border-border group mt-2 block overflow-hidden rounded-lg border"
                     >
                       <img
-                        src={buildAddressMapUrl(addressLat, addressLng, geoapifyApiKey)}
+                        src={buildAddressMapUrl(
+                          addressLat,
+                          addressLng,
+                          geoapifyApiKey,
+                        )}
                         alt="Mapa de la dirección de entrega"
                         className="block w-full cursor-pointer transition-opacity group-hover:opacity-80"
                         width={400}
@@ -335,7 +339,7 @@ export function OrderDetailDialog({
                         </div>
                         <div className="flex justify-between">
                           <dt className="text-muted-foreground">Celular</dt>
-                          <dd className="font-mono text-xs pt-0.5">
+                          <dd className="pt-0.5 font-mono text-xs">
                             {order.customerPhone ?? '—'}
                           </dd>
                         </div>
@@ -343,7 +347,7 @@ export function OrderDetailDialog({
                     ) : (
                       <div className="flex justify-between">
                         <dt className="text-muted-foreground">Cliente (ID)</dt>
-                        <dd className="font-mono text-xs pt-0.5">
+                        <dd className="pt-0.5 font-mono text-xs">
                           {order.userId}
                         </dd>
                       </div>
@@ -414,7 +418,7 @@ export function OrderDetailDialog({
                         disabled={updateStatus.isPending}
                         className={
                           next === 'entregado'
-                            ? 'bg-emerald-600 hover:bg-emerald-600/80 text-white'
+                            ? 'bg-emerald-600 text-white hover:bg-emerald-600/80'
                             : undefined
                         }
                       >
@@ -498,7 +502,9 @@ export function OrderDetailDialog({
             <Button
               variant="destructive"
               onClick={handleConfirmCancel}
-              disabled={updateStatus.isPending || cancelReason.trim().length === 0}
+              disabled={
+                updateStatus.isPending || cancelReason.trim().length === 0
+              }
             >
               {updateStatus.isPending ? 'Cancelando…' : 'Cancelar pedido'}
             </Button>

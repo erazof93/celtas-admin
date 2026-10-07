@@ -101,13 +101,21 @@ describe('parseSchedule / serializeSchedule', () => {
 
   it('conserva un cruce de medianoche válido (close < open) sin alterarlo', () => {
     const result = parseSchedule(serializeSchedule(schedule))
-    expect(result['5']).toEqual({ closed: false, open: '11:00', close: '01:00' })
+    expect(result['5']).toEqual({
+      closed: false,
+      open: '11:00',
+      close: '01:00',
+    })
   })
 
   it('JSON malformado cae al default de 7 días', () => {
     const result = parseSchedule('{not valid json')
     expect(Object.keys(result)).toHaveLength(7)
-    expect(result['0']).toEqual({ closed: false, open: '11:00', close: '23:00' })
+    expect(result['0']).toEqual({
+      closed: false,
+      open: '11:00',
+      close: '23:00',
+    })
   })
 
   it('value undefined cae al default', () => {
@@ -141,14 +149,18 @@ describe('delivery por distancia — claves', () => {
   it('son las claves exactas que usa el backend (settings.service.ts)', () => {
     expect(STORE_LOCATION_KEY).toBe('store_location')
     expect(DELIVERY_FEE_TIERS_KEY).toBe('delivery_fee_tiers')
-    expect(DELIVERY_ALERT_RADIUS_METERS_KEY).toBe('delivery_alert_radius_meters')
+    expect(DELIVERY_ALERT_RADIUS_METERS_KEY).toBe(
+      'delivery_alert_radius_meters',
+    )
   })
 })
 
 describe('parseStoreLocation / serializeStoreLocation', () => {
   it('round-trip: serializar y volver a parsear da la misma ubicación', () => {
     const location = { latitude: -12.1631, longitude: -76.97 }
-    expect(parseStoreLocation(serializeStoreLocation(location))).toEqual(location)
+    expect(parseStoreLocation(serializeStoreLocation(location))).toEqual(
+      location,
+    )
   })
 
   it('value undefined (nunca configurado) → null, NUNCA inventa coordenadas', () => {
@@ -174,7 +186,9 @@ describe('parseDeliveryFeeTiers / serializeDeliveryFeeTiers', () => {
       { maxMeters: 100, fee: 2 },
       { maxMeters: null, fee: 8 },
     ]
-    expect(parseDeliveryFeeTiers(serializeDeliveryFeeTiers(tiers))).toEqual(tiers)
+    expect(parseDeliveryFeeTiers(serializeDeliveryFeeTiers(tiers))).toEqual(
+      tiers,
+    )
   })
 
   it('value undefined/vacío cae al default', () => {
@@ -183,7 +197,9 @@ describe('parseDeliveryFeeTiers / serializeDeliveryFeeTiers', () => {
   })
 
   it('JSON malformado cae al default', () => {
-    expect(parseDeliveryFeeTiers('{not valid json')).toEqual(DEFAULT_DELIVERY_FEE_TIERS)
+    expect(parseDeliveryFeeTiers('{not valid json')).toEqual(
+      DEFAULT_DELIVERY_FEE_TIERS,
+    )
   })
 
   it('array vacío cae al default (nunca deja al pedido sin tarifa)', () => {
@@ -285,4 +301,22 @@ describe('validateDeliveryFeeTiers', () => {
     expect(result?.index).toBe(0)
     expect(result?.message).toMatch(/negativa/)
   })
+
+  it.each([
+    '{"latitude":91,"longitude":0}',
+    '{"latitude":0,"longitude":181}',
+    '{"latitude":1e999,"longitude":0}',
+    '{"latitude":"0","longitude":0}',
+    'null',
+  ])('ubicaci?n hist?rica inválida %s no fabrica coordenadas', (value) => {
+    expect(parseStoreLocation(value)).toBeNull()
+  })
+  it.each([NaN, Infinity, 1.001, 100000000])(
+    'fee inválido %s se detecta por la utilidad real',
+    (fee) => {
+      expect(
+        validateDeliveryFeeTiers([{ maxMeters: null, fee }]),
+      ).not.toBeNull()
+    },
+  )
 })

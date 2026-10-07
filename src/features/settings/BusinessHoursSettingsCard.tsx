@@ -3,11 +3,7 @@ import { Controller, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { CheckCircle2, Clock } from 'lucide-react'
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -40,7 +36,7 @@ import type { DaySchedule } from './types'
 const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/
 
 /**
- * Un día NO cerrado exige `open`/`close` con formato HH:mm válidos y
+ * Todos los días conservan `open`/`close` HH:mm; los abiertos también exigen
  * `open !== close` (ventana de duración cero, error real de captura).
  * `close <= open` (cruce de medianoche) es válido y NO se rechaza — es el
  * motivo por el que el horario es por día (ej. viernes/sábado hasta la 01:00).
@@ -52,7 +48,6 @@ const dayScheduleSchema = z
     close: z.string(),
   })
   .superRefine((day, ctx) => {
-    if (day.closed) return
     if (!TIME_REGEX.test(day.open)) {
       ctx.addIssue({
         code: 'custom',
@@ -70,6 +65,7 @@ const dayScheduleSchema = z
     if (
       TIME_REGEX.test(day.open) &&
       TIME_REGEX.test(day.close) &&
+      !day.closed &&
       day.open === day.close
     ) {
       ctx.addIssue({
@@ -88,11 +84,31 @@ const businessHoursSchema = z.object({
 
 type BusinessHoursFormValues = z.output<typeof businessHoursSchema>
 
-const DEFAULT_DAY: DaySchedule = { closed: false, open: '11:00', close: '23:00' }
+const DEFAULT_DAY: DaySchedule = {
+  closed: false,
+  open: '11:00',
+  close: '23:00',
+}
+
+function normalizeDay(
+  day: Partial<DaySchedule> | null | undefined,
+): DaySchedule {
+  return {
+    closed: typeof day?.closed === 'boolean' ? day.closed : DEFAULT_DAY.closed,
+    open:
+      typeof day?.open === 'string' && TIME_REGEX.test(day.open)
+        ? day.open
+        : DEFAULT_DAY.open,
+    close:
+      typeof day?.close === 'string' && TIME_REGEX.test(day.close)
+        ? day.close
+        : DEFAULT_DAY.close,
+  }
+}
 
 function scheduleToDays(value: string | undefined): DaySchedule[] {
   const schedule = parseSchedule(value)
-  return [0, 1, 2, 3, 4, 5, 6].map((i) => schedule[String(i)] ?? DEFAULT_DAY)
+  return [0, 1, 2, 3, 4, 5, 6].map((i) => normalizeDay(schedule[String(i)]))
 }
 
 function daysToSchedule(days: DaySchedule[]) {
@@ -124,6 +140,8 @@ export function BusinessHoursSettingsCard() {
   const {
     control,
     register,
+    getValues,
+    setValue,
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<BusinessHoursFormValues>({
@@ -217,7 +235,7 @@ export function BusinessHoursSettingsCard() {
                 return (
                   <div
                     key={dayIndex}
-                    className="flex flex-wrap items-center gap-3 border-b border-border/50 pb-3 last:border-0 last:pb-0"
+                    className="border-border/50 flex flex-wrap items-center gap-3 border-b pb-3 last:border-0 last:pb-0"
                   >
                     <span className="w-10 text-sm font-medium">
                       {DAY_LABELS[dayIndex]}
@@ -230,7 +248,17 @@ export function BusinessHoursSettingsCard() {
                         render={({ field }) => (
                           <Switch
                             checked={field.value}
-                            onCheckedChange={field.onChange}
+                            onCheckedChange={(closed) => {
+                              // Keep valid hidden hours; repair cleared hours before hiding them.
+                              const day = normalizeDay(
+                                getValues(`days.${dayIndex}`),
+                              )
+                              setValue(
+                                `days.${dayIndex}`,
+                                { ...day, closed },
+                                { shouldDirty: true },
+                              )
+                            }}
                             aria-label={`${DAY_LABELS[dayIndex]} cerrado`}
                           />
                         )}
@@ -280,7 +308,7 @@ export function BusinessHoursSettingsCard() {
               })}
             </div>
 
-            <div className="space-y-3 border-t border-border/50 pt-4">
+            <div className="border-border/50 space-y-3 border-t pt-4">
               <h3 className="text-sm font-medium">Cierre manual</h3>
               <div className="flex items-center gap-2">
                 <Controller

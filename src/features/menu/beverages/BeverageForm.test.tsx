@@ -177,7 +177,11 @@ describe('BeverageForm', () => {
 
   it('al editar, envía el id solo para la mutación (nunca dentro del payload que arma el form)', async () => {
     const user = userEvent.setup()
-    const beverage = makeBeverage({ id: 'b-1', name: 'Coca-Cola 500ml', price: 5 })
+    const beverage = makeBeverage({
+      id: 'b-1',
+      name: 'Coca-Cola 500ml',
+      price: 5,
+    })
     updateMock.mockResolvedValue(beverage)
 
     render(<BeverageForm beverage={beverage} onClose={() => {}} />)
@@ -295,5 +299,29 @@ describe('BeverageForm', () => {
     expect(
       await screen.findByText('Ya existe una bebida con ese nombre'),
     ).toBeInTheDocument()
+  })
+
+  it.each(['1.001', '100000000', '', '0'])(
+    'precio inválido %s no se guarda',
+    async (value) => {
+      const user = userEvent.setup()
+      render(<BeverageForm beverage={makeBeverage()} onClose={() => {}} />)
+      const input = screen.getByLabelText('Precio (S/)')
+      await user.clear(input)
+      if (value) await user.type(input, value)
+      await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+      await waitFor(() => expect(input).toHaveAttribute('aria-invalid', 'true'))
+      expect(updateMock).not.toHaveBeenCalled()
+    },
+  )
+  it('máximo monetario válido se env?a como número', async () => {
+    const user = userEvent.setup()
+    updateMock.mockResolvedValue(makeBeverage())
+    render(<BeverageForm beverage={makeBeverage()} onClose={() => {}} />)
+    await user.clear(screen.getByLabelText('Precio (S/)'))
+    await user.type(screen.getByLabelText('Precio (S/)'), '99999999.99')
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+    await waitFor(() => expect(updateMock).toHaveBeenCalled())
+    expect(updateMock.mock.calls[0][0].price).toBe(99999999.99)
   })
 })

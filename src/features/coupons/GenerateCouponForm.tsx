@@ -2,12 +2,9 @@ import { useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { MAX_MONEY, hasMaxTwoDecimals } from '@/lib/number-validation'
 import { CheckCircle2 } from 'lucide-react'
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-} from '@/components/ui/alert'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -43,7 +40,8 @@ const generateCouponSchema = z
     }),
     discountValue: z.coerce
       .number('El valor debe ser un número')
-      .positive('El valor debe ser mayor a 0'),
+      .positive('El valor debe ser mayor a 0')
+      .refine(hasMaxTwoDecimals, 'Máximo 2 decimales'),
     // Opcional: '' / undefined / null / 0 → null (sin mínimo, no 0). Si se
     // ingresa algo distinto de cero, debe ser un número >= 0. z.coerce.number()
     // convierte '' a 0, por eso el preprocess normaliza ANTES de validar.
@@ -59,11 +57,23 @@ const generateCouponSchema = z
         z.null(),
         z.coerce
           .number('El monto debe ser un número')
-          .nonnegative('El monto mínimo no puede ser negativo'),
+          .nonnegative('El monto mínimo no puede ser negativo')
+          .max(MAX_MONEY, 'El monto mínimo excede el máximo permitido')
+          .refine(hasMaxTwoDecimals, 'Máximo 2 decimales'),
       ]),
     ),
   })
   .superRefine((data, ctx) => {
+    if (
+      data.discountType === 'fixed_amount' &&
+      data.discountValue > MAX_MONEY
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['discountValue'],
+        message: 'El descuento excede el máximo permitido',
+      })
+    }
     if (data.discountType === 'percentage' && data.discountValue > 100) {
       ctx.addIssue({
         code: 'custom',
@@ -139,19 +149,13 @@ export function GenerateCouponForm({
           message: getApiMessage(error, 'Usuario no encontrado'),
         })
       } else {
-        setServerError(
-          getApiMessage(error, 'No se pudo generar el cupón'),
-        )
+        setServerError(getApiMessage(error, 'No se pudo generar el cupón'))
       }
     }
   }
 
   return (
-    <form
-      onSubmit={handleSubmit(onSubmit)}
-      noValidate
-      className="space-y-4"
-    >
+    <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
       {generated ? (
         <Alert className="border-emerald-400/40 bg-emerald-400/10">
           <CheckCircle2 className="text-emerald-400" />
@@ -185,7 +189,9 @@ export function GenerateCouponForm({
           {...register('userId')}
         />
         {errors.userId ? (
-          <p className="text-celtas-red-light text-xs">{errors.userId.message}</p>
+          <p className="text-celtas-red-light text-xs">
+            {errors.userId.message}
+          </p>
         ) : null}
         <p className="text-muted-foreground text-xs">
           {defaultUserId
@@ -248,9 +254,7 @@ export function GenerateCouponForm({
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="coupon-min-purchase">
-          Monto mínimo de compra (S/)
-        </Label>
+        <Label htmlFor="coupon-min-purchase">Monto mínimo de compra (S/)</Label>
         <Input
           id="coupon-min-purchase"
           type="number"

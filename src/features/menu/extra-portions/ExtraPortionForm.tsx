@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Controller, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { MAX_MONEY, hasMaxTwoDecimals } from '@/lib/number-validation'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,11 +18,12 @@ import type { ExtraPortion } from '../types'
  */
 const extraPortionSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio'),
-  price: z
-    .coerce.number()
+  price: z.coerce
+    .number()
     .refine((v) => Number.isFinite(v), 'El precio debe ser un número')
     .refine((v) => v >= 0.01, 'El precio debe ser mayor a cero')
-    .refine((v) => Math.round(v * 100) / 100 === v, 'Máximo 2 decimales'),
+    .refine(hasMaxTwoDecimals, 'Máximo 2 decimales')
+    .refine((v) => v <= MAX_MONEY, 'El precio excede el máximo permitido'),
   sortOrder: z.coerce
     .number()
     .int('El orden debe ser un número entero')
@@ -102,11 +104,7 @@ export function ExtraPortionForm({
   }
 
   return (
-    <form
-      onSubmit={handleSubmit(onSubmit)}
-      noValidate
-      className="space-y-4"
-    >
+    <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
       {serverError ? (
         <Alert variant="destructive">
           <AlertTitle>No se pudo guardar</AlertTitle>

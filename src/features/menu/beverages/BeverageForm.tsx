@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { MAX_MONEY, hasMaxTwoDecimals } from '@/lib/number-validation'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -21,11 +22,12 @@ import type { Beverage } from '../types'
  */
 const beverageSchema = z.object({
   name: z.string().min(1, 'El nombre es obligatorio'),
-  price: z
-    .coerce.number()
+  price: z.coerce
+    .number()
     .refine((v) => Number.isFinite(v), 'El precio debe ser un número')
     .refine((v) => v >= 0.01, 'El precio debe ser mayor a cero')
-    .refine((v) => Math.round(v * 100) / 100 === v, 'Máximo 2 decimales'),
+    .refine(hasMaxTwoDecimals, 'Máximo 2 decimales')
+    .refine((v) => v <= MAX_MONEY, 'El precio excede el máximo permitido'),
   includeFreeTo: z.array(z.string()).default([]),
   sortOrder: z.coerce
     .number()
@@ -108,11 +110,7 @@ export function BeverageForm({ beverage, onClose }: BeverageFormProps) {
   }
 
   return (
-    <form
-      onSubmit={handleSubmit(onSubmit)}
-      noValidate
-      className="space-y-4"
-    >
+    <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
       {serverError ? (
         <Alert variant="destructive">
           <AlertTitle>No se pudo guardar</AlertTitle>
@@ -175,9 +173,9 @@ export function BeverageForm({ beverage, onClose }: BeverageFormProps) {
         <Label className="text-sm font-medium">Incluida GRATIS en combos</Label>
         <p className="text-muted-foreground mb-1 text-xs">
           Productos en los que esta bebida va gratis al elegirla. Solo tiene
-          efecto en productos que además tengan esta bebida asignada como
-          opción (pestaña "Bebidas" del producto) — marcarla acá sola no la
-          agrega como opción.
+          efecto en productos que además tengan esta bebida asignada como opción
+          (pestaña "Bebidas" del producto) — marcarla acá sola no la agrega como
+          opción.
         </p>
         {menuItemsQuery.isLoading ? (
           <p className="text-muted-foreground text-xs">Cargando productos…</p>
@@ -185,8 +183,8 @@ export function BeverageForm({ beverage, onClose }: BeverageFormProps) {
           <Alert variant="destructive">
             <AlertTitle>No se pudieron cargar los productos</AlertTitle>
             <AlertDescription>
-              Esta bebida se puede guardar igual, pero no vas a poder
-              asignarle combos hasta que recargues la página.
+              Esta bebida se puede guardar igual, pero no vas a poder asignarle
+              combos hasta que recargues la página.
             </AlertDescription>
           </Alert>
         ) : menuItemsQuery.data && menuItemsQuery.data.length === 0 ? (
@@ -221,7 +219,9 @@ export function BeverageForm({ beverage, onClose }: BeverageFormProps) {
                     }}
                   />
                   <span
-                    className={menuItem.available ? '' : 'text-muted-foreground'}
+                    className={
+                      menuItem.available ? '' : 'text-muted-foreground'
+                    }
                   >
                     {menuItem.name}
                     {!menuItem.available ? ' (no disponible)' : ''}

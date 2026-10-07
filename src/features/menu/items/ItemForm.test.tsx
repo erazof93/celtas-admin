@@ -220,7 +220,9 @@ describe('ItemForm - checklist de salsas', () => {
     expect(screen.queryByText(/Mayonesa \(oculta\)/i)).not.toBeInTheDocument()
 
     expect(screen.getByRole('checkbox', { name: /Mayonesa/i })).toBeChecked()
-    expect(screen.getByRole('checkbox', { name: /Aji \(oculta\)/i })).toBeChecked()
+    expect(
+      screen.getByRole('checkbox', { name: /Aji \(oculta\)/i }),
+    ).toBeChecked()
     expect(screen.getByRole('checkbox', { name: /Ketchup/i })).not.toBeChecked()
 
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
@@ -252,7 +254,9 @@ describe('ItemForm - checklist de salsas', () => {
 
     render(<ItemForm item={makeItem({ sauces: [] })} onClose={() => {}} />)
 
-    expect(screen.getByRole('checkbox', { name: /Mayonesa/i })).not.toBeChecked()
+    expect(
+      screen.getByRole('checkbox', { name: /Mayonesa/i }),
+    ).not.toBeChecked()
 
     await user.click(screen.getByRole('checkbox', { name: /Mayonesa/i }))
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
@@ -265,7 +269,9 @@ describe('ItemForm - checklist de salsas', () => {
   it('desmarcar la ultima salsa deja sauceIds como array vacio', async () => {
     const user = userEvent.setup()
     updateMock.mockResolvedValue(makeItem())
-    saucesState.data = [makeSauce({ id: 's-mayo', name: 'Mayonesa', active: true })]
+    saucesState.data = [
+      makeSauce({ id: 's-mayo', name: 'Mayonesa', active: true }),
+    ]
 
     render(
       <ItemForm
@@ -291,8 +297,12 @@ describe('ItemForm - checklist de salsas', () => {
 
     render(<ItemForm item={makeItem({ sauces: [] })} onClose={() => {}} />)
 
-    expect(screen.getByText(/No se pudieron cargar las salsas/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeEnabled()
+    expect(
+      screen.getByText(/No se pudieron cargar las salsas/i),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Guardar cambios' }),
+    ).toBeEnabled()
   })
 
   it('al editar un producto con sauceGroupRequired=true, el switch "Obligatorio" carga marcado y se conserva en el payload sin tocarlo', async () => {
@@ -318,7 +328,9 @@ describe('ItemForm - checklist de salsas', () => {
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
 
     await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
-    const payload = updateMock.mock.calls[0][0] as { sauceGroupRequired: boolean }
+    const payload = updateMock.mock.calls[0][0] as {
+      sauceGroupRequired: boolean
+    }
     expect(payload.sauceGroupRequired).toBe(true)
   })
 
@@ -357,9 +369,7 @@ describe('ItemForm - checklist de salsas', () => {
 
     await user.clear(screen.getByLabelText('Máximo a elegir'))
     await user.type(screen.getByLabelText('Máximo a elegir'), '2')
-    await user.click(
-      screen.getByLabelText('El cliente debe elegir una salsa'),
-    )
+    await user.click(screen.getByLabelText('El cliente debe elegir una salsa'))
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
 
     await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
@@ -405,8 +415,12 @@ describe('ItemForm - checklist de bebidas', () => {
     expect(screen.queryByText(/Coca-Cola \(oculta\)/i)).not.toBeInTheDocument()
 
     expect(screen.getByRole('checkbox', { name: /Coca-Cola/i })).toBeChecked()
-    expect(screen.getByRole('checkbox', { name: /Fanta \(oculta\)/i })).toBeChecked()
-    expect(screen.getByRole('checkbox', { name: /Inca Kola/i })).not.toBeChecked()
+    expect(
+      screen.getByRole('checkbox', { name: /Fanta \(oculta\)/i }),
+    ).toBeChecked()
+    expect(
+      screen.getByRole('checkbox', { name: /Inca Kola/i }),
+    ).not.toBeChecked()
 
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
 
@@ -440,7 +454,9 @@ describe('ItemForm - checklist de bebidas', () => {
 
     render(<ItemForm item={makeItem({ beverages: [] })} onClose={() => {}} />)
 
-    expect(screen.getByRole('checkbox', { name: /Coca-Cola/i })).not.toBeChecked()
+    expect(
+      screen.getByRole('checkbox', { name: /Coca-Cola/i }),
+    ).not.toBeChecked()
 
     await user.click(screen.getByRole('checkbox', { name: /Coca-Cola/i }))
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
@@ -457,7 +473,9 @@ describe('ItemForm - checklist de bebidas', () => {
 
     render(
       <ItemForm
-        item={makeItem({ beverages: [makeBeverage({ id: 'b-coca', name: 'Coca-Cola' })] })}
+        item={makeItem({
+          beverages: [makeBeverage({ id: 'b-coca', name: 'Coca-Cola' })],
+        })}
         onClose={() => {}}
       />,
     )
@@ -480,7 +498,9 @@ describe('ItemForm - checklist de bebidas', () => {
     expect(
       screen.getByText(/No se pudieron cargar las bebidas/i),
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeEnabled()
+    expect(
+      screen.getByRole('button', { name: 'Guardar cambios' }),
+    ).toBeEnabled()
   })
 
   it('cambiar "Máximo a elegir" y activar "Obligatorio" se refleja en el payload', async () => {
@@ -501,9 +521,7 @@ describe('ItemForm - checklist de bebidas', () => {
 
     await user.clear(screen.getByLabelText('Máximo a elegir'))
     await user.type(screen.getByLabelText('Máximo a elegir'), '2')
-    await user.click(
-      screen.getByLabelText('El cliente debe elegir una bebida'),
-    )
+    await user.click(screen.getByLabelText('El cliente debe elegir una bebida'))
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
 
     await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
@@ -538,7 +556,9 @@ describe('ItemForm - checklist de bebidas', () => {
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
 
     await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
-    const payload = updateMock.mock.calls[0][0] as { beverageGroupRequired: boolean }
+    const payload = updateMock.mock.calls[0][0] as {
+      beverageGroupRequired: boolean
+    }
     expect(payload.beverageGroupRequired).toBe(true)
   })
 })
@@ -557,8 +577,16 @@ describe('ItemForm - checklist de porciones extras', () => {
       <ItemForm
         item={makeItem({
           extraPortions: [
-            makeExtraPortion({ id: 'ep-papas', name: 'Papas extra', active: true }),
-            makeExtraPortion({ id: 'ep-queso', name: 'Queso extra', active: false }),
+            makeExtraPortion({
+              id: 'ep-papas',
+              name: 'Papas extra',
+              active: true,
+            }),
+            makeExtraPortion({
+              id: 'ep-queso',
+              name: 'Queso extra',
+              active: false,
+            }),
           ],
         })}
         onClose={() => {}}
@@ -566,13 +594,17 @@ describe('ItemForm - checklist de porciones extras', () => {
     )
 
     expect(screen.getByText(/Queso extra \(oculta\)/i)).toBeInTheDocument()
-    expect(screen.queryByText(/Papas extra \(oculta\)/i)).not.toBeInTheDocument()
+    expect(
+      screen.queryByText(/Papas extra \(oculta\)/i),
+    ).not.toBeInTheDocument()
 
     expect(screen.getByRole('checkbox', { name: /Papas extra/i })).toBeChecked()
     expect(
       screen.getByRole('checkbox', { name: /Queso extra \(oculta\)/i }),
     ).toBeChecked()
-    expect(screen.getByRole('checkbox', { name: /Tocino extra/i })).not.toBeChecked()
+    expect(
+      screen.getByRole('checkbox', { name: /Tocino extra/i }),
+    ).not.toBeChecked()
 
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
 
@@ -604,9 +636,13 @@ describe('ItemForm - checklist de porciones extras', () => {
       makeExtraPortion({ id: 'ep-tocino', name: 'Tocino extra' }),
     ]
 
-    render(<ItemForm item={makeItem({ extraPortions: [] })} onClose={() => {}} />)
+    render(
+      <ItemForm item={makeItem({ extraPortions: [] })} onClose={() => {}} />,
+    )
 
-    expect(screen.getByRole('checkbox', { name: /Papas extra/i })).not.toBeChecked()
+    expect(
+      screen.getByRole('checkbox', { name: /Papas extra/i }),
+    ).not.toBeChecked()
 
     await user.click(screen.getByRole('checkbox', { name: /Papas extra/i }))
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
@@ -619,12 +655,16 @@ describe('ItemForm - checklist de porciones extras', () => {
   it('desmarcar la ultima porcion extra deja extraPortionIds como array vacio', async () => {
     const user = userEvent.setup()
     updateMock.mockResolvedValue(makeItem())
-    extraPortionsState.data = [makeExtraPortion({ id: 'ep-papas', name: 'Papas extra' })]
+    extraPortionsState.data = [
+      makeExtraPortion({ id: 'ep-papas', name: 'Papas extra' }),
+    ]
 
     render(
       <ItemForm
         item={makeItem({
-          extraPortions: [makeExtraPortion({ id: 'ep-papas', name: 'Papas extra' })],
+          extraPortions: [
+            makeExtraPortion({ id: 'ep-papas', name: 'Papas extra' }),
+          ],
         })}
         onClose={() => {}}
       />,
@@ -643,23 +683,31 @@ describe('ItemForm - checklist de porciones extras', () => {
     extraPortionsState.data = undefined
     extraPortionsState.isError = true
 
-    render(<ItemForm item={makeItem({ extraPortions: [] })} onClose={() => {}} />)
+    render(
+      <ItemForm item={makeItem({ extraPortions: [] })} onClose={() => {}} />,
+    )
 
     expect(
       screen.getByText(/No se pudieron cargar las porciones extras/i),
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeEnabled()
+    expect(
+      screen.getByRole('button', { name: 'Guardar cambios' }),
+    ).toBeEnabled()
   })
 
   it('cambiar "Máximo a elegir" y activar "Obligatorio" se refleja en el payload', async () => {
     const user = userEvent.setup()
     updateMock.mockResolvedValue(makeItem())
-    extraPortionsState.data = [makeExtraPortion({ id: 'ep-papas', name: 'Papas extra' })]
+    extraPortionsState.data = [
+      makeExtraPortion({ id: 'ep-papas', name: 'Papas extra' }),
+    ]
 
     render(
       <ItemForm
         item={makeItem({
-          extraPortions: [makeExtraPortion({ id: 'ep-papas', name: 'Papas extra' })],
+          extraPortions: [
+            makeExtraPortion({ id: 'ep-papas', name: 'Papas extra' }),
+          ],
           extraPortionsGroupRequired: false,
           extraPortionsGroupMaxSelectable: 1,
         })}
@@ -686,12 +734,16 @@ describe('ItemForm - checklist de porciones extras', () => {
   it('al editar un producto con extraPortionsGroupRequired=true, el switch "Obligatorio" carga marcado y se conserva en el payload sin tocarlo', async () => {
     const user = userEvent.setup()
     updateMock.mockResolvedValue(makeItem())
-    extraPortionsState.data = [makeExtraPortion({ id: 'ep-papas', name: 'Papas extra' })]
+    extraPortionsState.data = [
+      makeExtraPortion({ id: 'ep-papas', name: 'Papas extra' }),
+    ]
 
     render(
       <ItemForm
         item={makeItem({
-          extraPortions: [makeExtraPortion({ id: 'ep-papas', name: 'Papas extra' })],
+          extraPortions: [
+            makeExtraPortion({ id: 'ep-papas', name: 'Papas extra' }),
+          ],
           extraPortionsGroupRequired: true,
           extraPortionsGroupMaxSelectable: 1,
         })}
@@ -700,13 +752,17 @@ describe('ItemForm - checklist de porciones extras', () => {
     )
 
     expect(
-      screen.getByRole('switch', { name: 'El cliente debe elegir una porción extra' }),
+      screen.getByRole('switch', {
+        name: 'El cliente debe elegir una porción extra',
+      }),
     ).toBeChecked()
 
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
 
     await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
-    const payload = updateMock.mock.calls[0][0] as { extraPortionsGroupRequired: boolean }
+    const payload = updateMock.mock.calls[0][0] as {
+      extraPortionsGroupRequired: boolean
+    }
     expect(payload.extraPortionsGroupRequired).toBe(true)
   })
 })
@@ -1169,8 +1225,16 @@ describe('ItemForm - salsas "Sin límite"', () => {
 })
 
 describe('ItemForm - tipos de papas', () => {
-  const fritas = makeFriesType({ id: 'ft-fritas', name: 'Papas fritas', isDefault: true })
-  const hilo = makeFriesType({ id: 'ft-hilo', name: 'Papas al hilo', isDefault: false })
+  const fritas = makeFriesType({
+    id: 'ft-fritas',
+    name: 'Papas fritas',
+    isDefault: true,
+  })
+  const hilo = makeFriesType({
+    id: 'ft-hilo',
+    name: 'Papas al hilo',
+    isDefault: false,
+  })
 
   async function selectCategory(user: ReturnType<typeof userEvent.setup>) {
     await user.click(screen.getByLabelText('Categoría'))
@@ -1187,7 +1251,9 @@ describe('ItemForm - tipos de papas', () => {
     await user.type(screen.getByLabelText('Nombre'), 'Celtas Burger Clasica')
     await user.type(screen.getByLabelText('Precio (S/)'), '24.90')
     await selectCategory(user)
-    await user.click(screen.getByRole('checkbox', { name: 'Papas fritas (por defecto)' }))
+    await user.click(
+      screen.getByRole('checkbox', { name: 'Papas fritas (por defecto)' }),
+    )
     await user.click(screen.getByRole('checkbox', { name: 'Papas al hilo' }))
     await user.click(screen.getByRole('button', { name: 'Crear producto' }))
 
@@ -1214,14 +1280,21 @@ describe('ItemForm - tipos de papas', () => {
       />,
     )
 
-    expect(screen.getByRole('checkbox', { name: 'Papas fritas (por defecto)' })).toBeChecked()
-    expect(screen.getByRole('checkbox', { name: 'Papas al hilo' })).toBeChecked()
+    expect(
+      screen.getByRole('checkbox', { name: 'Papas fritas (por defecto)' }),
+    ).toBeChecked()
+    expect(
+      screen.getByRole('checkbox', { name: 'Papas al hilo' }),
+    ).toBeChecked()
 
     await user.click(screen.getByRole('checkbox', { name: 'Papas al hilo' }))
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
 
     await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1))
-    const payload = updateMock.mock.calls[0][0] as { id: string; friesTypeIds: string[] }
+    const payload = updateMock.mock.calls[0][0] as {
+      id: string
+      friesTypeIds: string[]
+    }
     expect(payload.id).toBe('item-1')
     expect(payload.friesTypeIds).toEqual(['ft-fritas'])
   })
@@ -1233,7 +1306,10 @@ describe('ItemForm - tipos de papas', () => {
 
     render(
       <ItemForm
-        item={makeItem({ friesTypes: [fritas, hilo], friesTypeGroupMaxSelectable: 1 })}
+        item={makeItem({
+          friesTypes: [fritas, hilo],
+          friesTypeGroupMaxSelectable: 1,
+        })}
         onClose={() => {}}
       />,
     )
@@ -1241,7 +1317,9 @@ describe('ItemForm - tipos de papas', () => {
     await user.clear(screen.getByLabelText('Máximo a elegir'))
     await user.type(screen.getByLabelText('Máximo a elegir'), '2')
     await user.click(
-      screen.getByRole('checkbox', { name: 'El cliente debe elegir un tipo de papas' }),
+      screen.getByRole('checkbox', {
+        name: 'El cliente debe elegir un tipo de papas',
+      }),
     )
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
 
@@ -1272,7 +1350,9 @@ describe('ItemForm - tipos de papas', () => {
 
     expect(screen.getByLabelText('Máximo a elegir')).toHaveValue(2)
     expect(
-      screen.getByRole('checkbox', { name: 'El cliente debe elegir un tipo de papas' }),
+      screen.getByRole('checkbox', {
+        name: 'El cliente debe elegir un tipo de papas',
+      }),
     ).toBeChecked()
 
     await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
@@ -1289,7 +1369,9 @@ describe('ItemForm - tipos de papas', () => {
     const user = userEvent.setup()
     friesTypesState.data = [fritas]
 
-    render(<ItemForm item={makeItem({ friesTypes: [fritas] })} onClose={() => {}} />)
+    render(
+      <ItemForm item={makeItem({ friesTypes: [fritas] })} onClose={() => {}} />,
+    )
 
     await user.clear(screen.getByLabelText('Máximo a elegir'))
     await user.type(screen.getByLabelText('Máximo a elegir'), '0')
@@ -1350,7 +1432,9 @@ describe('ItemForm - tipos de papas', () => {
     render(<ItemForm onClose={() => {}} />)
     expect(screen.getByText(/pestaña "Tipos de Papas"/)).toBeInTheDocument()
     expect(
-      screen.queryByRole('checkbox', { name: 'El cliente debe elegir un tipo de papas' }),
+      screen.queryByRole('checkbox', {
+        name: 'El cliente debe elegir un tipo de papas',
+      }),
     ).not.toBeInTheDocument()
   })
 })
@@ -1378,5 +1462,29 @@ describe('ItemForm - tipos de papas: guard de buildPayload (auditoría @tester)'
     }
     expect(payload.friesTypeIds).toEqual([])
     expect(payload.friesTypeGroupRequired).toBe(false)
+  })
+
+  it.each(['1.001', '100000000', '', '0'])(
+    'precio inválido %s no se guarda',
+    async (value) => {
+      const user = userEvent.setup()
+      render(<ItemForm item={makeItem()} onClose={() => {}} />)
+      const input = screen.getByLabelText('Precio (S/)')
+      await user.clear(input)
+      if (value) await user.type(input, value)
+      await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+      await waitFor(() => expect(input).toHaveAttribute('aria-invalid', 'true'))
+      expect(updateMock).not.toHaveBeenCalled()
+    },
+  )
+  it('máximo monetario válido se env?a como número', async () => {
+    const user = userEvent.setup()
+    updateMock.mockResolvedValue(makeItem())
+    render(<ItemForm item={makeItem()} onClose={() => {}} />)
+    await user.clear(screen.getByLabelText('Precio (S/)'))
+    await user.type(screen.getByLabelText('Precio (S/)'), '99999999.99')
+    await user.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+    await waitFor(() => expect(updateMock).toHaveBeenCalled())
+    expect(updateMock.mock.calls[0][0].price).toBe(99999999.99)
   })
 })

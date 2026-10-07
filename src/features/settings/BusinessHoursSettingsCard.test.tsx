@@ -150,4 +150,51 @@ describe('BusinessHoursSettingsCard', () => {
     expect(toggleIndex).toBeGreaterThanOrEqual(0)
     expect(reasonIndex).toBeLessThan(toggleIndex)
   })
+
+  it('normaliza histórico incompleto y envía siete días completos, incluso cerrados', async () => {
+    settingsData.current[0].value = JSON.stringify({
+      '0': { closed: true },
+      '1': { closed: false, open: '25:00' },
+    })
+    const user = userEvent.setup()
+    render(<BusinessHoursSettingsCard />)
+    await user.click(screen.getByRole('button', { name: /guardar horario/i }))
+    await waitFor(() => expect(upsertMock).toHaveBeenCalledTimes(3))
+    const schedule = JSON.parse(upsertMock.mock.calls[0][0].value)
+    expect(Object.keys(schedule)).toEqual(['0', '1', '2', '3', '4', '5', '6'])
+    for (const day of Object.values(schedule) as {
+      closed: boolean
+      open: string
+      close: string
+    }[]) {
+      expect(typeof day.closed).toBe('boolean')
+      expect(day.open).toMatch(/^([01]\d|2[0-3]):[0-5]\d$/)
+      expect(day.close).toMatch(/^([01]\d|2[0-3]):[0-5]\d$/)
+    }
+  })
+  it('cerrar después de vaciar hora repara la hora; reabrir conserva horas válidas', async () => {
+    const user = userEvent.setup()
+    render(<BusinessHoursSettingsCard />)
+    await user.clear(screen.getByLabelText('Lun hora de apertura'))
+    await user.click(screen.getByRole('switch', { name: 'Lun cerrado' }))
+    await user.click(screen.getByRole('button', { name: /guardar horario/i }))
+    await waitFor(() => expect(upsertMock).toHaveBeenCalledTimes(3))
+    expect(JSON.parse(upsertMock.mock.calls[0][0].value)['1']).toEqual({
+      closed: true,
+      open: '11:00',
+      close: '23:00',
+    })
+    await user.click(screen.getByRole('switch', { name: 'Lun cerrado' }))
+    expect(screen.getByLabelText('Lun hora de apertura')).toHaveValue('11:00')
+  })
+  it('hora abierta vacía impide cualquier PATCH', async () => {
+    const user = userEvent.setup()
+    render(<BusinessHoursSettingsCard />)
+    await user.clear(screen.getByLabelText('Lun hora de apertura'))
+    await user.click(screen.getByRole('button', { name: /guardar horario/i }))
+    expect(
+      await screen.findByText('Hora de apertura obligatoria (HH:mm)'),
+    ).toBeInTheDocument()
+    expect(upsertMock).not.toHaveBeenCalled()
+  })
 })

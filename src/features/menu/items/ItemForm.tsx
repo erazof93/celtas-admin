@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Controller, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { MAX_MONEY, hasMaxTwoDecimals } from '@/lib/number-validation'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -45,62 +46,69 @@ import type { MenuItem } from '../types'
  * ambos sin efecto si el catálogo elegido queda vacío (confirmado contra
  * create-menu-item.dto.ts del backend).
  */
-const itemSchema = z.object({
-  name: z.string().min(1, 'El nombre es obligatorio'),
-  description: z.string().optional(),
-  price: z.coerce
-    .number()
-    .refine((v) => Number.isFinite(v), 'El precio debe ser un número')
-    .refine((v) => v >= 0.01, 'El precio debe ser mayor a cero')
-    .refine((v) => Math.round(v * 100) / 100 === v, 'Máximo 2 decimales'),
-  categoryId: z.string().min(1, 'Selecciona una categoría'),
-  available: z.boolean(),
-  sauceIds: z.array(z.string()).default([]),
-  sauceGroupRequired: z.boolean(),
-  // Se valida en el superRefine de abajo: solo aplica si sauceLimitless=false
-  // (con el input deshabilitado, un valor viejo inválido no debe bloquear).
-  sauceGroupMaxSelectable: z.preprocess(
-    (v) => (v === '' || v == null ? undefined : Number(v)),
-    z.number().optional(),
-  ),
-  sauceLimitless: z.boolean().default(false),
-  beverageIds: z.array(z.string()).default([]),
-  beverageGroupRequired: z.boolean(),
-  beverageGroupMaxSelectable: z.coerce
-    .number()
-    .int('Debe ser un número entero')
-    .min(1, 'Debe ser al menos 1'),
-  extraPortionIds: z.array(z.string()).default([]),
-  extraPortionsGroupRequired: z.boolean(),
-  extraPortionsGroupMaxSelectable: z.coerce
-    .number()
-    .int('Debe ser un número entero')
-    .min(1, 'Debe ser al menos 1'),
-  sauceAllowWithout: z.boolean().default(true),
-  beverageAllowWithout: z.boolean().default(true),
-  extraPortionsAllowWithout: z.boolean().default(true),
-  friesTypeIds: z.array(z.string()).default([]),
-  friesTypeGroupRequired: z.boolean().default(false),
-  friesTypeGroupMaxSelectable: z.coerce
-    .number()
-    .int('Debe ser un número entero')
-    .min(1, 'Debe ser al menos 1'),
-}).superRefine((values, ctx) => {
-  if (values.sauceLimitless) return
-  const max = values.sauceGroupMaxSelectable
-  const path = ['sauceGroupMaxSelectable']
-  if (max === undefined || Number.isNaN(max)) {
-    ctx.addIssue({
-      code: 'custom',
-      path,
-      message: 'Indica un máximo o marca "Sin límite"',
-    })
-  } else if (!Number.isInteger(max)) {
-    ctx.addIssue({ code: 'custom', path, message: 'Debe ser un número entero' })
-  } else if (max < 1) {
-    ctx.addIssue({ code: 'custom', path, message: 'Debe ser al menos 1' })
-  }
-})
+const itemSchema = z
+  .object({
+    name: z.string().min(1, 'El nombre es obligatorio'),
+    description: z.string().optional(),
+    price: z.coerce
+      .number()
+      .refine((v) => Number.isFinite(v), 'El precio debe ser un número')
+      .refine((v) => v >= 0.01, 'El precio debe ser mayor a cero')
+      .refine(hasMaxTwoDecimals, 'Máximo 2 decimales')
+      .refine((v) => v <= MAX_MONEY, 'El precio excede el máximo permitido'),
+    categoryId: z.string().min(1, 'Selecciona una categoría'),
+    available: z.boolean(),
+    sauceIds: z.array(z.string()).default([]),
+    sauceGroupRequired: z.boolean(),
+    // Se valida en el superRefine de abajo: solo aplica si sauceLimitless=false
+    // (con el input deshabilitado, un valor viejo inválido no debe bloquear).
+    sauceGroupMaxSelectable: z.preprocess(
+      (v) => (v === '' || v == null ? undefined : Number(v)),
+      z.number().optional(),
+    ),
+    sauceLimitless: z.boolean().default(false),
+    beverageIds: z.array(z.string()).default([]),
+    beverageGroupRequired: z.boolean(),
+    beverageGroupMaxSelectable: z.coerce
+      .number()
+      .int('Debe ser un número entero')
+      .min(1, 'Debe ser al menos 1'),
+    extraPortionIds: z.array(z.string()).default([]),
+    extraPortionsGroupRequired: z.boolean(),
+    extraPortionsGroupMaxSelectable: z.coerce
+      .number()
+      .int('Debe ser un número entero')
+      .min(1, 'Debe ser al menos 1'),
+    sauceAllowWithout: z.boolean().default(true),
+    beverageAllowWithout: z.boolean().default(true),
+    extraPortionsAllowWithout: z.boolean().default(true),
+    friesTypeIds: z.array(z.string()).default([]),
+    friesTypeGroupRequired: z.boolean().default(false),
+    friesTypeGroupMaxSelectable: z.coerce
+      .number()
+      .int('Debe ser un número entero')
+      .min(1, 'Debe ser al menos 1'),
+  })
+  .superRefine((values, ctx) => {
+    if (values.sauceLimitless) return
+    const max = values.sauceGroupMaxSelectable
+    const path = ['sauceGroupMaxSelectable']
+    if (max === undefined || Number.isNaN(max)) {
+      ctx.addIssue({
+        code: 'custom',
+        path,
+        message: 'Indica un máximo o marca "Sin límite"',
+      })
+    } else if (!Number.isInteger(max)) {
+      ctx.addIssue({
+        code: 'custom',
+        path,
+        message: 'Debe ser un número entero',
+      })
+    } else if (max < 1) {
+      ctx.addIssue({ code: 'custom', path, message: 'Debe ser al menos 1' })
+    }
+  })
 
 type ItemFormValues = z.output<typeof itemSchema>
 type ItemFormInputValues = z.input<typeof itemSchema>
@@ -796,7 +804,9 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
               </p>
             ) : friesTypesQuery.isError ? (
               <Alert variant="destructive">
-                <AlertTitle>No se pudieron cargar los tipos de papas</AlertTitle>
+                <AlertTitle>
+                  No se pudieron cargar los tipos de papas
+                </AlertTitle>
                 <AlertDescription>
                   Este producto se puede guardar igual, pero no vas a poder
                   asignarle tipos de papas hasta que recargues la página.
@@ -804,8 +814,8 @@ export function ItemForm({ item, onClose }: ItemFormProps) {
               </Alert>
             ) : friesTypesQuery.data && friesTypesQuery.data.length === 0 ? (
               <p className="text-muted-foreground text-xs">
-                Todavía no hay tipos de papas en el catálogo. Créalos primero
-                en la pestaña "Tipos de Papas" del Menú.
+                Todavía no hay tipos de papas en el catálogo. Créalos primero en
+                la pestaña "Tipos de Papas" del Menú.
               </p>
             ) : (
               <>
