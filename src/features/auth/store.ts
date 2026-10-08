@@ -27,7 +27,7 @@ interface AuthState {
   sessionId: number
   roleStatus: 'unverified' | 'checking' | 'confirmed' | 'error'
   setSession: (accessToken: string, user: AuthUser, confirmed?: boolean) => void
-  clearSession: () => void
+  clearSession: (clearSharedToken?: boolean) => void
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -44,8 +44,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       sessionId: state.sessionId + 1,
       roleStatus: confirmed ? 'confirmed' : 'unverified',
     })),
-  clearSession: () => {
-    clearRefreshToken()
+  clearSession: (clearSharedToken = true) => {
+    if (clearSharedToken) clearRefreshToken()
     set((state) => ({
       accessToken: null,
       user: null,

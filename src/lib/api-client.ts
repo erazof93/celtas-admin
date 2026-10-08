@@ -10,6 +10,7 @@ import {
   setRefreshToken,
 } from '@/features/auth/store'
 import type { AuthTokens, AuthUser } from '@/features/auth/types'
+import { capturePushGeneration, stopPushNotifications } from './firebase'
 
 /**
  * Instancia única de cliente para todo el panel.
@@ -26,6 +27,14 @@ const api = axios.create({
 api.interceptors.request.use((config) => {
   const { accessToken, sessionId } = useAuthStore.getState()
   const request = config as RetriableRequestConfig
+  if (
+    request._pushSession &&
+    (request._pushSession.sessionId !== sessionId ||
+      request._pushSession.identity !== useAuthStore.getState().user?.id ||
+      request._pushSession.generation !== capturePushGeneration())
+  )
+    throw new CanceledError()
+  if (request._skipSessionAuth) return config
   request._sessionId ??= sessionId
   if (config.url === '/auth/refresh' && !config.timeout) config.timeout = 90_000
   if (accessToken) {
@@ -48,6 +57,12 @@ interface RequestConfig extends AxiosRequestConfig {
   onAuthorizationError?: () => void
 }
 interface RetriableRequestConfig extends InternalAxiosRequestConfig {
+  _pushSession?: {
+    sessionId: number
+    identity: string
+    generation: string | null
+  }
+  _skipSessionAuth?: boolean
   onAuthorizationError?: () => void
   _retry?: boolean
   _sessionId?: number
@@ -116,8 +131,12 @@ async function reconcileRole(original: RetriableRequestConfig) {
 /** A refresh belongs to a session, not to an individual GET. */
 function refreshAccessToken(refreshToken: string) {
   const { sessionId, user } = useAuthStore.getState()
+  const pushGeneration = capturePushGeneration()
   const identity = user?.id
-  if (activeRefresh?.sessionId === sessionId && activeRefresh.identity === identity)
+  if (
+    activeRefresh?.sessionId === sessionId &&
+    activeRefresh.identity === identity
+  )
     return activeRefresh.promise
   const controller = new AbortController()
   const currentSession = () => {
@@ -129,18 +148,34 @@ function refreshAccessToken(refreshToken: string) {
   })
   const promise = (async () => {
     try {
-      const { data } = await api.post<AuthTokens>('/auth/refresh', { refreshToken }, {
-        timeout: 90_000, signal: controller.signal,
-      })
-      if (controller.signal.aborted || !currentSession()) throw new CanceledError()
-      if (data.user.id !== identity) throw new Error('Unexpected refresh identity')
+      const { data } = await api.post<AuthTokens>(
+        '/auth/refresh',
+        { refreshToken },
+        {
+          timeout: 90_000,
+          signal: controller.signal,
+        },
+      )
+      if (controller.signal.aborted || !currentSession())
+        throw new CanceledError()
+      if (capturePushGeneration() !== pushGeneration) throw new CanceledError()
+      if (data.user.id !== identity)
+        throw new Error('Unexpected refresh identity')
       setRefreshToken(data.refreshToken)
       useAuthStore.setState({ accessToken: data.accessToken, user: data.user })
       return data.accessToken
     } catch (error) {
       // Temporary errors keep the session; an invalid refresh token does not.
-      if (currentSession() && error instanceof AxiosError && error.response?.status === 401) {
-        useAuthStore.getState().clearSession()
+      if (
+        currentSession() &&
+        error instanceof AxiosError &&
+        error.response?.status === 401
+      ) {
+        await stopPushNotifications(false)
+        if (!currentSession()) throw error
+        useAuthStore
+          .getState()
+          .clearSession(capturePushGeneration() === pushGeneration)
         window.location.assign('/login')
       }
       throw error
@@ -172,6 +207,8 @@ api.interceptors.response.use(
   },
   async (error: AxiosError) => {
     const original = error.config as RetriableRequestConfig | undefined
+    // Cleanup uses captured credentials and never enters refresh/role reconciliation.
+    if (original?._skipSessionAuth) return Promise.reject(error)
 
     if (
       error.response?.status === 403 &&
@@ -185,8 +222,11 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    if (error.response?.status === 401 && original?._retry &&
-      original._sessionId === useAuthStore.getState().sessionId)
+    if (
+      error.response?.status === 401 &&
+      original?._retry &&
+      original._sessionId === useAuthStore.getState().sessionId
+    )
       original.onAuthorizationError?.()
 
     // No es 401, ya fue reintentada, o es el propio login/refresh: no refrescar.
@@ -204,7 +244,13 @@ api.interceptors.response.use(
       return Promise.reject(error)
     const refreshToken = getRefreshToken()
     if (!refreshToken) {
-      useAuthStore.getState().clearSession()
+      const pushGeneration = capturePushGeneration()
+      await stopPushNotifications(false)
+      if (refreshSessionId !== useAuthStore.getState().sessionId)
+        return Promise.reject(error)
+      useAuthStore
+        .getState()
+        .clearSession(capturePushGeneration() === pushGeneration)
       window.location.assign('/login')
       return Promise.reject(error)
     }
@@ -212,7 +258,10 @@ api.interceptors.response.use(
     original._retry = true
     try {
       const token = await refreshAccessToken(refreshToken)
-      if (original.signal?.aborted || refreshSessionId !== useAuthStore.getState().sessionId)
+      if (
+        original.signal?.aborted ||
+        refreshSessionId !== useAuthStore.getState().sessionId
+      )
         throw new CanceledError()
       original.headers.Authorization = 'Bearer ' + token
       return api(original)
@@ -224,11 +273,52 @@ api.interceptors.response.use(
 
 export default api
 
+/** FCM requests cannot borrow a later session's credentials. */
+export async function pushTokenRequest(
+  method: 'patch' | 'delete',
+  token: string | undefined,
+  session: {
+    sessionId: number
+    identity: string
+    accessToken?: string
+    controller?: AbortController
+    owner?: { generation: string } | null
+  },
+) {
+  const config: AxiosRequestConfig & {
+    _pushSession?: {
+      sessionId: number
+      identity: string
+      generation: string | null
+    }
+    _skipSessionAuth?: boolean
+  } = {
+    method,
+    url: '/users/me/fcm-token',
+    data: {
+      ...(token ? { fcmToken: token } : {}),
+      generation: session.owner?.generation,
+    },
+    timeout: 5_000,
+    ...(method === 'delete'
+      ? {
+          _skipSessionAuth: true,
+          headers: { Authorization: `Bearer ${session.accessToken}` },
+        }
+      : {
+          _pushSession: {
+            sessionId: session.sessionId,
+            identity: session.identity,
+            generation: session.owner?.generation ?? capturePushGeneration(),
+          },
+          signal: session.controller?.signal,
+        }),
+  }
+  await api.request(config)
+}
+
 /** Helper tipado para GET que devuelve el payload desenvuelto. */
-export async function get<T>(
-  url: string,
-  config?: RequestConfig,
-): Promise<T> {
+export async function get<T>(url: string, config?: RequestConfig): Promise<T> {
   const { data } = await api.get<T>(url, config)
   return data
 }

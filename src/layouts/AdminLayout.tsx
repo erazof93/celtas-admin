@@ -46,7 +46,7 @@ function Sidebar({
 }) {
   return (
     <div className="flex h-full flex-col">
-      <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4">
+      <div className="border-border flex h-14 shrink-0 items-center gap-2 border-b px-4">
         <Axe className="text-celtas-orange size-5" />
         <span className="text-lg font-bold tracking-tight">
           Celtas <span className="text-celtas-gold">Admin</span>
@@ -120,6 +120,7 @@ function Sidebar({
  */
 export default function AdminLayout() {
   const user = useAuthStore((s) => s.user)
+  const sessionId = useAuthStore((s) => s.sessionId)
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   // AdminLayout solo se monta en rutas autenticadas (detrás de
@@ -129,7 +130,7 @@ export default function AdminLayout() {
   // src/lib/firebase.ts) — no necesita cleanup ni dependerse del resultado.
   useEffect(() => {
     void registerPushNotifications()
-  }, [])
+  }, [sessionId, user?.id])
 
   // Cierra con Escape, pensando en accesibilidad del drawer en mobile.
   useEffect(() => {
@@ -208,7 +209,7 @@ export default function AdminLayout() {
                 {user?.email}
               </p>
             </div>
-            <div className="bg-celtas-orange/15 ring-celtas-orange/30 flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-celtas-gold ring-1 ring-inset">
+            <div className="bg-celtas-orange/15 ring-celtas-orange/30 text-celtas-gold flex size-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold ring-1 ring-inset">
               {initials}
             </div>
             <Button
@@ -224,6 +225,12 @@ export default function AdminLayout() {
         </header>
 
         <main className="w-full flex-1 p-4 sm:p-6 md:p-8">
+          {!navigator.locks && (
+            <p role="status" className="text-muted-foreground mb-4 text-sm">
+              Las notificaciones push no están disponibles en este navegador.
+              Puedes seguir revisando los pedidos en el panel.
+            </p>
+          )}
           <Outlet />
         </main>
       </div>

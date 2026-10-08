@@ -2,6 +2,11 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import api from '@/lib/api-client'
 import {
+  activatePushSession,
+  capturePushGeneration,
+  stopPushNotifications,
+} from '@/lib/firebase'
+import {
   useAuthStore,
   getRefreshToken,
   setRefreshToken,
@@ -26,6 +31,10 @@ export function useLogin() {
     mutationFn: (input: LoginInput) =>
       api.post<AuthTokens>('/auth/login', input).then((r) => r.data),
     onSuccess: (tokens) => {
+      const previous = useAuthStore.getState()
+      if (previous.accessToken && previous.user)
+        void stopPushNotifications(true, previous)
+      activatePushSession(tokens.user.id)
       setRefreshToken(tokens.refreshToken)
       setSession(tokens.accessToken, tokens.user, true)
     },
@@ -37,8 +46,12 @@ export function useLogin() {
  * localStorage, y redirige a /login. Lo usa el interceptor cuando el refresh
  * falla y lo usará el botón de logout del AdminLayout (módulo 2).
  */
-export function logout(): void {
-  useAuthStore.getState().clearSession()
+export async function logout(): Promise<void> {
+  const session = useAuthStore.getState()
+  const generation = capturePushGeneration()
+  await stopPushNotifications(true, session)
+  if (useAuthStore.getState().sessionId !== session.sessionId) return
+  useAuthStore.getState().clearSession(capturePushGeneration() === generation)
   window.location.assign('/login')
 }
 
@@ -60,6 +73,7 @@ export function useBootstrap() {
       if (useAuthStore.getState().accessToken)
         return useAuthStore.getState().user
       const sessionId = useAuthStore.getState().sessionId
+      const pushGeneration = capturePushGeneration()
       const refreshToken = getRefreshToken()
       if (!refreshToken) return null
 
@@ -69,6 +83,7 @@ export function useBootstrap() {
         })
         // Rotación: el backend emite un refreshToken nuevo en cada refresh.
         if (useAuthStore.getState().sessionId !== sessionId) return null
+        if (capturePushGeneration() !== pushGeneration) return null
         setRefreshToken(data.refreshToken)
         setSession(data.accessToken, data.user)
         return data.user
@@ -81,6 +96,14 @@ export function useBootstrap() {
           error instanceof AxiosError &&
           error.response?.status === 401
         ) {
+          if (capturePushGeneration() !== pushGeneration) return null
+          await stopPushNotifications(
+            false,
+            useAuthStore.getState(),
+            pushGeneration,
+          )
+          if (useAuthStore.getState().sessionId !== sessionId) return null
+          if (capturePushGeneration() !== pushGeneration) return null
           clearRefreshToken()
           useAuthStore.getState().clearSession()
         }
