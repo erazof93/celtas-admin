@@ -1,4 +1,7 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useSyncExternalStore } from 'react'
+import { CancelledError, focusManager, onlineManager, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { isAxiosError } from 'axios'
+import { useAuthStore } from '@/features/auth/store'
 import { get, patch, post } from '@/lib/api-client'
 import { geoapifyApiKey, geoapifyAutocomplete } from '@/lib/geoapify'
 import { useDebouncedValue } from '@/lib/useDebouncedValue'
@@ -15,33 +18,105 @@ import type { DeliveryMode } from '../delivery-zones/types'
 
 const ORDERS_LIST_KEY = ['orders', 'list'] as const
 
+const subscribeFocus = (notify: () => void) => focusManager.subscribe(notify)
+const subscribeOnline = (notify: () => void) => onlineManager.subscribe(notify)
+const getFocus = () => focusManager.isFocused()
+const getOnline = () => onlineManager.isOnline()
+
+export function temporaryOrdersError(error: unknown) {
+  if (!isAxiosError(error)) return false
+  const status = error.response?.status
+  return status === undefined || status === 408 || status === 429 || status >= 500
+}
+
 export function useOrders(
   page: number,
   limit: number,
   status?: OrderStatus,
   userId?: string,
   enabled = true,
+  autoRefresh = false,
 ) {
-  return useQuery({
-    queryKey: [
-      'orders',
-      'list',
-      page,
-      limit,
-      status ?? 'all',
-      userId ?? 'all',
+  const queryClient = useQueryClient()
+  const sessionId = useAuthStore((s) => s.sessionId)
+  const identity = useAuthStore((s) => s.user?.id)
+  const authorized = useAuthStore(
+    (s) => Boolean(s.accessToken) && s.user?.role === 'admin' && s.roleStatus === 'confirmed',
+  )
+  const accessBlocked = useAuthStore((s) => Boolean(s.ordersAccessBlocked &&
+    s.ordersAccessBlocked.sessionId === sessionId && s.ordersAccessBlocked.identity === identity))
+  const focused = useSyncExternalStore(subscribeFocus, getFocus)
+  const online = useSyncExternalStore(subscribeOnline, getOnline)
+  const active = enabled && (!autoRefresh || (authorized && !accessBlocked && focused && online))
+  const queryKey = useMemo(
+    () => [
+      ...ORDERS_LIST_KEY, page, limit, status ?? 'all', userId ?? 'all',
+      ...(autoRefresh ? [{ identity, sessionId }] : []),
     ],
-    queryFn: () =>
-      get<PaginatedOrders>('/orders', {
-        params: {
-          page,
-          limit,
-          ...(status ? { status } : {}),
-          ...(userId ? { userId } : {}),
-        },
-      }),
-    enabled,
+    [page, limit, status, userId, autoRefresh, identity, sessionId],
+  )
+  useEffect(() => {
+    if (!autoRefresh) return
+    if (!active) void queryClient.cancelQueries({ queryKey, exact: true })
+  }, [autoRefresh, active, queryClient, queryKey])
+  useEffect(() => {
+    if (!autoRefresh) return
+    return () => { void queryClient.cancelQueries({ queryKey, exact: true }) }
+  }, [autoRefresh, queryClient, queryKey])
+
+  const query = useQuery<PaginatedOrders>({
+    queryKey,
+    queryFn: async ({ signal }) => {
+      const currentSession = () => {
+        const s = useAuthStore.getState()
+        return s.sessionId === sessionId && s.user?.id === identity &&
+          Boolean(s.accessToken) && s.user?.role === 'admin' && s.roleStatus === 'confirmed'
+      }
+      if (autoRefresh && (!currentSession() || !getFocus() || !getOnline()))
+        throw new CancelledError({ silent: true })
+      const result = await get<PaginatedOrders>('/orders', {
+        signal,
+        ...(autoRefresh ? {
+          timeout: 90_000,
+          onAuthorizationError: () => {
+            const s = useAuthStore.getState()
+            if (identity && s.sessionId === sessionId && s.user?.id === identity)
+              useAuthStore.setState({ ordersAccessBlocked: { sessionId, identity } })
+          },
+        } : {}),
+        params: { page, limit, ...(status ? { status } : {}), ...(userId ? { userId } : {}) },
+      })
+      if (signal.aborted || (autoRefresh && !currentSession()))
+        throw new CancelledError({ silent: true })
+      return result
+    },
+    enabled: active,
+    ...(autoRefresh ? {
+      staleTime: 0,
+      refetchOnMount: 'always' as const,
+      refetchOnWindowFocus: 'always' as const,
+      refetchOnReconnect: 'always' as const,
+      refetchIntervalInBackground: false,
+      retry: false,
+      refetchInterval: (query: { state: { error: Error | null } }) => {
+        if (!active) return false
+        if (query.state.error && !temporaryOrdersError(query.state.error)) return false
+        return query.state.error ? 120_000 : 30_000
+      },
+    } : {}),
   })
+  return {
+    ...query,
+    accessBlocked: autoRefresh && accessBlocked,
+    retryAccess: () => {
+      const s = useAuthStore.getState()
+      if (!autoRefresh || !enabled || s.sessionId !== sessionId || s.user?.id !== identity ||
+        !s.accessToken || s.user?.role !== 'admin' || s.roleStatus !== 'confirmed' ||
+        !getFocus() || !getOnline()) return
+      if (accessBlocked) useAuthStore.setState({ ordersAccessBlocked: null })
+      else void query.refetch({ cancelRefetch: false })
+    },
+  }
 }
 
 /**

@@ -32,7 +32,7 @@ import {
 import { getApiMessage } from '@/lib/api-errors'
 import { formatLima } from '@/lib/dates'
 import { cn } from '@/lib/utils'
-import { useOrder, useOrders } from './hooks'
+import { temporaryOrdersError, useOrder, useOrders } from './hooks'
 import { mergeOrderAfterUpdate } from './merge'
 import { OrderDetailDialog } from './OrderDetailDialog'
 import { orderCustomer } from './orders-utils'
@@ -128,6 +128,9 @@ export default function OrdersPage() {
     page,
     PAGE_SIZE,
     statusFilter === 'all' ? undefined : statusFilter,
+    undefined,
+    true,
+    true, // Only this mounted page opts into automatic refresh.
   )
 
   function handleFilterChange(value: string) {
@@ -140,7 +143,8 @@ export default function OrdersPage() {
     setDialogOpen(true)
   }
 
-  const { data, isLoading, isError, refetch } = ordersQuery
+  const { data, isLoading, isError, error, refetch, accessBlocked, retryAccess } = ordersQuery
+  const staleList = Boolean(data) && isError && temporaryOrdersError(error)
 
   return (
     <div className="space-y-6">
@@ -189,9 +193,25 @@ export default function OrdersPage() {
         </Alert>
       ) : null}
 
-      {isLoading ? (
+      {staleList && !accessBlocked ? (
+        <Alert>
+          <AlertTitle>Los pedidos podrían estar desactualizados</AlertTitle>
+          <AlertDescription>
+            No se pudo actualizar el listado. Se muestra la última información disponible.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {accessBlocked ? (
+        <ErrorState
+          title="No se pudo autorizar el acceso a pedidos"
+          description="La actualización automática está detenida. Reintenta cuando se hayan restablecido tus permisos."
+          retryLabel="Reintentar acceso"
+          onRetry={retryAccess}
+        />
+      ) : isLoading ? (
         <LoadingState label="Cargando pedidos…" />
-      ) : isError ? (
+      ) : isError && !staleList ? (
         <ErrorState
           title="No se pudieron cargar los pedidos"
           description='Revisa tu conexión y vuelve a intentar.'

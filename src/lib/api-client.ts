@@ -1,5 +1,6 @@
 import axios, {
   AxiosError,
+  CanceledError,
   type AxiosRequestConfig,
   type InternalAxiosRequestConfig,
 } from 'axios'
@@ -26,6 +27,7 @@ api.interceptors.request.use((config) => {
   const { accessToken, sessionId } = useAuthStore.getState()
   const request = config as RetriableRequestConfig
   request._sessionId ??= sessionId
+  if (config.url === '/auth/refresh' && !config.timeout) config.timeout = 90_000
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`
   }
@@ -41,13 +43,22 @@ api.interceptors.request.use((config) => {
  *     reintenta la request original. Si el refresh falla, limpia la sesión y
  *     redirige a /login. Nunca reintenta en loop infinito.
  */
+interface RequestConfig extends AxiosRequestConfig {
+  /** Called before role reconciliation can unmount the requesting screen. */
+  onAuthorizationError?: () => void
+}
 interface RetriableRequestConfig extends InternalAxiosRequestConfig {
+  onAuthorizationError?: () => void
   _retry?: boolean
   _sessionId?: number
 }
 
-let isRefreshing = false
-let pendingQueue: Array<(token: string | null) => void> = []
+let activeRefresh: {
+  sessionId: number
+  identity: string | undefined
+  controller: AbortController
+  promise: Promise<string>
+} | null = null
 let roleCheck: { sessionId: number; promise: Promise<void> } | null = null
 
 /** Shared by initial admission and 403 reconciliation; never replays a forbidden request. */
@@ -102,9 +113,44 @@ async function reconcileRole(original: RetriableRequestConfig) {
     /* Failure does not prove a role change; keep the session for retry. */
   }
 }
-function flushQueue(token: string | null) {
-  pendingQueue.forEach((resolve) => resolve(token))
-  pendingQueue = []
+/** A refresh belongs to a session, not to an individual GET. */
+function refreshAccessToken(refreshToken: string) {
+  const { sessionId, user } = useAuthStore.getState()
+  const identity = user?.id
+  if (activeRefresh?.sessionId === sessionId && activeRefresh.identity === identity)
+    return activeRefresh.promise
+  const controller = new AbortController()
+  const currentSession = () => {
+    const s = useAuthStore.getState()
+    return s.sessionId === sessionId && s.user?.id === identity
+  }
+  const unsubscribe = useAuthStore.subscribe(() => {
+    if (!currentSession()) controller.abort()
+  })
+  const promise = (async () => {
+    try {
+      const { data } = await api.post<AuthTokens>('/auth/refresh', { refreshToken }, {
+        timeout: 90_000, signal: controller.signal,
+      })
+      if (controller.signal.aborted || !currentSession()) throw new CanceledError()
+      if (data.user.id !== identity) throw new Error('Unexpected refresh identity')
+      setRefreshToken(data.refreshToken)
+      useAuthStore.setState({ accessToken: data.accessToken, user: data.user })
+      return data.accessToken
+    } catch (error) {
+      // Temporary errors keep the session; an invalid refresh token does not.
+      if (currentSession() && error instanceof AxiosError && error.response?.status === 401) {
+        useAuthStore.getState().clearSession()
+        window.location.assign('/login')
+      }
+      throw error
+    } finally {
+      unsubscribe()
+      if (activeRefresh?.controller === controller) activeRefresh = null
+    }
+  })()
+  activeRefresh = { sessionId, identity, controller, promise }
+  return promise
 }
 
 function isAuthEndpoint(url?: string): boolean {
@@ -133,9 +179,15 @@ api.interceptors.response.use(
       !isAuthEndpoint(original.url) &&
       original.url?.split('?')[0] !== '/users/me'
     ) {
+      if (original._sessionId === useAuthStore.getState().sessionId)
+        original.onAuthorizationError?.()
       await reconcileRole(original)
       return Promise.reject(error)
     }
+
+    if (error.response?.status === 401 && original?._retry &&
+      original._sessionId === useAuthStore.getState().sessionId)
+      original.onAuthorizationError?.()
 
     // No es 401, ya fue reintentada, o es el propio login/refresh: no refrescar.
     if (
@@ -157,54 +209,15 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    if (isRefreshing) {
-      original._retry = true
-      // Otra request ya está refrescando: encolar esta y esperar el token nuevo.
-      return new Promise((resolve, reject) => {
-        pendingQueue.push((token) => {
-          if (token && useAuthStore.getState().sessionId === refreshSessionId) {
-            original.headers.Authorization = `Bearer ${token}`
-            resolve(api(original))
-          } else {
-            reject(error)
-          }
-        })
-      })
-    }
-
     original._retry = true
-    isRefreshing = true
-
     try {
-      const { data } = await api.post<AuthTokens>('/auth/refresh', {
-        refreshToken,
-      })
-      // Rotación: el backend emite un refreshToken nuevo en cada refresh.
-      if (useAuthStore.getState().sessionId !== refreshSessionId) {
-        flushQueue(null)
-        return Promise.reject(error)
-      }
-      setRefreshToken(data.refreshToken)
-      useAuthStore.setState({ accessToken: data.accessToken, user: data.user })
-      flushQueue(data.accessToken)
-      original.headers.Authorization = `Bearer ${data.accessToken}`
+      const token = await refreshAccessToken(refreshToken)
+      if (original.signal?.aborted || refreshSessionId !== useAuthStore.getState().sessionId)
+        throw new CanceledError()
+      original.headers.Authorization = 'Bearer ' + token
       return api(original)
     } catch (refreshError) {
-      flushQueue(null)
-      // Solo un 401 definitivo del refresh significa token inválido → limpiar
-      // sesión y redirigir. Errores transitorios (red, 5xx, cold start de
-      // Render) conservan la sesión: la próxima request reintentará el refresh.
-      if (
-        useAuthStore.getState().sessionId === refreshSessionId &&
-        refreshError instanceof AxiosError &&
-        refreshError.response?.status === 401
-      ) {
-        useAuthStore.getState().clearSession()
-        window.location.assign('/login')
-      }
       return Promise.reject(refreshError)
-    } finally {
-      isRefreshing = false
     }
   },
 )
@@ -214,7 +227,7 @@ export default api
 /** Helper tipado para GET que devuelve el payload desenvuelto. */
 export async function get<T>(
   url: string,
-  config?: AxiosRequestConfig,
+  config?: RequestConfig,
 ): Promise<T> {
   const { data } = await api.get<T>(url, config)
   return data
