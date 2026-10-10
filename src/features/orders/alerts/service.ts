@@ -42,7 +42,7 @@ const messageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('notice'), notice: recordSchema }).strict(),
 ])
 const TTL = 24 * 60 * 60 * 1000
-const INTERVAL = 8000
+const INTERVAL = 2000
 const RECENT = 5000
 
 /** One candidate timer per tab; a shared clock and playback lock own the audible sequence. */
