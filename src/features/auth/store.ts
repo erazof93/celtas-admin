@@ -25,6 +25,8 @@ interface AuthState {
   user: AuthUser | null
   ordersAccessBlocked: { sessionId: number; identity: string } | null
   sessionId: number
+  /** Signals logout before asynchronous push cleanup; does not change tokens. */
+  sessionEnding: boolean
   roleStatus: 'unverified' | 'checking' | 'confirmed' | 'error'
   setSession: (accessToken: string, user: AuthUser, confirmed?: boolean) => void
   clearSession: (clearSharedToken?: boolean) => void
@@ -35,6 +37,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   ordersAccessBlocked: null,
   sessionId: 0,
+  sessionEnding: false,
   roleStatus: 'unverified',
   setSession: (accessToken, user, confirmed = false) =>
     set((state) => ({
@@ -42,6 +45,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       user,
       ordersAccessBlocked: null,
       sessionId: state.sessionId + 1,
+      sessionEnding: false,
       roleStatus: confirmed ? 'confirmed' : 'unverified',
     })),
   clearSession: (clearSharedToken = true) => {
@@ -51,6 +55,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       user: null,
       ordersAccessBlocked: null,
       sessionId: state.sessionId + 1,
+      sessionEnding: false,
       roleStatus: 'unverified',
     }))
   },

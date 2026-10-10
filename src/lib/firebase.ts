@@ -4,10 +4,13 @@ import {
   getMessaging,
   getToken,
   isSupported,
+  onMessage,
   type Messaging,
 } from 'firebase/messaging'
 import { useAuthStore } from '@/features/auth/store'
 import { pushTokenRequest } from './api-client'
+import { localOrderAlertsEnabled } from '@/features/orders/alerts/environment'
+import { publishForegroundOrder } from '@/features/orders/alerts/foreground'
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -45,6 +48,15 @@ let active: Registration | null = null
 let initialized = false
 let cleanup: { sessionId: number; promise: Promise<void> } | null = null
 
+/** Explicit E2E opt-out; normal development and production keep push enabled. */
+function pushDisabledForE2e() {
+  return (
+    import.meta.env.DEV &&
+    import.meta.env.MODE === 'e2e' &&
+    import.meta.env.VITE_E2E_DISABLE_PUSH === 'true'
+  )
+}
+
 function readOwner(): Owner | null {
   const value: unknown = JSON.parse(localStorage.getItem(OWNER_KEY) ?? 'null')
   if (!value || typeof value !== 'object') return null
@@ -59,6 +71,25 @@ function readOwner(): Owner | null {
 export function capturePushGeneration(): string | null {
   try {
     return readOwner()?.generation ?? null
+  } catch {
+    return null
+  }
+}
+
+/** Read-only session metadata shared with SSE; does not acquire the installation lock. */
+export function capturePushSession(): Pick<
+  Owner,
+  'generation' | 'identity' | 'revoked'
+> | null {
+  try {
+    const owner = readOwner()
+    return owner
+      ? {
+          generation: owner.generation,
+          identity: owner.identity,
+          revoked: owner.revoked,
+        }
+      : null
   } catch {
     return null
   }
@@ -138,6 +169,7 @@ function initialize() {
 }
 
 async function messagingInstance() {
+  if (pushDisabledForE2e()) return null
   if (!(await isSupported())) return null
   if (
     !firebaseConfig.apiKey ||
@@ -184,6 +216,8 @@ export function registerPushNotifications(): Promise<void> {
   active = registration
   registration.promise = (async () => {
     try {
+      // Keep shared session metadata for SSE, without touching Firebase or permissions.
+      if (pushDisabledForE2e()) return
       if (!navigator.locks) {
         console.warn(
           '[push] Notificaciones push no disponibles: este navegador no admite Web Locks',
@@ -199,6 +233,19 @@ export function registerPushNotifications(): Promise<void> {
       const messaging = await messagingInstance()
       if (!messaging || !current(registration)) return
       registration.messaging = messaging
+      if (localOrderAlertsEnabled()) {
+        const stopMessages = onMessage(messaging, (message) => {
+          if (
+            current(registration) &&
+            !useAuthStore.getState().sessionEnding &&
+            registration.owner
+          )
+            publishForegroundOrder(message.data, registration.owner)
+        })
+        registration.controller.signal.addEventListener('abort', stopMessages, {
+          once: true,
+        })
+      }
       const permission = await Notification.requestPermission()
       if (permission !== 'granted' || !current(registration)) return
       await navigator.locks.request(
@@ -308,6 +355,7 @@ export function stopPushNotifications(
   // running on the server even after Axios cancellation. This request is bound
   // to the outgoing identity, even if a later login now owns localStorage.
   const remoteCleanup =
+    !pushDisabledForE2e() &&
     remote &&
     capturedOwner &&
     capturedOwner.identity === session.user?.id &&
@@ -324,7 +372,7 @@ export function stopPushNotifications(
         })
       : Promise.resolve()
   const task = (async () => {
-    if (!allowed) return
+    if (!allowed || pushDisabledForE2e()) return
     const cleanInstallation = async () => {
       // A later login owns the installation. Never delete its Firebase subscription.
       const latest = readOwner()

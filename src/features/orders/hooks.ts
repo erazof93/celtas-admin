@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useSyncExternalStore } from 'react'
-import { CancelledError, focusManager, onlineManager, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  CancelledError,
+  focusManager,
+  onlineManager,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import { useAuthStore } from '@/features/auth/store'
 import { get, patch, post } from '@/lib/api-client'
 import { geoapifyApiKey, geoapifyAutocomplete } from '@/lib/geoapify'
 import { useDebouncedValue } from '@/lib/useDebouncedValue'
+import { readPendingOrders } from './pending-orders'
 import type {
   Order,
   OrderStatus,
@@ -26,7 +34,9 @@ const getOnline = () => onlineManager.isOnline()
 export function temporaryOrdersError(error: unknown) {
   if (!isAxiosError(error)) return false
   const status = error.response?.status
-  return status === undefined || status === 408 || status === 429 || status >= 500
+  return (
+    status === undefined || status === 408 || status === 429 || status >= 500
+  )
 }
 
 export function useOrders(
@@ -36,24 +46,43 @@ export function useOrders(
   userId?: string,
   enabled = true,
   autoRefresh = false,
+  allPending = false,
 ) {
   const queryClient = useQueryClient()
   const sessionId = useAuthStore((s) => s.sessionId)
   const identity = useAuthStore((s) => s.user?.id)
   const authorized = useAuthStore(
-    (s) => Boolean(s.accessToken) && s.user?.role === 'admin' && s.roleStatus === 'confirmed',
+    (s) =>
+      Boolean(s.accessToken) &&
+      !s.sessionEnding &&
+      s.user?.role === 'admin' &&
+      s.roleStatus === 'confirmed',
   )
-  const accessBlocked = useAuthStore((s) => Boolean(s.ordersAccessBlocked &&
-    s.ordersAccessBlocked.sessionId === sessionId && s.ordersAccessBlocked.identity === identity))
+  const accessBlocked = useAuthStore((s) =>
+    Boolean(
+      s.ordersAccessBlocked &&
+      s.ordersAccessBlocked.sessionId === sessionId &&
+      s.ordersAccessBlocked.identity === identity,
+    ),
+  )
   const focused = useSyncExternalStore(subscribeFocus, getFocus)
   const online = useSyncExternalStore(subscribeOnline, getOnline)
-  const active = enabled && (!autoRefresh || (authorized && !accessBlocked && focused && online))
+  const active =
+    enabled &&
+    (!autoRefresh || (authorized && !accessBlocked && focused && online))
   const queryKey = useMemo(
-    () => [
-      ...ORDERS_LIST_KEY, page, limit, status ?? 'all', userId ?? 'all',
-      ...(autoRefresh ? [{ identity, sessionId }] : []),
-    ],
-    [page, limit, status, userId, autoRefresh, identity, sessionId],
+    () =>
+      allPending
+        ? ['orders', 'pending', { identity, sessionId }]
+        : [
+            ...ORDERS_LIST_KEY,
+            page,
+            limit,
+            status ?? 'all',
+            userId ?? 'all',
+            ...(autoRefresh ? [{ identity, sessionId }] : []),
+          ],
+    [page, limit, status, userId, autoRefresh, identity, sessionId, allPending],
   )
   useEffect(() => {
     if (!autoRefresh) return
@@ -61,7 +90,9 @@ export function useOrders(
   }, [autoRefresh, active, queryClient, queryKey])
   useEffect(() => {
     if (!autoRefresh) return
-    return () => { void queryClient.cancelQueries({ queryKey, exact: true }) }
+    return () => {
+      void queryClient.cancelQueries({ queryKey, exact: true })
+    }
   }, [autoRefresh, queryClient, queryKey])
 
   const query = useQuery<PaginatedOrders>({
@@ -69,54 +100,93 @@ export function useOrders(
     queryFn: async ({ signal }) => {
       const currentSession = () => {
         const s = useAuthStore.getState()
-        return s.sessionId === sessionId && s.user?.id === identity &&
-          Boolean(s.accessToken) && s.user?.role === 'admin' && s.roleStatus === 'confirmed'
+        return (
+          s.sessionId === sessionId &&
+          s.user?.id === identity &&
+          Boolean(s.accessToken) &&
+          !s.sessionEnding &&
+          s.user?.role === 'admin' &&
+          s.roleStatus === 'confirmed'
+        )
       }
       if (autoRefresh && (!currentSession() || !getFocus() || !getOnline()))
         throw new CancelledError({ silent: true })
-      const result = await get<PaginatedOrders>('/orders', {
-        signal,
-        ...(autoRefresh ? {
-          timeout: 90_000,
-          onAuthorizationError: () => {
-            const s = useAuthStore.getState()
-            if (identity && s.sessionId === sessionId && s.user?.id === identity)
-              useAuthStore.setState({ ordersAccessBlocked: { sessionId, identity } })
+      const readPage = (requestedPage: number) =>
+        get<PaginatedOrders>('/orders', {
+          signal,
+          ...(autoRefresh
+            ? {
+                timeout: 90_000,
+                onAuthorizationError: () => {
+                  const s = useAuthStore.getState()
+                  if (
+                    identity &&
+                    s.sessionId === sessionId &&
+                    s.user?.id === identity
+                  )
+                    useAuthStore.setState({
+                      ordersAccessBlocked: { sessionId, identity },
+                    })
+                },
+              }
+            : {}),
+          params: {
+            page: requestedPage,
+            limit,
+            ...(status ? { status } : {}),
+            ...(userId ? { userId } : {}),
           },
-        } : {}),
-        params: { page, limit, ...(status ? { status } : {}), ...(userId ? { userId } : {}) },
-      })
+        })
+      const result = allPending
+        ? await readPendingOrders(readPage)
+        : await readPage(page)
       if (signal.aborted || (autoRefresh && !currentSession()))
         throw new CancelledError({ silent: true })
       return result
     },
     enabled: active,
-    ...(autoRefresh ? {
-      staleTime: 0,
-      refetchOnMount: 'always' as const,
-      refetchOnWindowFocus: 'always' as const,
-      refetchOnReconnect: 'always' as const,
-      refetchIntervalInBackground: false,
-      retry: false,
-      refetchInterval: (query: { state: { error: Error | null } }) => {
-        if (!active) return false
-        if (query.state.error && !temporaryOrdersError(query.state.error)) return false
-        return query.state.error ? 120_000 : 30_000
-      },
-    } : {}),
+    ...(autoRefresh
+      ? {
+          staleTime: 0,
+          refetchOnMount: 'always' as const,
+          refetchOnWindowFocus: 'always' as const,
+          refetchOnReconnect: 'always' as const,
+          refetchIntervalInBackground: false,
+          retry: false,
+          refetchInterval: (query: { state: { error: Error | null } }) => {
+            if (!active) return false
+            if (query.state.error && !temporaryOrdersError(query.state.error))
+              return false
+            return query.state.error ? 120_000 : 30_000
+          },
+        }
+      : {}),
   })
   return {
     ...query,
     accessBlocked: autoRefresh && accessBlocked,
     retryAccess: () => {
       const s = useAuthStore.getState()
-      if (!autoRefresh || !enabled || s.sessionId !== sessionId || s.user?.id !== identity ||
-        !s.accessToken || s.user?.role !== 'admin' || s.roleStatus !== 'confirmed' ||
-        !getFocus() || !getOnline()) return
+      if (
+        !autoRefresh ||
+        !enabled ||
+        s.sessionId !== sessionId ||
+        s.user?.id !== identity ||
+        !s.accessToken ||
+        s.user?.role !== 'admin' ||
+        s.roleStatus !== 'confirmed' ||
+        !getFocus() ||
+        !getOnline()
+      )
+        return
       if (accessBlocked) useAuthStore.setState({ ordersAccessBlocked: null })
       else void query.refetch({ cancelRefetch: false })
     },
   }
+}
+
+export function usePendingOrders() {
+  return useOrders(1, 100, 'pendiente', undefined, true, true, true)
 }
 
 /**
@@ -127,6 +197,11 @@ export function useOrders(
 export function useUpdateOrderStatus() {
   const queryClient = useQueryClient()
   return useMutation({
+    mutationKey: ['orders', 'status'],
+    onMutate: () => {
+      const session = useAuthStore.getState()
+      return { identity: session.user?.id, sessionId: session.sessionId }
+    },
     mutationFn: ({
       id,
       status,
@@ -145,8 +220,40 @@ export function useUpdateOrderStatus() {
         status,
         ...(cancelReason ? { cancelReason } : {}),
       }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ORDERS_LIST_KEY }),
+    onSuccess: async (updated, _variables, captured) => {
+      const session = useAuthStore.getState()
+      if (
+        session.sessionEnding ||
+        captured?.identity !== session.user?.id ||
+        captured?.sessionId !== session.sessionId
+      )
+        return
+      queryClient.setQueriesData<PaginatedOrders>(
+        { queryKey: ['orders', 'pending'] },
+        (previous) => {
+          if (
+            !previous ||
+            updated.status === 'pendiente' ||
+            !previous.items.some((order) => order.id === updated.id)
+          )
+            return previous
+          return {
+            ...previous,
+            items: previous.items.filter((order) => order.id !== updated.id),
+            meta: {
+              ...previous.meta,
+              total: Math.max(0, previous.meta.total - 1),
+            },
+          }
+        },
+      )
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ORDERS_LIST_KEY }),
+        queryClient.invalidateQueries({ queryKey: ['orders', 'pending'] }),
+        queryClient.invalidateQueries({ queryKey: ['orders', 'detail'] }),
+        queryClient.invalidateQueries({ queryKey: ['dashboard'] }),
+      ])
+    },
   })
 }
 /**
@@ -165,7 +272,10 @@ export function useGeocodeAddress() {
  * Cotiza el delivery para un punto (GET /delivery/estimate). Se re-consulta
  * cada vez que el pin cambia; `null` = todavía no hay pin.
  */
-export function useDeliveryEstimate(point: LatLng | null, mode?: DeliveryMode | null) {
+export function useDeliveryEstimate(
+  point: LatLng | null,
+  mode?: DeliveryMode | null,
+) {
   return useQuery({
     queryKey: ['delivery', 'estimate', point?.lat, point?.lng, mode],
     queryFn: () => {
@@ -186,9 +296,25 @@ export function useDeliveryEstimate(point: LatLng | null, mode?: DeliveryMode | 
  * pedido recién creado desde /orders?order=<id>.
  */
 export function useOrder(id: string | null) {
+  const identity = useAuthStore((s) => s.user?.id)
+  const sessionId = useAuthStore((s) => s.sessionId)
   return useQuery({
-    queryKey: ['orders', 'detail', id],
-    queryFn: () => get<Order>(`/orders/${id}`),
+    queryKey: ['orders', 'detail', id, { identity, sessionId }],
+    queryFn: async ({ signal }) => {
+      const current = () => {
+        const s = useAuthStore.getState()
+        return (
+          s.sessionId === sessionId &&
+          s.user?.id === identity &&
+          !s.sessionEnding
+        )
+      }
+      if (!current()) throw new CancelledError({ silent: true })
+      const result = await get<Order | null>(`/orders/${id}`, { signal })
+      if (signal.aborted || !current())
+        throw new CancelledError({ silent: true })
+      return result
+    },
     enabled: Boolean(id),
   })
 }
@@ -201,6 +327,7 @@ export function useOrder(id: string | null) {
 export function useCreateAdminOrder() {
   const queryClient = useQueryClient()
   return useMutation({
+    mutationKey: ['orders', 'create'],
     mutationFn: (input: CreateOrderAdminInput) =>
       post<Order>('/orders/admin', input),
     onSuccess: () =>
@@ -225,7 +352,9 @@ export function useGeoapifyAutocomplete(text: string, enabled = true) {
     queryKey: ['geoapify', 'autocomplete', debounced],
     queryFn: ({ signal }) => geoapifyAutocomplete(debounced, signal),
     enabled:
-      enabled && geoapifyApiKey() !== null && debounced.length >= AUTOCOMPLETE_MIN_LENGTH,
+      enabled &&
+      geoapifyApiKey() !== null &&
+      debounced.length >= AUTOCOMPLETE_MIN_LENGTH,
     staleTime: 5 * 60_000,
     retry: false,
   })
@@ -233,17 +362,22 @@ export function useGeoapifyAutocomplete(text: string, enabled = true) {
   return enabled && debounced === trimmed ? (query.data ?? []) : []
 }
 
-const whatsappLinksKey = (orderId: string) => ['orders', 'whatsapp-links', orderId] as const
+const whatsappLinksKey = (orderId: string) =>
+  ['orders', 'whatsapp-links', orderId] as const
 
 /**
  * GET /orders/admin/:orderId/whatsapp-links (solo admin). El backend responde
  * 409 si el pedido está cancelado — el caller no debe habilitarlo en ese caso.
  * Sin reintentos: 404/409 son deterministas.
  */
-export function useOrderWhatsappLinks(orderId: string | null, enabled: boolean) {
+export function useOrderWhatsappLinks(
+  orderId: string | null,
+  enabled: boolean,
+) {
   return useQuery({
     queryKey: whatsappLinksKey(orderId ?? 'none'),
-    queryFn: () => get<WhatsappLinks>(`/orders/admin/${orderId}/whatsapp-links`),
+    queryFn: () =>
+      get<WhatsappLinks>(`/orders/admin/${orderId}/whatsapp-links`),
     enabled: enabled && Boolean(orderId),
     retry: false,
   })
@@ -257,11 +391,14 @@ export function useOrderWhatsappLinks(orderId: string | null, enabled: boolean) 
 export function useMarkWhatsappSent() {
   const queryClient = useQueryClient()
   return useMutation({
+    mutationKey: ['orders', 'whatsapp-sent'],
     mutationFn: (orderId: string) =>
       post<WhatsappSentResult>(`/orders/admin/${orderId}/whatsapp-sent`),
     onSuccess: (result) => {
-      queryClient.setQueryData<WhatsappLinks>(whatsappLinksKey(result.orderId), (prev) =>
-        prev ? { ...prev, whatsappSentAt: result.whatsappSentAt } : prev,
+      queryClient.setQueryData<WhatsappLinks>(
+        whatsappLinksKey(result.orderId),
+        (prev) =>
+          prev ? { ...prev, whatsappSentAt: result.whatsappSentAt } : prev,
       )
       queryClient.invalidateQueries({ queryKey: ORDERS_LIST_KEY })
     },

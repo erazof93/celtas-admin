@@ -11,6 +11,7 @@ import {
 } from '@/features/auth/store'
 import type { AuthTokens, AuthUser } from '@/features/auth/types'
 import { capturePushGeneration, stopPushNotifications } from './firebase'
+import { readSseStream } from './sse-transport'
 
 /**
  * Instancia única de cliente para todo el panel.
@@ -156,7 +157,11 @@ function refreshAccessToken(refreshToken: string) {
           signal: controller.signal,
         },
       )
-      if (controller.signal.aborted || !currentSession())
+      if (
+        controller.signal.aborted ||
+        !currentSession() ||
+        useAuthStore.getState().sessionEnding
+      )
         throw new CanceledError()
       if (capturePushGeneration() !== pushGeneration) throw new CanceledError()
       if (data.user.id !== identity)
@@ -171,6 +176,7 @@ function refreshAccessToken(refreshToken: string) {
         error instanceof AxiosError &&
         error.response?.status === 401
       ) {
+        useAuthStore.setState({ sessionEnding: true })
         await stopPushNotifications(false)
         if (!currentSession()) throw error
         useAuthStore
@@ -245,6 +251,7 @@ api.interceptors.response.use(
     const refreshToken = getRefreshToken()
     if (!refreshToken) {
       const pushGeneration = capturePushGeneration()
+      useAuthStore.setState({ sessionEnding: true })
       await stopPushNotifications(false)
       if (refreshSessionId !== useAuthStore.getState().sessionId)
         return Promise.reject(error)
@@ -272,6 +279,38 @@ api.interceptors.response.use(
 )
 
 export default api
+
+/** SSE borrows the existing per-tab refresh; it never owns a second refresh flow. */
+export async function refreshSseAccessToken(expected: {
+  sessionId: number
+  identity: string
+  rejectedToken: string
+}): Promise<string> {
+  const session = useAuthStore.getState()
+  if (
+    session.sessionId !== expected.sessionId ||
+    session.user?.id !== expected.identity ||
+    session.sessionEnding ||
+    !session.accessToken
+  )
+    throw new CanceledError()
+  // Axios may already have renewed the rejected credential while fetch was pending.
+  if (session.accessToken !== expected.rejectedToken) return session.accessToken
+  const token = getRefreshToken()
+  if (!token) throw new CanceledError()
+  return refreshAccessToken(token)
+}
+
+/** Use Axios' actual base URL and joining rules, including any API prefix. */
+export function orderEventsUrl(): string {
+  return api.getUri({ url: '/admin/orders/events' })
+}
+
+export function openOrderEventsStream(
+  options: Omit<Parameters<typeof readSseStream>[0], 'url'>,
+) {
+  return readSseStream({ ...options, url: orderEventsUrl() })
+}
 
 /** FCM requests cannot borrow a later session's credentials. */
 export async function pushTokenRequest(

@@ -21,6 +21,8 @@ import { registerPushNotifications } from '@/lib/firebase'
 import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/features/auth/store'
 import { logout } from '@/features/auth/hooks'
+import { useOrderEvents } from '@/features/orders/events/useOrderEvents'
+import { OrderAlerts } from '@/features/orders/alerts/OrderAlerts'
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -119,6 +121,7 @@ function Sidebar({
  * en un drawer colapsable (el admin lo usa desde el celular/tablet del local).
  */
 export default function AdminLayout() {
+  useOrderEvents()
   const user = useAuthStore((s) => s.user)
   const sessionId = useAuthStore((s) => s.sessionId)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -201,6 +204,7 @@ export default function AdminLayout() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            <OrderAlerts />
             <div className="hidden text-right sm:block">
               <p className="text-sm leading-tight font-medium">
                 {user?.fullName}

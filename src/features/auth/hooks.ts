@@ -48,6 +48,7 @@ export function useLogin() {
  */
 export async function logout(): Promise<void> {
   const session = useAuthStore.getState()
+  useAuthStore.setState({ sessionEnding: true })
   const generation = capturePushGeneration()
   await stopPushNotifications(true, session)
   if (useAuthStore.getState().sessionId !== session.sessionId) return

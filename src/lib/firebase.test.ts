@@ -10,18 +10,22 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { AuthUser } from '@/features/auth/types'
 
 const sdk = vi.hoisted(() => ({
+  initialize: vi.fn(() => ({})),
   supported: vi.fn(),
   messaging: vi.fn(),
   token: vi.fn(),
   remove: vi.fn(),
+  message: vi.fn(),
+  stopMessage: vi.fn(),
 }))
 vi.mock('firebase/messaging', () => ({
   isSupported: sdk.supported,
   getMessaging: sdk.messaging,
   getToken: sdk.token,
   deleteToken: sdk.remove,
+  onMessage: sdk.message,
 }))
-vi.mock('firebase/app', () => ({ initializeApp: vi.fn(() => ({})) }))
+vi.mock('firebase/app', () => ({ initializeApp: sdk.initialize }))
 const deferred = <T>() => {
   let resolve!: (value: T) => void
   const promise = new Promise<T>((done) => {
@@ -60,10 +64,14 @@ beforeEach(async () => {
   vi.stubEnv('VITE_FIREBASE_PROJECT_ID', 'test')
   vi.stubEnv('VITE_FIREBASE_APP_ID', 'test')
   vi.stubEnv('VITE_FIREBASE_VAPID_KEY', 'public-vapid')
+  vi.stubEnv('DEV', true)
+  vi.stubEnv('MODE', 'test')
+  vi.stubEnv('VITE_E2E_DISABLE_PUSH', 'false')
   sdk.supported.mockResolvedValue(true)
   sdk.messaging.mockReturnValue({})
   sdk.token.mockResolvedValue('fcm-a')
   sdk.remove.mockResolvedValue(true)
+  sdk.message.mockReturnValue(sdk.stopMessage)
   permission = vi.fn().mockResolvedValue('granted')
   vi.stubGlobal('Notification', { requestPermission: permission })
   let queue = Promise.resolve()
@@ -108,6 +116,118 @@ afterEach(() => {
 })
 
 describe('FCM session lifecycle with actual Axios transport', () => {
+  it.each(['false', 'true'])(
+    'production foreground handler follows the real build opt-in %s, retaining normal push',
+    async (enabled) => {
+      vi.stubEnv('DEV', false)
+      vi.stubEnv('MODE', 'production')
+      vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.invalid')
+      vi.stubEnv('VITE_ORDER_EVENTS_PRODUCTION_ENABLED', enabled)
+      await push.registerPushNotifications()
+      expect(sdk.initialize).toHaveBeenCalledOnce()
+      expect(sdk.token).toHaveBeenCalledOnce()
+      expect(sdk.message).toHaveBeenCalledTimes(enabled === 'true' ? 1 : 0)
+      await push.stopPushNotifications()
+      expect(sdk.stopMessage).toHaveBeenCalledTimes(enabled === 'true' ? 1 : 0)
+    },
+  )
+  it('validates foreground payloads and removes the SDK listener immediately on logout', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'http://localhost:3000')
+    const { subscribeForegroundOrders } =
+      await import('@/features/orders/alerts/foreground')
+    const received = vi.fn()
+    const stop = subscribeForegroundOrders(received)
+    await push.registerPushNotifications()
+    expect(sdk.message).toHaveBeenCalledOnce()
+    const callback = sdk.message.mock.calls[0][1]
+    callback({ data: { orderId: '../private', status: 'pendiente' } })
+    callback({
+      data: {
+        orderId: '10000000-0000-4000-8000-000000000001',
+        status: 'entregado',
+      },
+    })
+    expect(received).not.toHaveBeenCalled()
+    callback({
+      data: {
+        orderId: '10000000-0000-4000-8000-000000000001',
+        status: 'pendiente',
+        customerName: 'Never forwarded',
+      },
+    })
+    expect(received).toHaveBeenCalledWith({
+      orderId: '10000000-0000-4000-8000-000000000001',
+      identity: 'a',
+      generation: expect.any(String),
+    })
+    await push.stopPushNotifications()
+    expect(sdk.stopMessage).toHaveBeenCalledOnce()
+    callback({
+      data: {
+        orderId: '10000000-0000-4000-8000-000000000001',
+        status: 'pendiente',
+      },
+    })
+    expect(received).toHaveBeenCalledTimes(1)
+    stop()
+  })
+  it('isolates E2E registration and logout while preserving SSE session metadata', async () => {
+    vi.stubEnv('MODE', 'e2e')
+    vi.stubEnv('VITE_E2E_DISABLE_PUSH', 'true')
+    localStorage.removeItem('celtas_push_session') // Legacy bootstrap without metadata.
+    await push.registerPushNotifications()
+    const session = push.capturePushSession()
+    expect(session).toMatchObject({ identity: 'a', revoked: false })
+    expect(session?.generation).toBeTruthy()
+    await push.stopPushNotifications()
+    expect(push.capturePushSession()).toMatchObject({
+      generation: session?.generation,
+      identity: 'a',
+      revoked: true,
+    })
+    expect(sdk.supported).not.toHaveBeenCalled()
+    expect(sdk.initialize).not.toHaveBeenCalled()
+    expect(sdk.messaging).not.toHaveBeenCalled()
+    expect(sdk.token).not.toHaveBeenCalled()
+    expect(sdk.remove).not.toHaveBeenCalled()
+    expect(sdk.message).not.toHaveBeenCalled()
+    expect(permission).not.toHaveBeenCalled()
+    expect(navigator.serviceWorker.register).not.toHaveBeenCalled()
+    expect(navigator.locks.request).not.toHaveBeenCalled()
+    expect(transport).not.toHaveBeenCalled()
+  })
+
+  it('does not remotely clean a prior registration when E2E push is disabled', async () => {
+    await push.registerPushNotifications()
+    expect(patches()).toHaveLength(1)
+    vi.clearAllMocks()
+    vi.stubEnv('MODE', 'e2e')
+    vi.stubEnv('VITE_E2E_DISABLE_PUSH', 'true')
+    await push.stopPushNotifications()
+    expect(sdk.remove).not.toHaveBeenCalled()
+    expect(sdk.initialize).not.toHaveBeenCalled()
+    expect(navigator.locks.request).not.toHaveBeenCalled()
+    expect(transport).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    { dev: false, mode: 'e2e', disabled: 'true' },
+    { dev: true, mode: 'development', disabled: 'true' },
+    { dev: true, mode: 'e2e', disabled: 'false' },
+  ])(
+    'preserves normal push outside explicit development E2E: %j',
+    async ({ dev, mode, disabled }) => {
+      vi.stubEnv('DEV', dev)
+      vi.stubEnv('MODE', mode)
+      vi.stubEnv('VITE_E2E_DISABLE_PUSH', disabled)
+      await push.registerPushNotifications()
+      expect(sdk.initialize).toHaveBeenCalledOnce()
+      expect(sdk.token).toHaveBeenCalledOnce()
+      expect(permission).toHaveBeenCalledOnce()
+      expect(patches()).toHaveLength(1)
+    },
+  )
+
   it('DELETE reaches the simulated server before an aborted PATCH finishes there', async () => {
     const gate = deferred<void>()
     const reply = transport.getMockImplementation()!

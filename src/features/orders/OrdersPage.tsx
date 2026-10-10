@@ -1,6 +1,9 @@
 import { lazy, Suspense, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Inbox, MapPin, Plus } from 'lucide-react'
+import { useIsMutating } from '@tanstack/react-query'
+import { useAuthStore } from '@/features/auth/store'
+import { orderEventsEnabled } from './events/service'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -38,6 +41,7 @@ import { OrderDetailDialog } from './OrderDetailDialog'
 import { orderCustomer } from './orders-utils'
 import { ORDER_STATUS_BADGE, ORDER_STATUS_LABELS } from './status'
 import type { Order, OrderStatus } from './types'
+import { PendingOrdersTray } from './PendingOrdersTray'
 
 /**
  * Columna "Cliente": ID corto si tiene cuenta (como siempre); nombre + badge
@@ -95,8 +99,33 @@ export default function OrdersPage() {
   const [page, setPage] = useState(1)
   const [statusFilter, setStatusFilter] = useState<OrderStatus | 'all'>('all')
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
+  const sessionId = useAuthStore((s) => s.sessionId)
+  const sessionEnding = useAuthStore((s) => s.sessionEnding)
+  const [selectedSession, setSelectedSession] = useState(sessionId)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [calculatorOpen, setCalculatorOpen] = useState(false)
+  const mutationsPending = useIsMutating({ mutationKey: ['orders'] }) > 0
+  const selectedQuery = useOrder(
+    dialogOpen && !mutationsPending && orderEventsEnabled()
+      ? (selectedOrder?.id ?? null)
+      : null,
+  )
+  if (selectedSession !== sessionId) {
+    setSelectedSession(sessionId)
+    setSelectedOrder(null)
+    setDialogOpen(false)
+  }
+  const recoveredOrder = selectedQuery.data
+  const displayedOrder =
+    sessionEnding || selectedSession !== sessionId
+      ? null
+      : !mutationsPending &&
+          recoveredOrder != null &&
+          recoveredOrder.id === selectedOrder?.id &&
+          (!selectedOrder ||
+            recoveredOrder.updatedAt >= selectedOrder.updatedAt)
+        ? recoveredOrder
+        : selectedOrder
 
   // /orders?order=<id>: abre el detalle de ese pedido (ej. recién creado
   // desde "Crear pedido manual"). Se pide con GET /orders/:id porque puede
@@ -143,7 +172,15 @@ export default function OrdersPage() {
     setDialogOpen(true)
   }
 
-  const { data, isLoading, isError, error, refetch, accessBlocked, retryAccess } = ordersQuery
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+    accessBlocked,
+    retryAccess,
+  } = ordersQuery
   const staleList = Boolean(data) && isError && temporaryOrdersError(error)
 
   return (
@@ -184,11 +221,16 @@ export default function OrdersPage() {
         </div>
       </header>
 
+      <PendingOrdersTray onDetail={openOrder} />
+
       {orderParam && linkedOrderQuery.isError ? (
         <Alert variant="destructive">
           <AlertTitle>No se pudo abrir el pedido</AlertTitle>
           <AlertDescription>
-            {getApiMessage(linkedOrderQuery.error, 'Revisa tu conexión y vuelve a intentar.')}
+            {getApiMessage(
+              linkedOrderQuery.error,
+              'Revisa tu conexión y vuelve a intentar.',
+            )}
           </AlertDescription>
         </Alert>
       ) : null}
@@ -197,7 +239,8 @@ export default function OrdersPage() {
         <Alert>
           <AlertTitle>Los pedidos podrían estar desactualizados</AlertTitle>
           <AlertDescription>
-            No se pudo actualizar el listado. Se muestra la última información disponible.
+            No se pudo actualizar el listado. Se muestra la última información
+            disponible.
           </AlertDescription>
         </Alert>
       ) : null}
@@ -214,7 +257,7 @@ export default function OrdersPage() {
       ) : isError && !staleList ? (
         <ErrorState
           title="No se pudieron cargar los pedidos"
-          description='Revisa tu conexión y vuelve a intentar.'
+          description="Revisa tu conexión y vuelve a intentar."
           onRetry={() => refetch()}
         />
       ) : data && data.items.length === 0 ? (
@@ -293,17 +336,29 @@ export default function OrdersPage() {
       ) : null}
 
       <OrderDetailDialog
-        order={selectedOrder}
-        open={dialogOpen}
+        order={
+          selectedQuery.data === null && !mutationsPending
+            ? null
+            : displayedOrder
+        }
+        open={dialogOpen && !sessionEnding && selectedSession === sessionId}
         onOpenChange={handleDialogOpenChange}
-        onOrderUpdated={(updated) =>
+        onOrderUpdated={(updated) => {
+          const current = useAuthStore.getState()
+          if (current.sessionId !== selectedSession || current.sessionEnding)
+            return
           // El PATCH devuelve el pedido SIN items (se guarda sin relaciones):
           // mergeOrderAfterUpdate conserva los items del detalle abierto y
           // solo actualiza status/deliveredAt/updatedAt. Ver merge.ts.
-          setSelectedOrder((prev) =>
-            prev ? mergeOrderAfterUpdate(prev, updated) : updated,
-          )
-        }
+          setSelectedOrder((prev) => {
+            const base =
+              recoveredOrder?.id === updated.id &&
+              (!prev || recoveredOrder.updatedAt >= prev.updatedAt)
+                ? recoveredOrder
+                : prev
+            return base ? mergeOrderAfterUpdate(base, updated) : updated
+          })
+        }}
       />
 
       <Dialog open={calculatorOpen} onOpenChange={setCalculatorOpen}>
