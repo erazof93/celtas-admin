@@ -12,40 +12,51 @@ interface Notice {
 }
 interface AlertState {
   notices: Notice[]
+  unreviewed: Notice[]
   enabled: boolean
   ready: boolean
   volume: number
   error?: string
   coordinated: boolean
 }
+// Legacy chime claims are deduplicated, but never restored as new alarms.
 const recordSchema = z
   .object({
     orderId: z.uuid(),
     at: z.number().int().nonnegative().safe(),
     sounded: z.boolean(),
+    generation: z.string().optional(),
+    reviewed: z.boolean().default(true),
   })
   .strict()
-const ledgerSchema = z.array(recordSchema).max(512)
-const TTL = 24 * 60 * 60 * 1000
-const RECENT = 5000
+const ledgerSchema = z.array(recordSchema)
 const preferenceSchema = z
-  .object({
-    enabled: z.boolean(),
-    volume: z.number().min(0).max(1),
-  })
+  .object({ enabled: z.boolean(), volume: z.number().min(0).max(1) })
   .strict()
+const messageSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('changed') }).strict(),
+  z
+    .object({ type: z.literal('retire'), ids: z.array(z.uuid()).max(512) })
+    .strict(),
+  z.object({ type: z.literal('notice'), notice: recordSchema }).strict(),
+])
+const TTL = 24 * 60 * 60 * 1000
+const INTERVAL = 8000
+const RECENT = 5000
 
-/** A separate short lock for alert claims; never owns or opens an SSE stream. */
+/** One candidate timer per tab; a shared clock and playback lock own the audible sequence. */
 export function createOrderAlertsService(options: {
   scope: () => AlertScope | undefined
   now?: () => number
   storage?: Storage
+  validateRestored?: (ids: string[], signal: AbortSignal) => Promise<string[]>
 }) {
   const now = options.now ?? (() => Date.now())
   const storage = options.storage ?? localStorage
   const listeners = new Set<() => void>()
   let state: AlertState = {
     notices: [],
+    unreviewed: [],
     enabled: false,
     ready: false,
     volume: 0.35,
@@ -56,8 +67,16 @@ export function createOrderAlertsService(options: {
   let channel: BroadcastChannel | undefined
   let controller = new AbortController()
   let expiry: ReturnType<typeof setTimeout> | undefined
+  let alarm: ReturnType<typeof setTimeout> | undefined
+  let ringing: AlertScope | undefined
+  let restoring = false
+  let restoreFailed = false
   const seen = new Set<string>()
-  const sound = createOrderSound(() => publish({ ...sound.snapshot() }), now)
+  const retired = new Set<string>()
+  const sound = createOrderSound(() => {
+    publish(sound.snapshot())
+    if (!state.enabled || !state.ready) clearAlarm()
+  }, now)
   function publish(change: Partial<AlertState>) {
     state = { ...state, ...change }
     listeners.forEach((listener) => listener())
@@ -65,12 +84,15 @@ export function createOrderAlertsService(options: {
   const signature = (value: AlertScope | undefined) =>
     value && JSON.stringify([value.api, value.identity, value.generation])
   const valid = (captured: AlertScope) =>
+    scope === captured &&
     signature(captured) === signature(options.scope()) &&
     !controller.signal.aborted
   const key = (captured: AlertScope) =>
     `celtas-order-alerts:v1:${JSON.stringify([captured.api, captured.identity])}`
   const preferenceKey = (captured: AlertScope) =>
     `celtas-order-alert-preferences:v1:${JSON.stringify([captured.api, captured.identity])}`
+  const clockKey = (captured: AlertScope) =>
+    `celtas-order-alarm:v1:${signature(captured)}`
   function preferences(captured: AlertScope) {
     try {
       const parsed = preferenceSchema.safeParse(
@@ -78,7 +100,7 @@ export function createOrderAlertsService(options: {
       )
       if (parsed.success) return parsed.data
     } catch {
-      /* Storage may be unavailable; retain the initial preference. */
+      /* Storage may be unavailable. */
     }
     return { enabled: true, volume: 0.35 }
   }
@@ -87,79 +109,241 @@ export function createOrderAlertsService(options: {
     const { enabled, volume } = sound.snapshot()
     try {
       storage.setItem(preferenceKey(scope), JSON.stringify({ enabled, volume }))
+      channel?.postMessage({ type: 'changed' })
     } catch {
       publish({ error: 'No se pudo guardar la preferencia de sonido.' })
     }
   }
   function read(captured: AlertScope) {
     const raw = storage.getItem(key(captured))
-    if (raw && raw.length > 65536) throw Error('Alert ledger too large')
-    const parsed = ledgerSchema.parse(raw ? JSON.parse(raw) : [])
-    return parsed.filter(
-      (record) => record.at >= now() - TTL && record.at <= now(),
+    if (raw && raw.length > 1048576) throw Error('Alert ledger too large')
+    return ledgerSchema
+      .parse(raw ? JSON.parse(raw) : [])
+      .filter(
+        (record) =>
+          record.at <= now() &&
+          (record.at >= now() - TTL ||
+            (record.generation === captured.generation && !record.reviewed)),
+      )
+  }
+  function write(
+    records: z.infer<typeof recordSchema>[],
+    captured: AlertScope,
+  ) {
+    const active = records.filter(
+      (record) => record.generation === captured.generation && !record.reviewed,
     )
+    const history = records
+      .filter(
+        (record) =>
+          record.generation !== captured.generation || record.reviewed,
+      )
+      .slice(-512)
+    const value = JSON.stringify([...history, ...active])
+    if (value.length > 1048576) throw Error('Alert ledger too large')
+    storage.setItem(key(captured), value)
+  }
+  function clearAlarm() {
+    clearTimeout(alarm)
+    alarm = undefined
+  }
+  function apply(
+    records: z.infer<typeof recordSchema>[],
+    captured: AlertScope,
+  ) {
+    if (!valid(captured)) return
+    const unreviewed = records.filter(
+      (record) =>
+        record.generation === captured.generation &&
+        !record.reviewed &&
+        !retired.has(record.orderId),
+    )
+    publish({
+      unreviewed,
+      notices: state.notices.filter((notice) =>
+        unreviewed.some((record) => record.orderId === notice.orderId),
+      ),
+    })
+    if (!unreviewed.length) {
+      clearAlarm()
+      sound.stop()
+    }
   }
   function show(notice: Notice) {
-    if (seen.has(notice.orderId)) return
+    if (seen.has(notice.orderId) || retired.has(notice.orderId)) return
     seen.add(notice.orderId)
     if (seen.size > 512) seen.delete(seen.values().next().value!)
     publish({ notices: [...state.notices, notice].slice(-5) })
     clearTimeout(expiry)
     expiry = setTimeout(() => publish({ notices: [] }), 15000)
   }
-  async function claimSound(notice: Notice, captured: AlertScope) {
+  function nextAt(captured: AlertScope) {
+    const value = Number(storage.getItem(clockKey(captured)) ?? 0)
+    if (!Number.isSafeInteger(value) || value < 0 || value > now() + INTERVAL)
+      return 0
+    return value
+  }
+  function schedule() {
+    const captured = scope
     if (
-      !sound.eligible(notice.at) ||
-      !state.coordinated ||
+      !captured ||
       !valid(captured) ||
-      now() - notice.at > RECENT ||
-      notice.at < startedAt
+      restoring ||
+      ringing ||
+      alarm ||
+      !state.coordinated ||
+      !state.enabled ||
+      !state.ready ||
+      !state.unreviewed.length
     )
       return
-    let claimed = false
     try {
+      const delay = Math.max(0, nextAt(captured) - now())
+      if (!delay) {
+        void ring(captured)
+        return
+      }
+      alarm = setTimeout(() => {
+        alarm = undefined
+        void ring(captured)
+      }, delay)
+    } catch {
+      fail()
+    }
+  }
+  function fail() {
+    sound.suspend()
+    publish({
+      error: 'No se pudo guardar la deduplicación; el sonido está suspendido.',
+    })
+  }
+  async function ring(captured: AlertScope) {
+    if (ringing === captured || !valid(captured)) return
+    ringing = captured
+    try {
+      // Separate playback lock stays held until audio ends, so tabs cannot overlap.
+      await navigator.locks.request(
+        `${clockKey(captured)}:playback`,
+        { signal: controller.signal },
+        async () => {
+          if (!valid(captured) || !state.enabled || !state.ready) return
+          let claimed = false
+          await navigator.locks.request(
+            key(captured),
+            { signal: controller.signal },
+            () => {
+              if (!valid(captured)) return
+              apply(read(captured), captured)
+              if (!state.unreviewed.length || nextAt(captured) > now()) return
+              storage.setItem(clockKey(captured), String(now() + INTERVAL))
+              claimed = true
+            },
+          )
+          if (
+            claimed &&
+            valid(captured) &&
+            state.enabled &&
+            state.ready &&
+            state.unreviewed.length
+          )
+            await sound.play()
+        },
+      )
+    } catch {
+      if (valid(captured)) fail()
+    } finally {
+      if (ringing === captured) ringing = undefined
+      if (valid(captured)) schedule()
+    }
+  }
+  function refresh() {
+    const captured = scope
+    if (!captured || !valid(captured)) return
+    try {
+      const preference = preferences(captured)
+      if (!preference.enabled && state.enabled) sound.mute()
+      else if (preference.enabled && !state.enabled) sound.configure(preference)
+      if (preference.volume !== state.volume) sound.setVolume(preference.volume)
+      apply(read(captured), captured)
+      schedule()
+    } catch {
+      fail()
+    }
+  }
+  async function retire(ids: string[]) {
+    const captured = scope
+    if (!captured || !valid(captured)) return
+    const accepted = [...new Set(ids)].filter(
+      (id) => z.uuid().safeParse(id).success,
+    )
+    if (!accepted.length) return
+    accepted.forEach((id) => retired.add(id))
+    publish({
+      unreviewed: state.unreviewed.filter(
+        (record) => !retired.has(record.orderId),
+      ),
+      notices: state.notices.filter((record) => !retired.has(record.orderId)),
+    })
+    if (!state.unreviewed.length) {
+      clearAlarm()
+      sound.stop()
+    }
+    for (let offset = 0; offset < accepted.length; offset += 512)
+      channel?.postMessage({
+        type: 'retire',
+        ids: accepted.slice(offset, offset + 512),
+      })
+    try {
+      if (!state.coordinated) return
       await navigator.locks.request(
         key(captured),
         { signal: controller.signal },
         () => {
-          if (!valid(captured) || !sound.eligible(notice.at)) return
+          if (!valid(captured)) return
           const records = read(captured)
-          const record = records.find(
-            (entry) =>
-              entry.orderId === notice.orderId && entry.at === notice.at,
+          for (const id of accepted) {
+            const record = records.find((record) => record.orderId === id)
+            if (record) record.reviewed = true
+            else
+              records.push({
+                orderId: id,
+                at: now(),
+                sounded: false,
+                reviewed: true,
+                generation: captured.generation,
+              })
+          }
+          write(records, captured)
+          if (
+            !records.some(
+              (record) =>
+                record.generation === captured.generation && !record.reviewed,
+            )
           )
-          if (!record || record.sounded) return
-          record.sounded = true
-          storage.setItem(key(captured), JSON.stringify(records))
-          claimed = true
+            storage.removeItem(clockKey(captured))
+          apply(records, captured)
         },
       )
-      if (claimed && valid(captured)) await sound.play()
+      if (valid(captured)) channel?.postMessage({ type: 'changed' })
     } catch {
-      if (valid(captured))
-        publish({ error: 'No se pudo coordinar el sonido entre pestañas.' })
+      if (valid(captured)) fail()
     }
-  }
-  function receive(notice: Notice, captured: AlertScope) {
-    if (
-      !valid(captured) ||
-      notice.at < startedAt ||
-      now() - notice.at > RECENT ||
-      notice.at > now()
-    )
-      return
-    show(notice)
-    void claimSound(notice, captured)
   }
   function close() {
     controller.abort()
+    clearAlarm()
+    clearTimeout(expiry)
+    window.removeEventListener('storage', refresh)
     channel?.close()
     channel = undefined
     scope = undefined
-    clearTimeout(expiry)
+    ringing = undefined
+    restoring = false
+    restoreFailed = false
     seen.clear()
+    retired.clear()
     sound.close()
-    publish({ notices: [], coordinated: false })
+    publish({ notices: [], unreviewed: [], coordinated: false })
   }
   return {
     getSnapshot: () => state,
@@ -170,35 +354,68 @@ export function createOrderAlertsService(options: {
       }
     },
     sync() {
-      const next = options.scope()
+      const current = options.scope()
+      const next = current && { ...current }
       if (signature(next) === signature(scope)) return
       close()
       if (!next) return
       scope = next
-      sound.configure(preferences(next))
       startedAt = now()
       controller = new AbortController()
+      sound.configure(preferences(next))
       try {
-        // Expire stale identifiers on session start as well as on each new claim.
-        read(next)
+        apply(read(next), next)
         if (!navigator.locks || typeof BroadcastChannel === 'undefined') return
         channel = new BroadcastChannel(`celtas-order-alerts:${signature(next)}`)
         channel.onmessage = (event) => {
-          const parsed = recordSchema.safeParse(event.data)
-          if (parsed.success) receive(parsed.data, next)
+          if (!valid(next)) return
+          const parsed = messageSchema.safeParse(event.data)
+          if (!parsed.success) return
+          if (parsed.data.type === 'retire') {
+            parsed.data.ids.forEach((id) => retired.add(id))
+          }
+          refresh()
+          if (parsed.data.type === 'notice') {
+            const notice = parsed.data.notice
+            if (
+              notice.at >= startedAt &&
+              notice.at <= now() &&
+              now() - notice.at <= RECENT &&
+              state.unreviewed.some(
+                (record) => record.orderId === notice.orderId,
+              )
+            )
+              show(notice)
+          }
         }
+        window.addEventListener('storage', refresh)
         publish({ coordinated: true })
+        const restored = state.unreviewed.map((record) => record.orderId)
+        restoring = Boolean(restored.length && options.validateRestored)
         void navigator.locks
           .request(key(next), { signal: controller.signal }, () => {
-            if (valid(next))
-              storage.setItem(key(next), JSON.stringify(read(next)))
+            if (valid(next)) write(read(next), next)
+          })
+          .then(async () => {
+            if (!valid(next) || !restoring || !options.validateRestored) return
+            const retained = await options.validateRestored(
+              restored,
+              controller.signal,
+            )
+            if (!valid(next)) return
+            await retire(restored.filter((id) => !retained.includes(id)))
+            restoring = false
+            schedule()
           })
           .catch(() => {
-            if (valid(next))
+            if (valid(next)) {
+              restoreFailed = true
+              sound.suspend()
               publish({
-                coordinated: false,
-                error: 'La coordinación no está disponible.',
+                error:
+                  'No se pudieron comprobar las alarmas guardadas. Actualiza el panel para reintentar.',
               })
+            }
           })
       } catch {
         publish({
@@ -209,57 +426,73 @@ export function createOrderAlertsService(options: {
     },
     async offer(orderId: string) {
       const captured = scope
-      if (!captured || !valid(captured) || !z.uuid().safeParse(orderId).success)
+      if (
+        !captured ||
+        !valid(captured) ||
+        !z.uuid().safeParse(orderId).success ||
+        retired.has(orderId)
+      )
         return
       const notice = { orderId, at: now() }
       if (!state.coordinated) {
+        if (!state.unreviewed.some((record) => record.orderId === orderId))
+          publish({ unreviewed: [...state.unreviewed, notice] })
         show(notice)
         return
       }
       try {
-        let record: z.infer<typeof recordSchema> | undefined
-        let fresh = false
+        let fresh: z.infer<typeof recordSchema> | undefined
         await navigator.locks.request(
           key(captured),
           { signal: controller.signal },
           () => {
-            if (!valid(captured)) return
+            if (!valid(captured) || retired.has(orderId)) return
             const records = read(captured)
-            record = records.find((entry) => entry.orderId === orderId)
-            if (!record) {
-              fresh = true
-              record = { ...notice, sounded: false }
-              records.push(record)
-              storage.setItem(
-                key(captured),
-                JSON.stringify(records.slice(-512)),
-              )
+            if (!records.some((record) => record.orderId === orderId)) {
+              fresh = {
+                ...notice,
+                sounded: false,
+                reviewed: false,
+                generation: captured.generation,
+              }
+              records.push(fresh)
+              write(records, captured)
             }
+            apply(records, captured)
           },
         )
-        if (!record || !valid(captured)) return
-        // Existing claims never create another banner on remount/reload/replay.
+        if (!valid(captured)) return
         if (fresh) {
-          show(record)
-          channel?.postMessage(record)
+          show(fresh)
+          channel?.postMessage({ type: 'notice', notice: fresh })
         }
-        await claimSound(record, captured)
+        // Ring now only for a new sequence; more orders do not reset its clock.
+        if (
+          state.ready &&
+          state.enabled &&
+          state.unreviewed.length &&
+          !alarm &&
+          !ringing &&
+          !restoring
+        )
+          await ring(captured)
+        else schedule()
       } catch {
         if (valid(captured)) {
+          if (!state.unreviewed.some((record) => record.orderId === orderId))
+            publish({ unreviewed: [...state.unreviewed, notice] })
           show(notice)
-          sound.suspend()
-          publish({
-            error:
-              'No se pudo guardar la deduplicación; el sonido está suspendido.',
-          })
+          fail()
         }
       }
     },
-    enableSound() {
-      if (!state.coordinated) return Promise.resolve()
+    async enableSound() {
+      if (!state.coordinated || restoreFailed) return
+      const captured = scope
       const activation = sound.enable()
       savePreferences()
-      return activation
+      await activation
+      if (captured && valid(captured)) schedule()
     },
     mute() {
       sound.mute()
@@ -268,6 +501,18 @@ export function createOrderAlertsService(options: {
     setVolume(volume: number) {
       sound.setVolume(volume)
       savePreferences()
+    },
+    markReviewed: (orderId: string) => retire([orderId]),
+    retire,
+    retainPending(ids: string[], observedAt: number) {
+      return retire(
+        state.unreviewed
+          .filter(
+            (record) =>
+              record.at <= observedAt && !ids.includes(record.orderId),
+          )
+          .map((record) => record.orderId),
+      )
     },
     dismiss(orderId: string) {
       publish({

@@ -7,6 +7,16 @@ export function createOrderSound(changed: () => void, now = Date.now) {
   let epoch = 0
   let lastPlayed = -Infinity
   let enabledAt = Infinity
+  let playing = false
+  let finishPlayback: (() => void) | undefined
+  function audioPlaying(): boolean {
+    return audio?.paused === false
+  }
+
+  function stop() {
+    audio?.pause()
+    finishPlayback?.()
+  }
 
   function blocked() {
     ready = false
@@ -47,16 +57,47 @@ export function createOrderSound(changed: () => void, now = Date.now) {
     },
     async play() {
       // A short burst shares one chime rather than interrupting/overlapping audio.
-      if (!enabled || !ready || !audio || now() - lastPlayed < 450) return
+      if (
+        !enabled ||
+        !ready ||
+        !audio ||
+        playing ||
+        audioPlaying() ||
+        now() - lastPlayed < 450
+      )
+        return
       const captured = epoch
+      playing = true
       lastPlayed = now()
       audio.currentTime = 0
       try {
         await audio.play()
+        if (captured !== epoch || !audioPlaying()) return
+        const currentAudio = audio
+        await new Promise<void>((resolve) => {
+          const finish = () => {
+            currentAudio.removeEventListener('ended', finish)
+            currentAudio.removeEventListener('pause', finish)
+            currentAudio.removeEventListener('error', failed)
+            if (finishPlayback === finish) finishPlayback = undefined
+            resolve()
+          }
+          const failed = () => {
+            if (captured === epoch) blocked()
+            finish()
+          }
+          finishPlayback = finish
+          currentAudio.addEventListener('ended', finish, { once: true })
+          currentAudio.addEventListener('pause', finish, { once: true })
+          currentAudio.addEventListener('error', failed, { once: true })
+        })
       } catch {
         if (captured === epoch) blocked()
+      } finally {
+        playing = false
       }
     },
+    stop,
     setVolume(value: number) {
       if (!Number.isFinite(value)) return
       volume = Math.max(0, Math.min(1, value))
@@ -67,7 +108,7 @@ export function createOrderSound(changed: () => void, now = Date.now) {
       epoch++
       ready = false
       enabledAt = Infinity
-      audio?.pause()
+      stop()
       changed()
     },
     mute() {
@@ -76,7 +117,7 @@ export function createOrderSound(changed: () => void, now = Date.now) {
       ready = false
       enabledAt = Infinity
       error = undefined
-      audio?.pause()
+      stop()
       changed()
     },
     close() {
@@ -85,7 +126,7 @@ export function createOrderSound(changed: () => void, now = Date.now) {
       ready = false
       enabledAt = Infinity
       error = undefined
-      audio?.pause()
+      stop()
       audio?.removeAttribute('src')
       audio?.load()
       audio = undefined

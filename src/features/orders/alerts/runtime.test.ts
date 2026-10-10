@@ -8,11 +8,13 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   invalidate: vi.fn(),
   subscribe: vi.fn(),
+  subscribeCache: vi.fn(),
   session: {
     accessToken: 'test-only',
     user: { id: 'admin', role: 'admin' },
     roleStatus: 'confirmed',
     sessionEnding: false,
+    sessionId: 1,
   },
   owner: { identity: 'admin', generation: 'test', revoked: false },
 }))
@@ -25,9 +27,17 @@ vi.mock('@/lib/api-client', () => ({
 }))
 vi.mock('@/lib/firebase', () => ({ capturePushSession: () => mocks.owner }))
 vi.mock('@/lib/query-client', () => ({
-  queryClient: { invalidateQueries: mocks.invalidate },
+  queryClient: {
+    invalidateQueries: mocks.invalidate,
+    getQueryCache: () => ({ subscribe: mocks.subscribeCache }),
+  },
 }))
-import { mountOrderAlerts, orderAlerts, reconciledOrderAlerts } from './runtime'
+import {
+  mountOrderAlerts,
+  orderAlerts,
+  reconciledOrderAlerts,
+  reconciledOrderAttention,
+} from './runtime'
 import { publishForegroundOrder } from './foreground'
 const id = '10000000-0000-4000-8000-000000000001'
 const play = vi.fn()
@@ -40,6 +50,7 @@ beforeEach(() => {
   localStorage.clear()
   mocks.session.sessionEnding = false
   mocks.subscribe.mockReturnValue(() => {})
+  mocks.subscribeCache.mockReturnValue(() => {})
   mocks.get.mockReset().mockResolvedValue({
     id,
     createdAt: new Date().toISOString(),
@@ -139,4 +150,69 @@ it('unmount aborts pending REST and removes foreground listeners', async () => {
   await flushCoordination()
   expect(mocks.get).toHaveBeenCalledTimes(1)
   expect(orderAlerts.getSnapshot().notices).toEqual([])
+})
+
+it('retirements from committed SSE REST reconciliation stop attention without rearming on duplicates', async () => {
+  sse()
+  await flushCoordination()
+  expect(orderAlerts.getSnapshot().unreviewed).toHaveLength(1)
+  reconciledOrderAttention([id])
+  await flushCoordination()
+  sse()
+  await flushCoordination()
+  expect(orderAlerts.getSnapshot().unreviewed).toEqual([])
+})
+
+it('historical pending snapshots cannot start alarms; complete new snapshots can retire a missing new order', async () => {
+  const notify = mocks.subscribeCache.mock.calls.at(-1)![0]
+  const cacheEvent = (
+    items: { id: string; status: string }[],
+    total = items.length,
+  ) => ({
+    type: 'updated',
+    action: { type: 'success' },
+    query: {
+      queryKey: ['orders', 'pending', { identity: 'admin', sessionId: 1 }],
+      state: { dataUpdatedAt: Date.now(), data: { items, meta: { total } } },
+    },
+  })
+  notify(cacheEvent([{ id, status: 'pendiente' }]))
+  expect(orderAlerts.getSnapshot().unreviewed).toEqual([])
+  sse()
+  await flushCoordination()
+  notify(cacheEvent([], 10)) // Partial pages never imply absence.
+  await flushCoordination()
+  expect(orderAlerts.getSnapshot().unreviewed).toHaveLength(1)
+  notify(cacheEvent([]))
+  await flushCoordination()
+  expect(orderAlerts.getSnapshot().unreviewed).toEqual([])
+})
+
+it('an FCM notice whose confirmed REST order is already cancelled never starts an alarm', async () => {
+  mocks.get.mockResolvedValue({
+    id,
+    createdAt: new Date().toISOString(),
+    status: 'cancelado',
+  })
+  publishForegroundOrder({ orderId: id, status: 'pendiente' }, mocks.owner)
+  await flushCoordination()
+  expect(orderAlerts.getSnapshot().unreviewed).toEqual([])
+  expect(play).not.toHaveBeenCalled()
+})
+
+it('navigation retains new IDs, and final unmount closes the service and cancels repeats', async () => {
+  const secondMount = mountOrderAlerts()
+  await orderAlerts.enableSound()
+  await vi.advanceTimersByTimeAsync(500)
+  sse()
+  await flushCoordination()
+  stop()
+  expect(orderAlerts.getSnapshot().unreviewed).toHaveLength(1)
+  secondMount()
+  await flushCoordination()
+  await vi.advanceTimersByTimeAsync(0)
+  expect(vi.getTimerCount()).toBe(0)
+  play.mockClear()
+  await vi.advanceTimersByTimeAsync(24000)
+  expect(play).not.toHaveBeenCalled()
 })

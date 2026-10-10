@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { MessageCircle, TriangleAlert } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -40,6 +40,7 @@ import {
 import { useUpdateOrderStatus } from './hooks'
 import { OrderWhatsappSection } from './components/OrderWhatsappSection'
 import type { AddressSnapshot, Order, OrderStatus } from './types'
+import { orderAlerts } from './alerts/runtime'
 
 const CURRENCY = new Intl.NumberFormat('es-PE', {
   style: 'currency',
@@ -76,6 +77,10 @@ export function OrderDetailDialog({
   onOpenChange,
   onOrderUpdated,
 }: OrderDetailDialogProps) {
+  const viewedId = open ? order?.id : undefined
+  useEffect(() => {
+    if (viewedId) void orderAlerts.markReviewed(viewedId)
+  }, [viewedId])
   const updateStatus = useUpdateOrderStatus()
   const settingsQuery = useSettings()
   const [transitionError, setTransitionError] = useState<string | null>(null)

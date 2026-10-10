@@ -33,6 +33,11 @@ export function createOrderEventsReconciliation(options: {
   onAuthorizationLost: (status: 401 | 403) => void
   onGap: () => void
   onReconciled?: (liveCreated: OrderEvent[]) => void
+  onAttentionReconciled?: (
+    retired: string[],
+    pendingIds?: string[],
+    observedAt?: number,
+  ) => void
 }) {
   const { client } = options
   let closed = false
@@ -151,7 +156,10 @@ export function createOrderEventsReconciliation(options: {
       })
     const valid = () => current() && epoch === capturedEpoch && !signal.aborted
     const staged: { key: QueryKey; value: unknown }[] = []
+    const attentionObservedAt = Date.now()
     const confirmedIds = new Set<string>()
+    const attentionRemoved: string[] = []
+    let pendingIds: string[] | undefined
     try {
       const lists = client
         .getQueryCache()
@@ -248,6 +256,7 @@ export function createOrderEventsReconciliation(options: {
         if (!result.items.every(validOrder))
           throw new Error('Invalid pending recovery response')
         if (!valid()) return
+        pendingIds = result.items.map((order) => order.id)
         trays.forEach((query) =>
           staged.push({ key: query.queryKey, value: result }),
         )
@@ -273,6 +282,7 @@ export function createOrderEventsReconciliation(options: {
         }
         if (!valid()) return
         if (result) confirmedIds.add(id)
+        if (!result || result.status !== 'pendiente') attentionRemoved.push(id)
         details
           .filter((query) => query.queryKey[2] === id)
           .forEach((query) =>
@@ -310,6 +320,11 @@ export function createOrderEventsReconciliation(options: {
       batch.forEach((event) => liveCreated.delete(event.payload.eventId))
       // Alert failures must never invalidate an already confirmed REST/cursor batch.
       try {
+        options.onAttentionReconciled?.(
+          attentionRemoved,
+          pendingIds,
+          attentionObservedAt,
+        )
         options.onReconciled?.(alerts)
       } catch {
         /* Optional UI consumer. */

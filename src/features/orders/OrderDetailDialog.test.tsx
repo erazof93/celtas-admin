@@ -22,16 +22,25 @@ import type { Order, OrderItem, OrderUser, WhatsappLinks } from './types'
  * `order.whatsappUrl` — el mensaje del pedido hacia la tienda).
  */
 
-const { settingsData, updateStatusMock, whatsappLinksMock, markSentMock } =
-  vi.hoisted(() => ({
-    whatsappLinksMock: vi.fn(),
-    markSentMock: { mutateAsync: vi.fn(), isPending: false },
-    settingsData: { current: [] as { key: string; value: string }[] },
-    updateStatusMock: {
-      mutateAsync: vi.fn(),
-      isPending: false,
-    },
-  }))
+const {
+  settingsData,
+  updateStatusMock,
+  whatsappLinksMock,
+  markSentMock,
+  reviewedMock,
+} = vi.hoisted(() => ({
+  reviewedMock: vi.fn(),
+  whatsappLinksMock: vi.fn(),
+  markSentMock: { mutateAsync: vi.fn(), isPending: false },
+  settingsData: { current: [] as { key: string; value: string }[] },
+  updateStatusMock: {
+    mutateAsync: vi.fn(),
+    isPending: false,
+  },
+}))
+vi.mock('./alerts/runtime', () => ({
+  orderAlerts: { markReviewed: reviewedMock },
+}))
 
 vi.mock('./hooks', () => ({
   useUpdateOrderStatus: () => updateStatusMock,
@@ -99,12 +108,12 @@ function makeOrder(items: OrderItem[], overrides: Partial<Order> = {}): Order {
   }
 }
 
-function dialogTree(order: Order) {
+function dialogTree(order: Order | null, open = true) {
   return (
     <QueryClientProvider client={new QueryClient()}>
       <OrderDetailDialog
         order={order}
-        open
+        open={open}
         onOpenChange={() => {}}
         onOrderUpdated={() => {}}
       />
@@ -117,6 +126,7 @@ function renderDialog(order: Order) {
 }
 
 beforeEach(() => {
+  reviewedMock.mockClear()
   settingsData.current = []
   updateStatusMock.mutateAsync = vi.fn().mockResolvedValue(undefined)
   updateStatusMock.isPending = false
@@ -129,6 +139,26 @@ beforeEach(() => {
   })
   markSentMock.mutateAsync = vi.fn()
   markSentMock.isPending = false
+})
+
+describe('OrderDetailDialog — acknowledgement of new order alarms', () => {
+  it('marks a loaded order reviewed only when its detail modal opens, without changing backend status', () => {
+    const order = makeOrder([makeItem()])
+    const view = render(dialogTree(order, false))
+    expect(reviewedMock).not.toHaveBeenCalled()
+    view.rerender(dialogTree(order, true))
+    expect(reviewedMock).toHaveBeenCalledExactlyOnceWith(order.id)
+    expect(updateStatusMock.mutateAsync).not.toHaveBeenCalled()
+    view.rerender(dialogTree({ ...order }, true))
+    expect(reviewedMock).toHaveBeenCalledTimes(1)
+  })
+  it('does not acknowledge a missing order while details are loading', () => {
+    const view = render(dialogTree(null, true))
+    expect(reviewedMock).not.toHaveBeenCalled()
+    const order = makeOrder([makeItem()])
+    view.rerender(dialogTree(order, true))
+    expect(reviewedMock).toHaveBeenCalledExactlyOnceWith(order.id)
+  })
 })
 
 afterEach(() => {

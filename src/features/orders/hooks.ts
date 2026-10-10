@@ -13,6 +13,7 @@ import { get, patch, post } from '@/lib/api-client'
 import { geoapifyApiKey, geoapifyAutocomplete } from '@/lib/geoapify'
 import { useDebouncedValue } from '@/lib/useDebouncedValue'
 import { readPendingOrders } from './pending-orders'
+import { orderAlerts } from './alerts/runtime'
 import type {
   Order,
   OrderStatus,
@@ -228,6 +229,7 @@ export function useUpdateOrderStatus() {
         captured?.sessionId !== session.sessionId
       )
         return
+      if (updated.status !== 'pendiente') void orderAlerts.retire([updated.id])
       queryClient.setQueriesData<PaginatedOrders>(
         { queryKey: ['orders', 'pending'] },
         (previous) => {

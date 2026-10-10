@@ -79,6 +79,22 @@ export function OrderAlerts() {
           data-order-alerts=""
           className="pointer-events-none fixed top-[calc(3.5rem+max(1rem,env(safe-area-inset-top)))] right-[max(1rem,env(safe-area-inset-right))] z-35 flex max-h-[calc(100dvh-3.5rem-2rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] w-[min(24rem,calc(100%-2rem-env(safe-area-inset-left)-env(safe-area-inset-right)))] flex-col gap-2 overflow-y-auto overscroll-contain"
         >
+          {state.unreviewed.length > 0 && (
+            <Link
+              className="border-border bg-card pointer-events-auto rounded-lg border px-3 py-2 text-sm shadow-sm"
+              to={`/orders?order=${encodeURIComponent(state.unreviewed[0].orderId)}`}
+            >
+              {state.unreviewed.length}{' '}
+              {state.unreviewed.length === 1
+                ? 'pedido nuevo sin revisar'
+                : 'pedidos nuevos sin revisar'}
+              {!state.enabled
+                ? ' · Silenciado'
+                : !state.ready
+                  ? ' · Habilita audio'
+                  : ''}
+            </Link>
+          )}
           {state.error && (
             <p
               role="status"

@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   setVolume: vi.fn(),
   state: {
     notices: [{ orderId: '10000000-0000-4000-8000-000000000001', at: 1 }],
+    unreviewed: [] as { orderId: string; at: number }[],
     enabled: false,
     ready: false,
     volume: 0.35,
@@ -65,6 +66,30 @@ afterEach(() => {
   mocks.state.enabled = false
   mocks.state.ready = false
   mocks.state.error = undefined
+  mocks.state.unreviewed = []
+  mocks.state.notices = [
+    { orderId: '10000000-0000-4000-8000-000000000001', at: 1 },
+  ]
+})
+
+it('keeps a discrete link to unreviewed details after the transient banners expire, including while muted', () => {
+  mocks.state.notices = []
+  mocks.state.unreviewed = [
+    { orderId: '10000000-0000-4000-8000-000000000001', at: 1 },
+  ]
+  render(
+    <MemoryRouter>
+      <OrderAlerts />
+    </MemoryRouter>,
+  )
+  expect(
+    screen.getByRole('link', {
+      name: /1 pedido nuevo sin revisar · Silenciado/,
+    }),
+  ).toHaveAttribute(
+    'href',
+    '/orders?order=10000000-0000-4000-8000-000000000001',
+  )
 })
 it('renders a global nonblocking notice with a direct detail link and explicit audio activation', () => {
   const view = render(

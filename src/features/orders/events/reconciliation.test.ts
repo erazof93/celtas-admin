@@ -58,6 +58,7 @@ function fixture(leader = true) {
   const lost = vi.fn(),
     gap = vi.fn()
   const reconciled = vi.fn()
+  const attentionReconciled = vi.fn()
   const recovery = createOrderEventsReconciliation({
     client,
     cursors: () => cursors,
@@ -67,6 +68,7 @@ function fixture(leader = true) {
     onAuthorizationLost: lost,
     onGap: gap,
     onReconciled: reconciled,
+    onAttentionReconciled: attentionReconciled,
   })
   cleanups.push(() => {
     recovery.close()
@@ -79,6 +81,7 @@ function fixture(leader = true) {
     lost,
     gap,
     reconciled,
+    attentionReconciled,
     invalidate: () => {
       valid = false
       recovery.cancel()
@@ -101,7 +104,8 @@ afterEach(() => {
 const tick = () => vi.advanceTimersByTimeAsync(100)
 describe('REST acknowledgement of SSE', () => {
   it('reconciles the independent pending tray on new, accepted, reconnect and reset without historical alerts', async () => {
-    const { client, recovery, cursors, reconciled } = fixture()
+    const { client, recovery, cursors, reconciled, attentionReconciled } =
+      fixture()
     const key = ['orders', 'pending', session]
     const observer = new QueryObserver(client, {
       queryKey: key,
@@ -130,6 +134,11 @@ describe('REST acknowledgement of SSE', () => {
     await tick()
     expect(client.getQueryData(key)).toMatchObject({ items: [pendingDetail] })
     expect(reconciled).toHaveBeenLastCalledWith([])
+    expect(attentionReconciled).toHaveBeenLastCalledWith(
+      [],
+      [id],
+      expect.any(Number),
+    )
     recovery.accept({ ...event('1'), type: 'order.created' })
     await tick()
     expect(cursors.getSnapshot().durable).toBe('1')
@@ -139,6 +148,11 @@ describe('REST acknowledgement of SSE', () => {
     await tick()
     expect(client.getQueryData(key)).toMatchObject({ items: [] })
     expect(reconciled).toHaveBeenLastCalledWith([])
+    expect(attentionReconciled).toHaveBeenLastCalledWith(
+      [id],
+      [],
+      expect.any(Number),
+    )
     pending = true
     recovery.position('2')
     recovery.accept(ready('3'))

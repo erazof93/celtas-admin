@@ -16,7 +16,10 @@ import type { OrderStreamEvent } from './types'
 import { queryClient } from '@/lib/query-client'
 import type { QueryClient } from '@tanstack/react-query'
 import { createOrderEventsReconciliation } from './reconciliation'
-import { reconciledOrderAlerts } from '../alerts/runtime'
+import {
+  reconciledOrderAlerts,
+  reconciledOrderAttention,
+} from '../alerts/runtime'
 
 export interface CoordinatedOrderEventsState {
   role: 'none' | 'leader' | 'follower'
@@ -33,6 +36,11 @@ export function createOrderEventsService(
     client?: QueryClient
     onReconciled?: (
       events: Extract<OrderStreamEvent, { cursor: string }>[],
+    ) => void
+    onAttentionReconciled?: (
+      retired: string[],
+      pendingIds?: string[],
+      observedAt?: number,
     ) => void
   } = {},
 ) {
@@ -292,6 +300,7 @@ export function createOrderEventsService(
         publish({ role: 'none', status: 'stopped' })
       },
       onReconciled: options.onReconciled,
+      onAttentionReconciled: options.onAttentionReconciled,
     })
     coordinator = created
     created.start()
@@ -353,4 +362,5 @@ export function createOrderEventsService(
 }
 export const orderEventsService = createOrderEventsService({
   onReconciled: reconciledOrderAlerts,
+  onAttentionReconciled: reconciledOrderAttention,
 })

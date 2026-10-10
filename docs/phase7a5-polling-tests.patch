@@ -1,0 +1,334 @@
+--- a/src/features/orders/orders.polling.test.tsx
++++ b/src/features/orders/orders.polling.test.tsx
+@@ -1,5 +1,5 @@
+ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+-import { act, cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react'
++import { act, cleanup, fireEvent, render, renderHook, screen, within } from '@testing-library/react'
+ import { focusManager, onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query'
+ import { AxiosError } from 'axios'
+ import type { ReactNode } from 'react'
+@@ -280,6 +280,20 @@
+ })
+ 
+ describe('OrdersPage con consultas reales de TanStack', () => {
++  let tableResponse: (page: number) => PaginatedOrders
++  function tableCalls() { return getMock.mock.calls.filter(([url, config]) => url === '/orders' && config.params.limit === 10) }
++  function expectOrderReads(expected: number) {
++    expect(tableCalls()).toHaveLength(expected)
++    expect(getMock.mock.calls.filter(([url, config]) => url === '/orders' && config.params.limit === 100)).toHaveLength(expected)
++    expect(getMock).toHaveBeenCalledTimes(expected * 2)
++  }
++  beforeEach(() => {
++    tableResponse = page => list('aaaaaaaa', page)
++    getMock.mockImplementation(async (_url, config) => config.params.limit === 100
++      ? { items: [order('tray-only')], meta: { page: 1, limit: 100, total: 1, totalPages: 1 } }
++      : tableResponse(config.params.page))
++  })
++
+   function ManualPage() {
+     const create = useCreateAdminOrder()
+     return <><button onClick={() => create.mutate({} as never)}>Guardar QA</button><Link to="/orders">Volver a pedidos</Link></>
+@@ -293,28 +307,30 @@
+     </Routes></MemoryRouter></Provider>)
+   }
+   it('un pedido nuevo aparece en la tabla sin recargar', async () => {
+-    getMock.mockResolvedValueOnce(list()).mockResolvedValue(list('bbbbbbbb'))
+     routed()
+     await tick()
++    expect(within(screen.getByRole('table')).getByText('#AAAAAAAA')).toBeInTheDocument()
++    expectOrderReads(1)
++    tableResponse = page => list('bbbbbbbb', page)
+-    expect(screen.getByText('#AAAAAAAA')).toBeInTheDocument()
+     await tick(30_000)
++    expectOrderReads(2)
++    expect(within(screen.getByRole('table')).getByText('#BBBBBBBB')).toBeInTheDocument()
+-    expect(screen.getByText('#BBBBBBBB')).toBeInTheDocument()
+   })
+   it('crear manual detiene polling; invalidar y volver hace un solo GET inmediato', async () => {
+     routed()
+     await tick()
+     fireEvent.click(screen.getByRole('link', { name: /Crear pedido manual/ }))
+     await tick(120_000)
++    expectOrderReads(1)
+-    expect(getMock).toHaveBeenCalledTimes(1)
+     fireEvent.click(screen.getByRole('button', { name: 'Guardar QA' }))
+     await tick()
+     expect(postMock).toHaveBeenCalledTimes(1)
++    expectOrderReads(1)
++    tableResponse = page => list('cccccccc', page)
+-    expect(getMock).toHaveBeenCalledTimes(1)
+-    getMock.mockResolvedValue(list('cccccccc'))
+     fireEvent.click(screen.getByRole('link', { name: 'Volver a pedidos' }))
+     await tick()
++    expectOrderReads(2)
++    expect(within(screen.getByRole('table')).getByText('#CCCCCCCC')).toBeInTheDocument()
+-    expect(getMock).toHaveBeenCalledTimes(2)
+-    expect(screen.getByText('#CCCCCCCC')).toBeInTheDocument()
+   })
+   it('volver con caché fresca también consulta sin esperar al intervalo', async () => {
+     routed()
+@@ -323,7 +339,7 @@
+     await tick()
+     fireEvent.click(screen.getByRole('link', { name: 'Volver a pedidos' }))
+     await tick()
++    expectOrderReads(2)
+-    expect(getMock).toHaveBeenCalledTimes(2)
+   })
+   it('paginación conserva página durante los refrescos y Dashboard deja de consultar', async () => {
+     const Provider = wrapper()
+@@ -335,9 +351,9 @@
+     await tick()
+     fireEvent.click(screen.getByRole('button', { name: /Siguiente/ }))
+     await tick()
++    expect(tableCalls().at(-1)?.[1].params.page).toBe(2)
+-    expect(getMock.mock.calls.at(-1)?.[1].params.page).toBe(2)
+     await tick(30_000)
++    expect(tableCalls().at(-1)?.[1].params.page).toBe(2)
+-    expect(getMock.mock.calls.at(-1)?.[1].params.page).toBe(2)
+     const count = getMock.mock.calls.length
+     fireEvent.click(screen.getByRole('link', { name: 'Ir a Dashboard' }))
+     await tick(120_000)
+@@ -353,9 +369,9 @@
+     await tick()
+     fireEvent.keyDown(screen.getByRole('option', { name: 'Entregado' }), { key: 'Enter' })
+     await tick()
++    expect(tableCalls().at(-1)?.[1].params).toEqual({ page: 1, limit: 10, status: 'entregado' })
+-    expect(getMock.mock.calls.at(-1)?.[1].params).toEqual({ page: 1, limit: 10, status: 'entregado' })
+     await tick(30_000)
++    expect(tableCalls().at(-1)?.[1].params).toEqual({ page: 1, limit: 10, status: 'entregado' })
+-    expect(getMock.mock.calls.at(-1)?.[1].params).toEqual({ page: 1, limit: 10, status: 'entregado' })
+   })
+ 
+ })
+--- a/src/features/orders/orders.polling.integration.test.tsx
++++ b/src/features/orders/orders.polling.integration.test.tsx
+@@ -1,6 +1,6 @@
+ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+ import { vi } from 'vitest'
++import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+ import { QueryClient, QueryClientProvider, focusManager, onlineManager } from '@tanstack/react-query'
+ import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
+ import { AxiosError, CanceledError, type InternalAxiosRequestConfig } from 'axios'
+@@ -26,6 +26,11 @@
+ }
+ // Only the transport is simulated. It honors Axios timeout and AbortSignal.
+ function transport(config: InternalAxiosRequestConfig, data: unknown, status = 200, delay = 5) {
++  // Preserve the response contract for both independent list requests.
++  if (config.url === '/orders' && status < 400 && data && typeof data === 'object' && 'meta' in data) {
++    const page = data as PaginatedOrders
++    data = { ...page, meta: { ...page.meta, page: config.params.page, limit: config.params.limit } }
++  }
+   return new Promise((resolve, reject) => {
+     let responseTimer: ReturnType<typeof setTimeout> | undefined
+     let timeoutTimer: ReturnType<typeof setTimeout> | undefined
+@@ -48,6 +53,13 @@
+       'timeout', 'ECONNABORTED', config)), config.timeout)
+   })
+ }
++// The table and tray each poll once; authentication refresh remains shared.
++function expectOrderReads(expected: number) {
++  for (const limit of [10, 100]) {
++    expect(calls.filter(c => c.url === '/orders' && c.params?.limit === limit)).toHaveLength(expected)
++  }
++  expect(count('/orders')).toBe(expected * 2)
++}
+ function count(url: string) { return calls.filter(c => c.url === url).length }
+ async function tick(ms = 20) { await act(async () => { await vi.advanceTimersByTimeAsync(ms) }) }
+ function Manual() {
+@@ -98,11 +110,11 @@
+     handler = c => transport(c, admin, c.url === '/orders' ? 403 : 200)
+     mount()
+     await tick(250)
++    expectOrderReads(1)
+-    expect(count('/orders')).toBe(1)
+     expect(count('/users/me')).toBe(1)
+     expect(screen.getByText('No se pudo autorizar el acceso a pedidos')).toBeInTheDocument()
+     await tick(300_000)
++    expectOrderReads(1)
+-    expect(count('/orders')).toBe(1)
+   })
+   it('el bloqueo sobrevive foco, reconexión y navegación; recuperación requiere acción explícita', async () => {
+     let forbidden = true
+@@ -115,14 +127,14 @@
+     fireEvent.click(screen.getByRole('link', { name: 'Crear pedido manual' }))
+     fireEvent.click(screen.getByRole('link', { name: 'Volver a pedidos' }))
+     await tick()
++    expectOrderReads(1)
+-    expect(count('/orders')).toBe(1)
+     forbidden = false
+     fireEvent.click(screen.getByRole('button', { name: 'Reintentar acceso' }))
+     await tick()
++    expectOrderReads(2)
++    expect(within(screen.getByRole('table')).getByText('#AAAAAAAA')).toBeInTheDocument()
+-    expect(count('/orders')).toBe(2)
+-    expect(screen.getByText('#AAAAAAAA')).toBeInTheDocument()
+     await tick(30_000)
++    expectOrderReads(3)
+-    expect(count('/orders')).toBe(3)
+   })
+   it('reintentar con 403 persistente hace solo un intento adicional', async () => {
+     handler = c => transport(c, admin, c.url === '/orders' ? 403 : 200)
+@@ -130,14 +142,14 @@
+     await tick()
+     fireEvent.click(screen.getByRole('button', { name: 'Reintentar acceso' }))
+     await tick(300_000)
++    expectOrderReads(2)
+-    expect(count('/orders')).toBe(2)
+     expect(count('/users/me')).toBe(2)
+   })
+   it('rol degradado muestra Acceso denegado y no expone la tabla', async () => {
+     handler = c => transport(c, { ...admin, role: 'cliente' }, c.url === '/orders' ? 403 : 200)
+     mount()
+     await tick(120_000)
++    expectOrderReads(1)
+-    expect(count('/orders')).toBe(1)
+     expect(screen.getByText('Acceso denegado')).toBeInTheDocument()
+     expect(screen.queryByText('#AAAAAAAA')).not.toBeInTheDocument()
+   })
+@@ -148,8 +160,8 @@
+     handler = c => transport(c, list('bbbbbbbb'))
+     await act(async () => { useAuthStore.getState().setSession('new-session', { ...admin, id: 'admin-b' }, true) })
+     await tick()
++    expectOrderReads(2)
++    expect(within(screen.getByRole('table')).getByText('#BBBBBBBB')).toBeInTheDocument()
+-    expect(count('/orders')).toBe(2)
+-    expect(screen.getByText('#BBBBBBBB')).toBeInTheDocument()
+     expect(useAuthStore.getState().ordersAccessBlocked).toBeNull()
+   })
+   it('401 refresca una sola vez y reintenta con la nueva credencial', async () => {
+@@ -159,8 +171,8 @@
+     mount()
+     await tick(50)
+     expect(count('/auth/refresh')).toBe(1)
++    expectOrderReads(2)
++    expect(within(screen.getByRole('table')).getByText('#AAAAAAAA')).toBeInTheDocument()
+-    expect(count('/orders')).toBe(2)
+-    expect(screen.getByText('#AAAAAAAA')).toBeInTheDocument()
+     await tick(30_000)
+     expect(count('/auth/refresh')).toBe(1)
+   })
+@@ -170,7 +182,7 @@
+       : transport(c, {}, 401)
+     mount()
+     await tick(300_000)
++    expectOrderReads(2)
+-    expect(count('/orders')).toBe(2)
+     expect(count('/auth/refresh')).toBe(1)
+     expect(screen.getByText('No se pudo autorizar el acceso a pedidos')).toBeInTheDocument()
+   })
+@@ -188,10 +200,10 @@
+     await tick(20)
+     expect(otherStatus).toBe('success')
+     expect(count('/auth/refresh')).toBe(1)
++    expectOrderReads(1)
+-    expect(count('/orders')).toBe(1)
+     expect(calls.find(c => c.url === '/auth/refresh')?.signal?.aborted).toBe(false)
+     await tick(120_000)
++    expectOrderReads(1)
+-    expect(count('/orders')).toBe(1)
+   })
+   it('refresh excede 90s, termina sin restaurar tokens y permite recuperarse', async () => {
+     handler = c => c.url === '/auth/refresh' ? transport(c, {}, 200, Infinity) : transport(c, {}, 401)
+@@ -203,10 +215,10 @@
+     expect(useAuthStore.getState().accessToken).toBe('old-access')
+     handler = c => transport(c, list('recovered'))
+     await tick(120_010)
++    expect(within(screen.getByRole('table')).getByText('#RECOVERE')).toBeInTheDocument()
++    expectOrderReads(2)
+-    expect(screen.getByText('#RECOVERE')).toBeInTheDocument()
+-    expect(count('/orders')).toBe(2)
+     await tick(30_000)
++    expectOrderReads(3)
+-    expect(count('/orders')).toBe(3)
+   })
+   it('fallo temporal de refresh conserva sesión y no genera retries inmediatos', async () => {
+     handler = c => transport(c, {}, c.url === '/auth/refresh' ? 503 : 401)
+@@ -216,7 +228,7 @@
+     expect(useAuthStore.getState().accessToken).toBe('old-access')
+     handler = c => transport(c, list())
+     await tick(1100)
++    expect(within(screen.getByRole('table')).getByText('#AAAAAAAA')).toBeInTheDocument()
+-    expect(screen.getByText('#AAAAAAAA')).toBeInTheDocument()
+   })
+   it('refresh definitivamente inválido limpia la sesión sin otro refresh', async () => {
+     handler = c => transport(c, {}, 401)
+@@ -233,11 +245,13 @@
+     handler = c => transport(c, list(), 200, Infinity)
+     mount()
+     await tick(89_000)
++    expectOrderReads(1)
++    for (const request of calls.filter(c => c.url === '/orders')) {
++      expect(request.timeout).toBe(90_000)
++    }
+-    expect(count('/orders')).toBe(1)
+-    expect(calls.find(c => c.url === '/orders')?.timeout).toBe(90_000)
+     await tick(1020)
+     expect(screen.getByText('No se pudieron cargar los pedidos')).toBeInTheDocument()
++    expectOrderReads(1)
+-    expect(count('/orders')).toBe(1)
+   })
+   it('logout durante refresh cancela su transporte y no restaura la sesión', async () => {
+     handler = c => c.url === '/auth/refresh'
+@@ -264,7 +278,7 @@
+     await tick(2000)
+     expect(refresh.signal?.aborted).toBe(true)
+     expect(useAuthStore.getState().accessToken).toBe('new-identity')
++    expect(within(screen.getByRole('table')).getByText('#BBBBBBBB')).toBeInTheDocument()
+-    expect(screen.getByText('#BBBBBBBB')).toBeInTheDocument()
+   })
+   it('una respuesta tardía del listado se cancela al cambiar de identidad', async () => {
+     handler = c => transport(c, list('old-data'), 200, 1000)
+@@ -275,7 +289,7 @@
+     await act(async () => { useAuthStore.getState().setSession('new-identity', { ...admin, id: 'admin-b' }, true) })
+     await tick(2000)
+     expect(old.signal?.aborted).toBe(true)
++    expect(within(screen.getByRole('table')).getByText('#BBBBBBBB')).toBeInTheDocument()
+-    expect(screen.getByText('#BBBBBBBB')).toBeInTheDocument()
+     expect(screen.queryByText('#OLD-DATA')).not.toBeInTheDocument()
+   })
+   it('fallo temporal conserva tabla y aviso; recuperación elimina aviso y vuelve a 30s', async () => {
+@@ -283,16 +297,16 @@
+     await tick()
+     handler = c => transport(c, {}, 503)
+     await tick(30_010)
++    expect(within(screen.getByRole('table')).getByText('#AAAAAAAA')).toBeInTheDocument()
+-    expect(screen.getByText('#AAAAAAAA')).toBeInTheDocument()
+     expect(screen.getByText('Los pedidos podrían estar desactualizados')).toBeInTheDocument()
+     await tick(119_000)
++    expectOrderReads(2)
+-    expect(count('/orders')).toBe(2)
+     handler = c => transport(c, list('bbbbbbbb'))
+     await tick(1100)
++    expect(within(screen.getByRole('table')).getByText('#BBBBBBBB')).toBeInTheDocument()
+-    expect(screen.getByText('#BBBBBBBB')).toBeInTheDocument()
+     expect(screen.queryByText('Los pedidos podrían estar desactualizados')).not.toBeInTheDocument()
+     await tick(30_000)
++    expectOrderReads(4)
+-    expect(count('/orders')).toBe(4)
+   })
+   it('403 con caché no deja visible la tabla anterior', async () => {
+     mount()
+@@ -302,7 +316,7 @@
+     expect(screen.queryByText('#AAAAAAAA')).not.toBeInTheDocument()
+     expect(screen.getByText('No se pudo autorizar el acceso a pedidos')).toBeInTheDocument()
+     await tick(120_000)
++    expectOrderReads(2)
+-    expect(count('/orders')).toBe(2)
+   })
+   it('manual invalida la consulta inactiva y regresar hace un único GET inmediato', async () => {
+     mount()
+@@ -312,10 +326,10 @@
+     fireEvent.click(screen.getByRole('button', { name: 'Guardar QA' }))
+     await tick()
+     expect(count('/orders/admin')).toBe(1)
++    expectOrderReads(1)
+-    expect(count('/orders')).toBe(1)
+     fireEvent.click(screen.getByRole('link', { name: 'Volver a pedidos' }))
+     await tick()
++    expectOrderReads(2)
++    expect(within(screen.getByRole('table')).getByText('#BBBBBBBB')).toBeInTheDocument()
+-    expect(count('/orders')).toBe(2)
+-    expect(screen.getByText('#BBBBBBBB')).toBeInTheDocument()
+   })
+ })
