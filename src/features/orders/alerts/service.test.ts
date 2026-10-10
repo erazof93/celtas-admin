@@ -51,6 +51,58 @@ afterEach(async () => {
   vi.useRealTimers()
 })
 describe('shared local order alerts', () => {
+  it('defaults to enabled preference without claiming that browser audio is ready', () => {
+    expect(tab().getSnapshot()).toMatchObject({
+      enabled: true,
+      ready: false,
+      volume: 0.35,
+    })
+    expect(play).not.toHaveBeenCalled()
+  })
+  it('persists explicit mute and volume across reload and session generation changes', async () => {
+    const first = tab()
+    first.mute()
+    first.setVolume(0.6)
+    first.close()
+    const reloaded = tab(() => ({ ...scope, generation: 'new-session' }))
+    expect(reloaded.getSnapshot()).toMatchObject({
+      enabled: false,
+      ready: false,
+      volume: 0.6,
+    })
+    await reloaded.offer(id)
+    expect(play).not.toHaveBeenCalled()
+    expect(
+      tab(() => ({ ...scope, identity: 'another-admin' })).getSnapshot()
+        .enabled,
+    ).toBe(true)
+  })
+  it('persists enable despite autoplay denial and never replays silent orders after unlock', async () => {
+    const first = tab()
+    first.mute()
+    play.mockRejectedValueOnce(new DOMException('Blocked', 'NotAllowedError'))
+    await first.enableSound()
+    expect(first.getSnapshot()).toMatchObject({ enabled: true, ready: false })
+    first.close()
+    const reloaded = tab()
+    expect(reloaded.getSnapshot()).toMatchObject({
+      enabled: true,
+      ready: false,
+    })
+    await reloaded.offer(id)
+    await vi.advanceTimersByTimeAsync(500)
+    await reloaded.enableSound()
+    play.mockClear()
+    await reloaded.offer(id)
+    expect(play).not.toHaveBeenCalled()
+  })
+  it('ignores invalid stored preferences', () => {
+    localStorage.setItem(
+      `celtas-order-alert-preferences:v1:${JSON.stringify([scope.api, scope.identity])}`,
+      '{"enabled":false,"volume":20}',
+    )
+    expect(tab().getSnapshot()).toMatchObject({ enabled: true, volume: 0.35 })
+  })
   it('shows a new order without playing before activation and rejects invalid identifiers', async () => {
     const service = tab()
     await service.offer(id)
@@ -109,8 +161,9 @@ describe('shared local order alerts', () => {
     play.mockRejectedValueOnce(new DOMException('Blocked', 'NotAllowedError'))
     await service.enableSound()
     expect(service.getSnapshot()).toMatchObject({
-      enabled: false,
-      error: expect.stringContaining('Activar sonido'),
+      enabled: true,
+      ready: false,
+      error: expect.stringContaining('Habilitar audio'),
     })
     await service.offer(id)
     expect(service.getSnapshot().notices).toHaveLength(1)
@@ -121,7 +174,7 @@ describe('shared local order alerts', () => {
     await vi.advanceTimersByTimeAsync(500)
     play.mockRejectedValueOnce(new DOMException('Blocked', 'NotAllowedError'))
     await service.offer(id)
-    expect(service.getSnapshot().enabled).toBe(false)
+    expect(service.getSnapshot().ready).toBe(false)
     const count = play.mock.calls.length
     await service.offer(id)
     expect(play).toHaveBeenCalledTimes(count)
@@ -161,6 +214,29 @@ describe('shared local order alerts', () => {
     await service.offer(id)
     expect(play).not.toHaveBeenCalled()
     expect(service.getSnapshot().notices).toHaveLength(1)
+  })
+  it('suspends audio on a failed ledger write without changing the enabled preference', async () => {
+    const service = tab()
+    await service.enableSound()
+    await vi.advanceTimersByTimeAsync(500)
+    const write = vi
+      .spyOn(Storage.prototype, 'setItem')
+      .mockImplementation(() => {
+        throw new DOMException('Unavailable', 'QuotaExceededError')
+      })
+    try {
+      await service.offer(id)
+      expect(service.getSnapshot()).toMatchObject({
+        enabled: true,
+        ready: false,
+        error: expect.stringContaining('deduplicación'),
+      })
+    } finally {
+      write.mockRestore()
+    }
+    service.setVolume(0.5)
+    service.close()
+    expect(tab().getSnapshot()).toMatchObject({ enabled: true, volume: 0.5 })
   })
   it('bounds identifiers and expires prior records on a later session', async () => {
     const service = tab()

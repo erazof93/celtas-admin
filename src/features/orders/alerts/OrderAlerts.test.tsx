@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   state: {
     notices: [{ orderId: '10000000-0000-4000-8000-000000000001', at: 1 }],
     enabled: false,
+    ready: false,
     volume: 0.35,
     coordinated: true,
     error: undefined as string | undefined,
@@ -28,10 +29,41 @@ vi.mock('./runtime', () => ({
 }))
 vi.mock('./environment', () => ({ localOrderAlertsEnabled: () => true }))
 import { OrderAlerts } from './OrderAlerts'
+
+it('portals notices outside a filtered header and bounds the stack below the toolbar', () => {
+  render(
+    <MemoryRouter>
+      <header style={{ backdropFilter: 'blur(8px)' }}>
+        <OrderAlerts />
+      </header>
+    </MemoryRouter>,
+  )
+  const stack = document.querySelector('[data-order-alerts]')!
+  expect(stack.parentElement).toBe(document.body)
+  expect(stack.closest('header')).toBeNull()
+  expect(stack.className).toContain('overflow-y-auto')
+  expect(stack.className).toContain('100dvh')
+})
+
+it('distinguishes enabled preference from unlocked audio and allows muting before unlock', () => {
+  mocks.state.enabled = true
+  render(
+    <MemoryRouter>
+      <OrderAlerts />
+    </MemoryRouter>,
+  )
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Habilitar audio de pedidos' }),
+  )
+  expect(mocks.enableSound).toHaveBeenCalledTimes(1)
+  fireEvent.click(screen.getByRole('button', { name: 'Silenciar pedidos' }))
+  expect(mocks.mute).toHaveBeenCalledTimes(1)
+})
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
   mocks.state.enabled = false
+  mocks.state.ready = false
   mocks.state.error = undefined
 })
 it('renders a global nonblocking notice with a direct detail link and explicit audio activation', () => {
@@ -59,6 +91,7 @@ it('renders a global nonblocking notice with a direct detail link and explicit a
 })
 it('offers mute, volume and a visible autoplay recovery message', () => {
   mocks.state.enabled = true
+  mocks.state.ready = true
   mocks.state.error = 'Pulsa Activar sonido para reintentarlo.'
   render(
     <MemoryRouter>

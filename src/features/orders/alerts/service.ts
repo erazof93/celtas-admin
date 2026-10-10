@@ -13,6 +13,7 @@ interface Notice {
 interface AlertState {
   notices: Notice[]
   enabled: boolean
+  ready: boolean
   volume: number
   error?: string
   coordinated: boolean
@@ -27,6 +28,12 @@ const recordSchema = z
 const ledgerSchema = z.array(recordSchema).max(512)
 const TTL = 24 * 60 * 60 * 1000
 const RECENT = 5000
+const preferenceSchema = z
+  .object({
+    enabled: z.boolean(),
+    volume: z.number().min(0).max(1),
+  })
+  .strict()
 
 /** A separate short lock for alert claims; never owns or opens an SSE stream. */
 export function createOrderAlertsService(options: {
@@ -40,6 +47,7 @@ export function createOrderAlertsService(options: {
   let state: AlertState = {
     notices: [],
     enabled: false,
+    ready: false,
     volume: 0.35,
     coordinated: false,
   }
@@ -61,6 +69,28 @@ export function createOrderAlertsService(options: {
     !controller.signal.aborted
   const key = (captured: AlertScope) =>
     `celtas-order-alerts:v1:${JSON.stringify([captured.api, captured.identity])}`
+  const preferenceKey = (captured: AlertScope) =>
+    `celtas-order-alert-preferences:v1:${JSON.stringify([captured.api, captured.identity])}`
+  function preferences(captured: AlertScope) {
+    try {
+      const parsed = preferenceSchema.safeParse(
+        JSON.parse(storage.getItem(preferenceKey(captured)) ?? 'null'),
+      )
+      if (parsed.success) return parsed.data
+    } catch {
+      /* Storage may be unavailable; retain the initial preference. */
+    }
+    return { enabled: true, volume: 0.35 }
+  }
+  function savePreferences() {
+    if (!scope || !valid(scope)) return
+    const { enabled, volume } = sound.snapshot()
+    try {
+      storage.setItem(preferenceKey(scope), JSON.stringify({ enabled, volume }))
+    } catch {
+      publish({ error: 'No se pudo guardar la preferencia de sonido.' })
+    }
+  }
   function read(captured: AlertScope) {
     const raw = storage.getItem(key(captured))
     if (raw && raw.length > 65536) throw Error('Alert ledger too large')
@@ -145,6 +175,7 @@ export function createOrderAlertsService(options: {
       close()
       if (!next) return
       scope = next
+      sound.configure(preferences(next))
       startedAt = now()
       controller = new AbortController()
       try {
@@ -216,19 +247,28 @@ export function createOrderAlertsService(options: {
       } catch {
         if (valid(captured)) {
           show(notice)
+          sound.suspend()
           publish({
             error:
               'No se pudo guardar la deduplicación; el sonido está suspendido.',
           })
-          sound.mute()
         }
       }
     },
     enableSound() {
-      return state.coordinated ? sound.enable() : Promise.resolve()
+      if (!state.coordinated) return Promise.resolve()
+      const activation = sound.enable()
+      savePreferences()
+      return activation
     },
-    mute: () => sound.mute(),
-    setVolume: (volume: number) => sound.setVolume(volume),
+    mute() {
+      sound.mute()
+      savePreferences()
+    },
+    setVolume(volume: number) {
+      sound.setVolume(volume)
+      savePreferences()
+    },
     dismiss(orderId: string) {
       publish({
         notices: state.notices.filter((notice) => notice.orderId !== orderId),
