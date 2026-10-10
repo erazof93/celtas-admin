@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { createOrderSound } from './sound'
+import { createOrderSound, type AudioStatus } from './sound'
 
 export interface AlertScope {
   api: string
@@ -15,6 +15,7 @@ interface AlertState {
   unreviewed: Notice[]
   enabled: boolean
   ready: boolean
+  audioStatus: AudioStatus
   volume: number
   error?: string
   coordinated: boolean
@@ -59,6 +60,7 @@ export function createOrderAlertsService(options: {
     unreviewed: [],
     enabled: false,
     ready: false,
+    audioStatus: 'muted',
     volume: 0.35,
     coordinated: false,
   }
@@ -75,7 +77,8 @@ export function createOrderAlertsService(options: {
   const retired = new Set<string>()
   const sound = createOrderSound(() => {
     publish(sound.snapshot())
-    if (!state.enabled || !state.ready) clearAlarm()
+    if (!state.enabled || (state.audioStatus !== 'unchecked' && !state.ready))
+      clearAlarm()
   }, now)
   function publish(change: Partial<AlertState>) {
     state = { ...state, ...change }
@@ -183,6 +186,9 @@ export function createOrderAlertsService(options: {
       return 0
     return value
   }
+  const canPlay = () =>
+    state.enabled &&
+    (state.audioStatus === 'unchecked' || state.audioStatus === 'available')
   function schedule() {
     const captured = scope
     if (
@@ -192,8 +198,7 @@ export function createOrderAlertsService(options: {
       ringing ||
       alarm ||
       !state.coordinated ||
-      !state.enabled ||
-      !state.ready ||
+      !canPlay() ||
       !state.unreviewed.length
     )
       return
@@ -226,7 +231,7 @@ export function createOrderAlertsService(options: {
         `${clockKey(captured)}:playback`,
         { signal: controller.signal },
         async () => {
-          if (!valid(captured) || !state.enabled || !state.ready) return
+          if (!valid(captured) || !canPlay()) return
           let claimed = false
           await navigator.locks.request(
             key(captured),
@@ -242,8 +247,7 @@ export function createOrderAlertsService(options: {
           if (
             claimed &&
             valid(captured) &&
-            state.enabled &&
-            state.ready &&
+            canPlay() &&
             state.unreviewed.length
           )
             await sound.play()
@@ -397,7 +401,11 @@ export function createOrderAlertsService(options: {
             if (valid(next)) write(read(next), next)
           })
           .then(async () => {
-            if (!valid(next) || !restoring || !options.validateRestored) return
+            if (!valid(next)) return
+            if (!restoring || !options.validateRestored) {
+              schedule()
+              return
+            }
             const retained = await options.validateRestored(
               restored,
               controller.signal,
@@ -468,8 +476,7 @@ export function createOrderAlertsService(options: {
         }
         // Ring now only for a new sequence; more orders do not reset its clock.
         if (
-          state.ready &&
-          state.enabled &&
+          canPlay() &&
           state.unreviewed.length &&
           !alarm &&
           !ringing &&

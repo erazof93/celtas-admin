@@ -13,11 +13,23 @@ export function OrderAlerts() {
     orderAlerts.getSnapshot,
   )
   if (!localOrderAlertsEnabled()) return null
-  const canMute = state.enabled && state.ready
+  const canMute =
+    state.enabled && (state.audioStatus === 'unchecked' || state.ready)
+  const soundText = !state.enabled
+    ? 'Sonido desactivado'
+    : state.audioStatus === 'unchecked'
+      ? 'Sonido activado · por comprobar'
+      : state.ready
+        ? 'Sonido activado'
+        : state.audioStatus === 'blocked'
+          ? 'Habilitar audio'
+          : 'Reintentar audio'
   const soundLabel = canMute
     ? 'Silenciar pedidos'
     : state.enabled
-      ? 'Habilitar audio de pedidos'
+      ? state.audioStatus === 'error'
+        ? 'Reintentar audio de pedidos'
+        : 'Habilitar audio de pedidos'
       : 'Activar sonido de pedidos'
   return (
     <>
@@ -25,11 +37,7 @@ export function OrderAlerts() {
         <Button
           variant="ghost"
           aria-label={soundLabel}
-          title={
-            state.enabled && !state.ready
-              ? 'Sonido activado en tus preferencias. Pulsa para permitir audio en este navegador.'
-              : soundLabel
-          }
+          title={soundText}
           disabled={!state.coordinated}
           onClick={() => {
             if (canMute) orderAlerts.mute()
@@ -37,15 +45,9 @@ export function OrderAlerts() {
           }}
         >
           {canMute ? <Volume2 /> : <VolumeX />}
-          <span className="hidden sm:inline">
-            {canMute
-              ? 'Silenciar'
-              : state.enabled
-                ? 'Habilitar audio'
-                : 'Activar sonido'}
-          </span>
+          <span className="hidden sm:inline">{soundText}</span>
         </Button>
-        {state.enabled && !state.ready && (
+        {state.enabled && !canMute && (
           <Button
             variant="ghost"
             size="icon-sm"
@@ -90,9 +92,11 @@ export function OrderAlerts() {
                 : 'pedidos nuevos sin revisar'}
               {!state.enabled
                 ? ' · Silenciado'
-                : !state.ready
+                : state.audioStatus === 'blocked'
                   ? ' · Habilita audio'
-                  : ''}
+                  : state.audioStatus === 'error'
+                    ? ' · Error de audio'
+                    : ''}
             </Link>
           )}
           {state.error && (

@@ -1,7 +1,11 @@
+export type AudioStatus =
+  'unchecked' | 'available' | 'blocked' | 'error' | 'muted'
+
 export function createOrderSound(changed: () => void, now = Date.now) {
   let audio: HTMLAudioElement | undefined
   let enabled = false
   let ready = false
+  let audioStatus: AudioStatus = 'muted'
   let volume = 0.35
   let error: string | undefined
   let epoch = 0
@@ -18,17 +22,24 @@ export function createOrderSound(changed: () => void, now = Date.now) {
     finishPlayback?.()
   }
 
-  function blocked() {
+  function blocked(cause?: unknown) {
+    audioStatus =
+      cause instanceof DOMException && cause.name === 'NotAllowedError'
+        ? 'blocked'
+        : 'error'
     ready = false
     error =
-      'No se pudo reproducir el sonido. Pulsa Habilitar audio para reintentarlo.'
+      audioStatus === 'blocked'
+        ? 'El navegador bloqueó el sonido. Pulsa Habilitar audio.'
+        : 'Error de reproducción. Pulsa Reintentar audio.'
     changed()
   }
   return {
-    snapshot: () => ({ enabled, ready, volume, error }),
+    snapshot: () => ({ enabled, ready, audioStatus, volume, error }),
     eligible: (at: number) => enabled && ready && enabledAt <= at,
     configure(preference: { enabled: boolean; volume: number }) {
       enabled = preference.enabled
+      audioStatus = preference.enabled ? 'unchecked' : 'muted'
       volume = preference.volume
       ready = false
       enabledAt = Infinity
@@ -48,19 +59,19 @@ export function createOrderSound(changed: () => void, now = Date.now) {
         lastPlayed = now()
         enabled = true
         ready = true
+        audioStatus = 'available'
         enabledAt = now()
         error = undefined
         changed()
-      } catch {
-        if (captured === epoch) blocked()
+      } catch (cause) {
+        if (captured === epoch) blocked(cause)
       }
     },
     async play() {
       // A short burst shares one chime rather than interrupting/overlapping audio.
       if (
         !enabled ||
-        !ready ||
-        !audio ||
+        (audioStatus !== 'unchecked' && !ready) ||
         playing ||
         audioPlaying() ||
         now() - lastPlayed < 450
@@ -69,9 +80,17 @@ export function createOrderSound(changed: () => void, now = Date.now) {
       const captured = epoch
       playing = true
       lastPlayed = now()
-      audio.currentTime = 0
       try {
+        audio ??= new Audio('/order-alert.wav')
+        audio.volume = volume
+        audio.currentTime = 0
         await audio.play()
+        if (captured !== epoch) return
+        ready = true
+        audioStatus = 'available'
+        enabledAt = now()
+        error = undefined
+        changed()
         if (captured !== epoch || !audioPlaying()) return
         const currentAudio = audio
         await new Promise<void>((resolve) => {
@@ -91,8 +110,8 @@ export function createOrderSound(changed: () => void, now = Date.now) {
           currentAudio.addEventListener('pause', finish, { once: true })
           currentAudio.addEventListener('error', failed, { once: true })
         })
-      } catch {
-        if (captured === epoch) blocked()
+      } catch (cause) {
+        if (captured === epoch) blocked(cause)
       } finally {
         playing = false
       }
@@ -107,6 +126,7 @@ export function createOrderSound(changed: () => void, now = Date.now) {
     suspend() {
       epoch++
       ready = false
+      audioStatus = 'error'
       enabledAt = Infinity
       stop()
       changed()
@@ -114,6 +134,7 @@ export function createOrderSound(changed: () => void, now = Date.now) {
     mute() {
       epoch++
       enabled = false
+      audioStatus = 'muted'
       ready = false
       enabledAt = Infinity
       error = undefined
@@ -123,6 +144,7 @@ export function createOrderSound(changed: () => void, now = Date.now) {
     close() {
       epoch++
       enabled = false
+      audioStatus = 'muted'
       ready = false
       enabledAt = Infinity
       error = undefined

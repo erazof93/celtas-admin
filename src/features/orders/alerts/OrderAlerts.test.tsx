@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
     unreviewed: [] as { orderId: string; at: number }[],
     enabled: false,
     ready: false,
+    audioStatus: 'unchecked' as
+      'unchecked' | 'available' | 'blocked' | 'error' | 'muted',
     volume: 0.35,
     coordinated: true,
     error: undefined as string | undefined,
@@ -31,6 +33,28 @@ vi.mock('./runtime', () => ({
 vi.mock('./environment', () => ({ localOrderAlertsEnabled: () => true }))
 import { OrderAlerts } from './OrderAlerts'
 
+it.each([
+  ['unchecked', true, false, 'Sonido activado · por comprobar'],
+  ['available', true, true, 'Sonido activado'],
+  ['blocked', true, false, 'Habilitar audio'],
+  ['error', true, false, 'Reintentar audio'],
+  ['muted', false, false, 'Sonido desactivado'],
+] as const)(
+  'represents audio status %s accurately',
+  (status, enabled, ready, text) => {
+    mocks.state.audioStatus = status
+    mocks.state.enabled = enabled
+    mocks.state.ready = ready
+    render(
+      <MemoryRouter>
+        <OrderAlerts />
+      </MemoryRouter>,
+    )
+    expect(screen.getByText(text)).toBeInTheDocument()
+    expect(mocks.enableSound).not.toHaveBeenCalled()
+  },
+)
+
 it('portals notices outside a filtered header and bounds the stack below the toolbar', () => {
   render(
     <MemoryRouter>
@@ -48,6 +72,7 @@ it('portals notices outside a filtered header and bounds the stack below the too
 
 it('distinguishes enabled preference from unlocked audio and allows muting before unlock', () => {
   mocks.state.enabled = true
+  mocks.state.audioStatus = 'blocked'
   render(
     <MemoryRouter>
       <OrderAlerts />
@@ -65,6 +90,7 @@ afterEach(() => {
   vi.clearAllMocks()
   mocks.state.enabled = false
   mocks.state.ready = false
+  mocks.state.audioStatus = 'unchecked'
   mocks.state.error = undefined
   mocks.state.unreviewed = []
   mocks.state.notices = [

@@ -51,6 +51,108 @@ afterEach(async () => {
   vi.useRealTimers()
 })
 describe('shared local order alerts', () => {
+  it('automatically resumes validated unreviewed attention after reload without a startup chime', async () => {
+    const first = tab()
+    await first.offer(id)
+    first.close()
+    play.mockClear()
+    let validate!: (ids: string[]) => void
+    const restored = createOrderAlertsService({
+      scope: () => scope,
+      validateRestored: () =>
+        new Promise((resolve) => {
+          validate = resolve
+        }),
+    })
+    services.push(restored)
+    restored.sync()
+    await flushCoordination()
+    await vi.advanceTimersByTimeAsync(8000)
+    expect(play).not.toHaveBeenCalled()
+    validate([id])
+    await flushCoordination()
+    expect(play).toHaveBeenCalledTimes(1)
+    expect(restored.getSnapshot().audioStatus).toBe('available')
+    restored.close()
+    await flushCoordination()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+  it('restores enabled and volume after F5, stays silent without attention, then rings automatically', async () => {
+    const first = tab()
+    first.setVolume(0.6)
+    first.close()
+    const reloaded = tab()
+    await flushCoordination()
+    expect(reloaded.getSnapshot()).toMatchObject({
+      enabled: true,
+      volume: 0.6,
+      ready: false,
+      audioStatus: 'unchecked',
+    })
+    expect(play).not.toHaveBeenCalled()
+    await reloaded.offer(id)
+    expect(play).toHaveBeenCalledTimes(1)
+    expect(reloaded.getSnapshot().audioStatus).toBe('available')
+    await vi.advanceTimersByTimeAsync(8000)
+    expect(play).toHaveBeenCalledTimes(2)
+  })
+  it('blocked automatic playback retains attention, never retries on events, and recovers manually', async () => {
+    const service = tab()
+    play.mockRejectedValueOnce(new DOMException('Blocked', 'NotAllowedError'))
+    await service.offer(id)
+    expect(service.getSnapshot()).toMatchObject({
+      enabled: true,
+      ready: false,
+      audioStatus: 'blocked',
+    })
+    await service.offer('10000000-0000-4000-8000-000000000002')
+    await service.offer(id)
+    await vi.advanceTimersByTimeAsync(24000)
+    expect(play).toHaveBeenCalledTimes(1)
+    expect(service.getSnapshot().unreviewed).toHaveLength(2)
+    await service.enableSound()
+    expect(service.getSnapshot().audioStatus).toBe('available')
+    await vi.advanceTimersByTimeAsync(8000)
+    expect(play).toHaveBeenCalledTimes(3)
+    await service.markReviewed(id)
+    await vi.advanceTimersByTimeAsync(8000)
+    expect(play).toHaveBeenCalledTimes(4)
+  })
+  it('a playback error is distinct from autoplay denial and stops automatic retry', async () => {
+    const service = tab()
+    play.mockRejectedValueOnce(
+      new DOMException('Unsupported', 'NotSupportedError'),
+    )
+    await service.offer(id)
+    expect(service.getSnapshot()).toMatchObject({
+      audioStatus: 'error',
+      ready: false,
+      error: expect.stringContaining('Error de reproducción'),
+    })
+    await vi.advanceTimersByTimeAsync(24000)
+    await service.offer(id)
+    expect(play).toHaveBeenCalledTimes(1)
+  })
+  it('uninitialized tabs share one automatic sequence for multiple and duplicate deliveries', async () => {
+    const first = tab(),
+      second = tab()
+    await Promise.all([first.offer(id), second.offer(id)])
+    await flushCoordination()
+    expect(play).toHaveBeenCalledTimes(1)
+    await second.offer('10000000-0000-4000-8000-000000000002')
+    await vi.advanceTimersByTimeAsync(16000)
+    expect(play).toHaveBeenCalledTimes(3)
+    await first.markReviewed(id)
+    await flushCoordination()
+    await vi.advanceTimersByTimeAsync(8000)
+    expect(play).toHaveBeenCalledTimes(4)
+    first.mute()
+    await flushCoordination()
+    await vi.advanceTimersByTimeAsync(24000)
+    expect(play).toHaveBeenCalledTimes(4)
+    expect(second.getSnapshot().enabled).toBe(false)
+  })
   it('rings immediately for a new order and every eight seconds until its details are reviewed', async () => {
     const service = tab()
     await service.enableSound()
@@ -178,7 +280,7 @@ describe('shared local order alerts', () => {
     first.close()
     const restored = tab()
     expect(restored.getSnapshot().unreviewed).toHaveLength(1)
-    expect(play).not.toHaveBeenCalled()
+    expect(play).toHaveBeenCalledTimes(1)
     restored.close()
     expect(
       tab(() => ({ ...scope, generation: 'next-login' })).getSnapshot()
@@ -339,12 +441,16 @@ describe('shared local order alerts', () => {
     )
     expect(tab().getSnapshot()).toMatchObject({ enabled: true, volume: 0.35 })
   })
-  it('shows a new order without playing before activation and rejects invalid identifiers', async () => {
+  it('automatically checks audio for a valid new order and rejects invalid identifiers', async () => {
     const service = tab()
     await service.offer(id)
     await service.offer('../private')
     expect(service.getSnapshot().notices.map((n) => n.orderId)).toEqual([id])
-    expect(play).not.toHaveBeenCalled()
+    expect(play).toHaveBeenCalledTimes(1)
+    expect(service.getSnapshot()).toMatchObject({
+      ready: true,
+      audioStatus: 'available',
+    })
   })
   it('two tabs and simultaneous SSE/FCM offers claim exactly one sound and one banner per tab', async () => {
     const first = tab(),

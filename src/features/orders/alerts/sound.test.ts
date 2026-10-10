@@ -35,6 +35,39 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+it('checks automatically without claiming availability before play resolves, and uses restored volume', async () => {
+  const sound = createOrderSound(vi.fn())
+  sound.configure({ enabled: true, volume: 0.6 })
+  expect(instances).toHaveLength(0)
+  expect(sound.snapshot()).toMatchObject({
+    ready: false,
+    audioStatus: 'unchecked',
+  })
+  // Delay the actual playback permission result.
+  let resolve!: () => void
+  vi.stubGlobal(
+    'Audio',
+    class extends TestAudio {
+      play = vi.fn(
+        () =>
+          new Promise<void>((done) => {
+            resolve = done
+          }),
+      )
+    },
+  )
+  const attempt = sound.play()
+  expect(currentAudio().volume).toBe(0.6)
+  expect(sound.snapshot().ready).toBe(false)
+  resolve()
+  await attempt
+  expect(sound.snapshot()).toMatchObject({
+    ready: true,
+    audioStatus: 'available',
+  })
+  sound.close()
+})
+
 it('never overlaps or restarts playback, and resolves its playback lease only at ended', async () => {
   const sound = createOrderSound(vi.fn())
   sound.configure({ enabled: true, volume: 0.35 })
